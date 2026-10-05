@@ -8,6 +8,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_urls
 from libs.common.supabase import get_supabase_admin_client
@@ -16,6 +17,8 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.members_service.models import (
+    Club,
+    ClubEnrollment,
     CoachProfile,
     Member,
     MemberAvailability,
@@ -24,6 +27,8 @@ from services.members_service.models import (
     MemberMembership,
     MemberPreferences,
     MemberProfile,
+    Pod,
+    PodAssignment,
     VolunteerInterest,
 )
 from services.members_service.routers._helpers import (
@@ -33,12 +38,34 @@ from services.members_service.routers._helpers import (
 from services.members_service.schemas import (
     MemberCreate,
     MemberListResponse,
+    MemberMembershipResponse,
     MemberResponse,
     MemberUpdate,
+)
+from services.members_service.services.club_access import current_club_enrollment_until
+from services.members_service.services.membership_status import (
+    build_membership_status_summary,
 )
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+async def _admin_member_response(member: Member, db: AsyncSession) -> dict:
+    """Serialize an admin member with current dated Club access projected."""
+
+    member_dict = MemberResponse.model_validate(member).model_dump()
+    membership = member_dict.get("membership")
+    if membership is not None:
+        membership["club_enrollment_until"] = await current_club_enrollment_until(
+            db,
+            member_id=member.id,
+            at=utc_now(),
+        )
+        member_dict["membership"] = MemberMembershipResponse.model_validate(
+            membership
+        ).model_dump()
+    return await resolve_member_media_urls(member_dict)
 
 
 @router.post("/", response_model=MemberResponse, status_code=status.HTTP_201_CREATED)
@@ -99,6 +126,43 @@ async def list_members(
     media_ids = [m.profile_photo_media_id for m in members if m.profile_photo_media_id]
     url_map = await resolve_media_urls(media_ids) if media_ids else {}
 
+    # Build the operational programme projection in batches. Club status comes
+    # from dated location-specific enrollments; Pod placement comes from the
+    # active assignment. This keeps the admin list off the legacy tier cache.
+    member_ids = [member.id for member in members]
+    now = utc_now()
+    current_enrollments: dict[uuid.UUID, tuple[ClubEnrollment, Club]] = {}
+    current_pods: dict[uuid.UUID, Pod] = {}
+    if member_ids:
+        enrollment_rows = (
+            await db.execute(
+                select(ClubEnrollment, Club)
+                .join(Club, Club.id == ClubEnrollment.club_id)
+                .where(
+                    ClubEnrollment.member_id.in_(member_ids),
+                    ClubEnrollment.status == "active",
+                    ClubEnrollment.starts_at <= now,
+                    ClubEnrollment.ends_at > now,
+                )
+                .order_by(ClubEnrollment.ends_at.desc())
+            )
+        ).all()
+        for enrollment, club in enrollment_rows:
+            current_enrollments.setdefault(enrollment.member_id, (enrollment, club))
+
+        pod_rows = (
+            await db.execute(
+                select(PodAssignment, Pod)
+                .join(Pod, Pod.id == PodAssignment.pod_id)
+                .where(
+                    PodAssignment.member_id.in_(member_ids),
+                    PodAssignment.left_at.is_(None),
+                )
+            )
+        ).all()
+        for assignment, pod in pod_rows:
+            current_pods[assignment.member_id] = pod
+
     responses: list[MemberListResponse] = []
     for member in members:
         base = MemberResponse.model_validate(member, from_attributes=True)
@@ -130,7 +194,12 @@ async def list_members(
             payload["hopes_from_swimbuddz"] = p.hopes_from_swimbuddz
             payload["goals_narrative"] = p.personal_goals
 
-        # Flatten membership fields
+        # Flatten membership fields for compatibility, then add the canonical
+        # independent programme projection used by the admin UI.
+        enrollment_pair = current_enrollments.get(member.id)
+        current_enrollment = enrollment_pair[0] if enrollment_pair else None
+        current_club = enrollment_pair[1] if enrollment_pair else None
+        current_pod = current_pods.get(member.id)
         if base.membership:
             m = base.membership
             payload["primary_tier"] = m.primary_tier
@@ -139,6 +208,50 @@ async def list_members(
             payload["community_paid_until"] = m.community_paid_until
             payload["club_paid_until"] = m.club_paid_until
             payload["academy_paid_until"] = m.academy_paid_until
+            payload["post_academy_club_until"] = m.post_academy_club_until
+
+            summary = build_membership_status_summary(
+                primary_tier=m.primary_tier,
+                active_tiers=m.active_tiers,
+                declared_tiers=m.declared_tiers,
+                requested_tiers=m.requested_tiers,
+                community_paid_until=m.community_paid_until,
+                club_paid_until=m.club_paid_until,
+                academy_paid_until=m.academy_paid_until,
+                post_academy_club_until=m.post_academy_club_until,
+                club_enrollment_until=(
+                    current_enrollment.ends_at if current_enrollment else None
+                ),
+                pending_payment_reference=m.pending_payment_reference,
+                pending_tier_payments=m.pending_tier_payments,
+                now=now,
+            )
+            tier_statuses = summary["tier_statuses"]
+            annual_status = tier_statuses["community"]
+            club_status = tier_statuses["club"]
+            academy_status = tier_statuses["academy"]
+            payload["annual_membership_status"] = annual_status["status"]
+            payload["annual_membership_label"] = annual_status["label"]
+            payload["annual_membership_paid_until"] = annual_status["effective_until"]
+            payload["club_programme_status"] = club_status["status"]
+            payload["club_programme_label"] = club_status["label"]
+            payload["academy_programme_status"] = academy_status["status"]
+            payload["academy_programme_label"] = academy_status["label"]
+            payload["pending_programmes"] = [
+                programme
+                for programme in ("club", "academy")
+                if tier_statuses[programme]["status"]
+                in {"requested", "payment_pending", "approved_unpaid"}
+            ]
+
+        if current_enrollment and current_club:
+            payload["current_club_id"] = current_club.id
+            payload["current_club_name"] = current_club.name
+            payload["current_club_payment_mode"] = current_enrollment.payment_mode
+            payload["current_club_until"] = current_enrollment.ends_at
+        if current_pod:
+            payload["current_pod_id"] = current_pod.id
+            payload["current_pod_name"] = current_pod.handle or current_pod.name
 
         # Flatten emergency contact
         if base.emergency_contact:
@@ -231,10 +344,7 @@ async def get_member(
             detail="Member not found",
         )
 
-    # Resolve media URLs
-    member_dict = MemberResponse.model_validate(member).model_dump()
-    member_dict = await resolve_member_media_urls(member_dict)
-    return member_dict
+    return await _admin_member_response(member, db)
 
 
 @router.patch("/{member_id}", response_model=MemberResponse)
@@ -274,10 +384,7 @@ async def update_member(
     result = await db.execute(query)
     updated_member = result.scalar_one()
 
-    # Resolve media URLs
-    member_dict = MemberResponse.model_validate(updated_member).model_dump()
-    member_dict = await resolve_member_media_urls(member_dict)
-    return member_dict
+    return await _admin_member_response(updated_member, db)
 
 
 @router.delete("/{member_id}", status_code=status.HTTP_204_NO_CONTENT)

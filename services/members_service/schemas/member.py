@@ -433,6 +433,26 @@ class MemberListResponse(BaseModel):
     academy_paid_until: Optional[datetime] = None
     post_academy_club_until: Optional[datetime] = None
 
+    # Canonical admin projection. These fields intentionally avoid the legacy
+    # tier hierarchy: annual Membership, Academy, and Club are independent.
+    annual_membership_status: str = "inactive"
+    annual_membership_label: str = "Inactive"
+    annual_membership_paid_until: Optional[datetime] = None
+    club_programme_status: str = "inactive"
+    club_programme_label: str = "Inactive"
+    academy_programme_status: str = "inactive"
+    academy_programme_label: str = "Inactive"
+    pending_programmes: list[str] = Field(default_factory=list)
+
+    # Current operational Club placement, sourced from dated ClubEnrollment
+    # and active PodAssignment rows rather than legacy membership tiers.
+    current_club_id: Optional[uuid.UUID] = None
+    current_club_name: Optional[str] = None
+    current_club_payment_mode: Optional[str] = None
+    current_club_until: Optional[datetime] = None
+    current_pod_id: Optional[uuid.UUID] = None
+    current_pod_name: Optional[str] = None
+
     # Flattened from emergency contact
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None

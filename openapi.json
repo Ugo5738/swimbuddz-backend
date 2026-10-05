@@ -68996,6 +68996,124 @@
             ],
             "title": "Post Academy Club Until"
           },
+          "annual_membership_status": {
+            "type": "string",
+            "title": "Annual Membership Status",
+            "default": "inactive"
+          },
+          "annual_membership_label": {
+            "type": "string",
+            "title": "Annual Membership Label",
+            "default": "Inactive"
+          },
+          "annual_membership_paid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Annual Membership Paid Until"
+          },
+          "club_programme_status": {
+            "type": "string",
+            "title": "Club Programme Status",
+            "default": "inactive"
+          },
+          "club_programme_label": {
+            "type": "string",
+            "title": "Club Programme Label",
+            "default": "Inactive"
+          },
+          "academy_programme_status": {
+            "type": "string",
+            "title": "Academy Programme Status",
+            "default": "inactive"
+          },
+          "academy_programme_label": {
+            "type": "string",
+            "title": "Academy Programme Label",
+            "default": "Inactive"
+          },
+          "pending_programmes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pending Programmes"
+          },
+          "current_club_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Club Id"
+          },
+          "current_club_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Club Name"
+          },
+          "current_club_payment_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Club Payment Mode"
+          },
+          "current_club_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Club Until"
+          },
+          "current_pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Pod Id"
+          },
+          "current_pod_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Pod Name"
+          },
           "emergency_contact_name": {
             "anyOf": [
               {
