@@ -303,6 +303,13 @@ async def build_business_review(
         )
     if not academy:
         data_quality.append("Academy quarter summary unavailable.")
+    elif (
+        int(academy.get("active_enrollments") or 0) > 0
+        and int(academy.get("progress_updates_in_period") or 0) == 0
+    ):
+        data_quality.append(
+            "Academy had active learners but no progress records were updated in the quarter; zero milestones/certificates should be treated as incomplete progress-recording coverage, not evidence of zero learner progress."
+        )
     if not club:
         data_quality.append("Club quarter summary unavailable.")
     if not sessions:
