@@ -183,7 +183,11 @@ class ApprovedMemberBasic(BaseModel):
     auth_id: str
     first_name: str
     last_name: str
+    email: str
+    roles: list[str] = []
     primary_tier: str | None = None
+    created_at: str | None = None
+    approved_at: str | None = None
 
 
 class BirthdayMember(BaseModel):
