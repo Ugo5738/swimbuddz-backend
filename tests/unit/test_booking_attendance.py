@@ -52,7 +52,6 @@ async def test_confirmed_booking_upserts_default_present_attendance(monkeypatch)
             "member_id": str(booking.member_id),
             "status": "present",
             "role": "swimmer",
-            "preserve_existing": False,
             "notes": f"Booking {booking.id} confirmed; default attendance",
         },
         headers={"Authorization": "Bearer jwt"},
@@ -75,8 +74,10 @@ async def test_booking_sync_can_preserve_existing_attendance(monkeypatch):
     await attendance_sync.sync_booking_attendance(booking, preserve_existing=True)
 
     payload = client.post.await_args.kwargs["json"]
+    headers = client.post.await_args.kwargs["headers"]
     assert payload["status"] == "present"
-    assert payload["preserve_existing"] is True
+    assert "preserve_existing" not in payload
+    assert headers["X-Preserve-Existing-Attendance"] == "true"
 
 
 @pytest.mark.asyncio
