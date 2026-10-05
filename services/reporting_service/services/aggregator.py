@@ -602,7 +602,6 @@ async def compute_member_report(
         f"{member_info.get('first_name', '')} {member_info.get('last_name', '')}"
     ).strip() or "Unknown Member"
     member_id = member_info.get("id")
-    member_tier = member_info.get("primary_tier")
 
     # Detect first-timer (joined this quarter)
     member_created_at = member_info.get("approved_at") or member_info.get("created_at")
@@ -624,6 +623,12 @@ async def compute_member_report(
         end=end,
         fallback_attendance=attendance,
     )
+
+    # member_tier is a legacy storage/API field kept for compatibility.
+    # It now stores the swimmer's programme for this historical quarter,
+    # derived from actual programme commitments/enrollments rather than the
+    # deprecated MemberMembership.primary_tier cache.
+    member_programme = segment_attendance["primary_segment"]
 
     # Compute derived attendance metrics
     total_attended = segment_attendance["total_attended"]
@@ -648,7 +653,7 @@ async def compute_member_report(
         year=year,
         quarter=quarter,
         member_name=member_name,
-        member_tier=member_tier,
+        member_tier=member_programme,
         # Attendance
         total_sessions_attended=total_attended,
         total_sessions_available=total_available,
