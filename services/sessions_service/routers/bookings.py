@@ -922,7 +922,9 @@ async def admin_walk_in_booking(
 
     Behavior:
       - Tuition-included cohort classes have no additional fee. Other sessions
-        default to ``pool_fee`` unless Admin specifies the originally agreed fee.
+        use the same server-authoritative access/rate resolver as member booking
+        (including cross-location Club visitor rates) unless Admin explicitly
+        records an agreed override.
       - Idempotent: if a PENDING or CONFIRMED booking already exists for
         ``(session_id, member_id)``, returns it instead of creating a new one.
         Cancelled/expired bookings raise 409 (admin must investigate).
@@ -1033,7 +1035,13 @@ async def admin_walk_in_booking(
         channel=BookingChannel.ADMIN,
         fee_amount_kobo=fee_kobo,
         member_fee_amount_kobo=fee_kobo,
-        access_source="admin_walk_in",
+        # Preserve the commercial admission source (for example
+        # club_visit) even though the operational channel is ADMIN. This keeps
+        # pricing/reporting truthful for walk-ins while booking_source records
+        # that staff created the booking at the pool.
+        access_source=(
+            resolved_access.access_source if resolved_access else "admin_walk_in"
+        ),
         pricing_audience=(
             resolved_access.pricing_audience if resolved_access else None
         ),
@@ -1054,6 +1062,7 @@ async def admin_walk_in_booking(
             if payload.fee_amount_kobo is not None
             else (resolved_access.rate_code if resolved_access else None)
         ),
+        booking_source="admin_walk_in",
         notes=payload.notes,
         booked_at=now,
         confirmed_at=now,

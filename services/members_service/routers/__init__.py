@@ -8,6 +8,9 @@ from services.members_service.routers.challenges import (
     volunteer_router,
 )
 from services.members_service.routers.clubs import router as clubs_router
+from services.members_service.routers.club_transfers import (
+    router as club_transfers_router,
+)
 from services.members_service.routers.community_experiences import (
     router as community_experiences_router,
 )
@@ -71,6 +74,7 @@ __all__ = [
     "coach_agreements_admin_router",
     "challenge_router",
     "clubs_router",
+    "club_transfers_router",
     "community_experiences_router",
     "volunteer_router",
     "guardians_admin_router",

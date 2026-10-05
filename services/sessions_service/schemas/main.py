@@ -56,8 +56,10 @@ class SessionBase(BaseModel):
     pool_fee: float = 0.0  # naira input/output
     cohort_fee_mode: Literal["included", "paid_extra"] = "included"
     guest_fee: Optional[float] = Field(None, ge=0)
-    community_dropin_fee: Optional[float] = None
+    community_dropin_fee: Optional[float] = Field(None, ge=0)
+    visiting_club_fee: Optional[float] = Field(None, ge=0)
     allows_community_dropins: bool = False
+    allows_visiting_club_members: bool = False
     ride_share_fee: float = 0.0  # naira input/output
     pricing_mode: Literal["manual", "cost_plus"] = "manual"
     pricing_expected_attendees: Optional[int] = Field(None, ge=1)
@@ -100,10 +102,13 @@ class SessionCreate(SessionBase):
         bypass this.
         """
         if self.session_type != SessionType.CLUB and (
-            self.club_id or self.club_access_mode != "plan_included"
+            self.club_id
+            or self.club_access_mode != "plan_included"
+            or self.allows_visiting_club_members
+            or self.visiting_club_fee is not None
         ):
             raise ValueError(
-                "Only Club sessions may specify a Club or Club access mode"
+                "Only Club sessions may specify Club ownership, access mode, or visiting-member admission"
             )
         if (
             self.cohort_fee_mode != "included"
@@ -182,8 +187,10 @@ class SessionUpdate(BaseModel):
     pool_fee: Optional[float] = None  # naira — router converts to kobo on write
     cohort_fee_mode: Optional[Literal["included", "paid_extra"]] = None
     guest_fee: Optional[float] = Field(None, ge=0)
-    community_dropin_fee: Optional[float] = None
+    community_dropin_fee: Optional[float] = Field(None, ge=0)
+    visiting_club_fee: Optional[float] = Field(None, ge=0)
     allows_community_dropins: Optional[bool] = None
+    allows_visiting_club_members: Optional[bool] = None
     ride_share_fee: Optional[float] = None  # naira — router converts to kobo on write
     pricing_mode: Optional[Literal["manual", "cost_plus"]] = None
     pricing_expected_attendees: Optional[int] = Field(None, ge=1)
@@ -267,6 +274,7 @@ class SessionResponse(SessionBase):
         ride_share_fee_kobo = getattr(obj, "ride_share_fee", 0) or 0
         guest_fee_kobo = getattr(obj, "guest_fee_kobo", None)
         community_dropin_fee_kobo = getattr(obj, "community_dropin_fee_kobo", None)
+        visiting_club_fee_kobo = getattr(obj, "visiting_club_fee_kobo", None)
         from services.sessions_service.services.pricing import pricing_response_fields
 
         pricing = pricing_response_fields(obj)
@@ -294,6 +302,14 @@ class SessionResponse(SessionBase):
                 else None
             ),
             "allows_community_dropins": getattr(obj, "allows_community_dropins", False),
+            "visiting_club_fee": (
+                visiting_club_fee_kobo / 100.0
+                if visiting_club_fee_kobo is not None
+                else None
+            ),
+            "allows_visiting_club_members": getattr(
+                obj, "allows_visiting_club_members", False
+            ),
             "ride_share_fee": ride_share_fee_kobo / 100.0,
             **pricing,
             "allows_guests": getattr(obj, "allows_guests", True),
