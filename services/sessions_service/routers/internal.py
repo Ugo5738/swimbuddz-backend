@@ -2276,10 +2276,7 @@ async def reconcile_admin_walk_in_attendance(
 
     # PRESENT/LATE restores only a booking that this reconciliation flow
     # previously cancelled; unrelated member/admin cancellations stay terminal.
-    if (
-        booking.status == SessionBookingStatus.CANCELLED
-        and reversal_marker in notes
-    ):
+    if booking.status == SessionBookingStatus.CANCELLED and reversal_marker in notes:
         booking.status = SessionBookingStatus.CONFIRMED
         booking.cancelled_at = None
         booking.confirmed_at = booking.confirmed_at or utc_now()
@@ -2389,7 +2386,8 @@ async def internal_confirm_booking(
     historical_confirmation = bool(
         confirm_in.allow_historical_confirmation
         and session.starts_at <= now
-        and session.status in {
+        and session.status
+        in {
             SessionStatus.SCHEDULED,
             SessionStatus.IN_PROGRESS,
             SessionStatus.COMPLETED,
