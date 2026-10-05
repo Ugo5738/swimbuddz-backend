@@ -605,7 +605,7 @@ async def compute_member_report(
     member_tier = member_info.get("primary_tier")
 
     # Detect first-timer (joined this quarter)
-    member_created_at = member_info.get("created_at") or member_info.get("approved_at")
+    member_created_at = member_info.get("approved_at") or member_info.get("created_at")
     is_first_quarter = False
     if member_created_at:
         from datetime import datetime as _dt
