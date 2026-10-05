@@ -2389,8 +2389,7 @@ async def internal_confirm_booking(
     historical_confirmation = bool(
         confirm_in.allow_historical_confirmation
         and session.starts_at <= now
-        and session.status
-        in {
+        and session.status in {
             SessionStatus.SCHEDULED,
             SessionStatus.IN_PROGRESS,
             SessionStatus.COMPLETED,
