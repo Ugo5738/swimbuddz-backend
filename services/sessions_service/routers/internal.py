@@ -2386,8 +2386,7 @@ async def internal_confirm_booking(
     now = utc_now()
     allow_historical_confirmation = bool(
         request
-        and request.headers.get("X-Allow-Historical-Confirmation", "").lower()
-        == "true"
+        and request.headers.get("X-Allow-Historical-Confirmation", "").lower() == "true"
     )
     historical_confirmation = bool(
         allow_historical_confirmation
