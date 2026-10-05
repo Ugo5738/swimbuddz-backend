@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -2221,7 +2221,7 @@ async def get_booking_internal(
     return booking
 
 
-@router.post("/{session_id}/walk-in-attendance")
+@router.post("/{session_id}/walk-in-attendance", include_in_schema=False)
 async def reconcile_admin_walk_in_attendance(
     session_id: uuid.UUID,
     payload: WalkInAttendanceReconcileRequest,
@@ -2295,6 +2295,7 @@ async def internal_confirm_booking(
     confirm_in: BookingConfirmRequest,
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
+    request: Request = None,
 ):
     """Service-role variant of /sessions/bookings/{id}/confirm.
 
@@ -2383,8 +2384,13 @@ async def internal_confirm_booking(
         await sync_booking_attendance(booking, preserve_existing=True)
         return booking
     now = utc_now()
+    allow_historical_confirmation = bool(
+        request
+        and request.headers.get("X-Allow-Historical-Confirmation", "").lower()
+        == "true"
+    )
     historical_confirmation = bool(
-        confirm_in.allow_historical_confirmation
+        allow_historical_confirmation
         and session.starts_at <= now
         and session.status
         in {
