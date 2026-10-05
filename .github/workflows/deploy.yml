@@ -150,18 +150,9 @@ jobs:
       # schemas. The husky pre-commit hook regenerates these locally; this
       # step ensures a hard fail in CI if anyone bypasses the hook with
       # --no-verify or commits from an env without husky configured.
-      - name: Generate OpenAPI candidate
-        run: python scripts/api/generate-openapi.py > /tmp/openapi.json.generated
-
-      - name: Upload generated OpenAPI candidate
-        uses: actions/upload-artifact@v4
-        with:
-          name: openapi-generated
-          path: /tmp/openapi.json.generated
-          if-no-files-found: error
-
       - name: Verify openapi.json is up to date
         run: |
+          python scripts/api/generate-openapi.py > /tmp/openapi.json.generated
           if ! diff -q openapi.json /tmp/openapi.json.generated > /dev/null; then
             echo "::error::openapi.json is stale. Regenerate with:"
             echo "  python scripts/api/generate-openapi.py > openapi.json"
