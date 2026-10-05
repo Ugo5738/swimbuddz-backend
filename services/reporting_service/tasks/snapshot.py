@@ -140,6 +140,7 @@ async def run_quarterly_snapshot():
             # Mark as completed
             snapshot.status = ReportStatus.COMPLETED
             snapshot.member_count = count
+            snapshot.semantics_version = 2
             snapshot.completed_at = utc_now()
             await db.commit()
 
@@ -148,12 +149,9 @@ async def run_quarterly_snapshot():
                 f"{count} member reports generated."
             )
 
-            # Send report emails to all members
-            try:
-                await _send_report_emails(year, quarter, db)
-            except Exception as email_err:
-                logger.error(f"Failed to send report emails: {email_err}")
-                # Don't fail the whole snapshot for email issues
+            # Email delivery is intentionally admin-triggered.
+            # Snapshot generation must never automatically email stale or
+            # unreviewed reports after a reporting-semantics change.
 
         except Exception as e:
             logger.error(f"Snapshot generation failed for Q{quarter} {year}: {e}")
