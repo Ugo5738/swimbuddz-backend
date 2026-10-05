@@ -20,6 +20,7 @@ class BusinessReviewFinance(BaseModel):
     cogs_ngn: int = 0
     gross_margin_ngn: int = 0
     gross_margin_pct: float = 0.0
+    profitability_reliable: bool = False
     deferred_revenue_ngn: int = 0
     cash_ngn: int = 0
     by_domain: list[dict[str, Any]] = Field(default_factory=list)
