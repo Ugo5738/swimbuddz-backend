@@ -41,6 +41,9 @@ class QuarterlySnapshot(Base):
         DateTime(timezone=True), nullable=True
     )
     member_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    semantics_version: Mapped[int] = mapped_column(
+        Integer, default=1, nullable=False, server_default="1"
+    )
     error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False

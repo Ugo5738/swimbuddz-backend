@@ -20,6 +20,7 @@ class BusinessReviewFinance(BaseModel):
     cogs_ngn: int = 0
     gross_margin_ngn: int = 0
     gross_margin_pct: float = 0.0
+    profitability_reliable: bool = False
     deferred_revenue_ngn: int = 0
     cash_ngn: int = 0
     by_domain: list[dict[str, Any]] = Field(default_factory=list)
@@ -44,4 +45,6 @@ class BusinessReviewResponse(BaseModel):
     locations: list[dict[str, Any]]
     session_mix: dict[str, int]
     data_quality: list[str] = Field(default_factory=list)
+    member_distribution_ready: bool = False
+    member_distribution_blockers: list[str] = Field(default_factory=list)
     decisions: list[dict[str, Any]] = Field(default_factory=list)

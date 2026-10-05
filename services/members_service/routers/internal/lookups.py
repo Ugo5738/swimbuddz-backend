@@ -143,7 +143,11 @@ async def get_approved_members_list(
             auth_id=m.auth_id,
             first_name=m.first_name,
             last_name=m.last_name,
+            email=m.email,
+            roles=list(m.roles or []),
             primary_tier=(m.membership.primary_tier if m.membership else None),
+            created_at=m.created_at.isoformat() if m.created_at else None,
+            approved_at=m.approved_at.isoformat() if m.approved_at else None,
         )
         for m in members
     ]
