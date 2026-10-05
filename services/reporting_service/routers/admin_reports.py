@@ -338,6 +338,22 @@ async def admin_send_report_emails(
     from libs.common.config import settings
     from libs.common.emails.client import get_email_client
 
+    snapshot_result = await db.execute(
+        select(QuarterlySnapshot).where(
+            QuarterlySnapshot.year == body.year,
+            QuarterlySnapshot.quarter == body.quarter,
+        )
+    )
+    snapshot = snapshot_result.scalar_one_or_none()
+    if snapshot is None or snapshot.semantics_version < 2:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Regenerate this quarter under the corrected reporting definitions "
+                "before sending member reports."
+            ),
+        )
+
     result = await db.execute(
         select(MemberQuarterlyReport).where(
             MemberQuarterlyReport.year == body.year,
