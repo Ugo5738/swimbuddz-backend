@@ -13,12 +13,14 @@ and never re-charge a booking that is already CONFIRMED.
 """
 
 import uuid
+from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
 
 from libs.common.currency import kobo_to_bubbles
+from libs.common.datetime_utils import utc_now
 from services.sessions_service.models import (
     BookingChannel,
     SessionBooking,
@@ -285,6 +287,114 @@ async def test_admin_walk_in_preserves_cross_location_visit_price_and_source(
     ).scalar_one()
     assert persisted.access_source == "club_visit"
     assert persisted.booking_source == "admin_walk_in"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "status", [SessionBookingStatus.PENDING, SessionBookingStatus.EXPIRED]
+)
+@pytest.mark.parametrize(
+    "payment_link", [None, "payment_intent_id", "wallet_transaction_id"]
+)
+async def test_admin_walk_in_recovers_reservation_without_repricing_or_charging(
+    sessions_client, db_session, status, payment_link
+):
+    member_id = uuid.uuid4()
+    session = await _session(
+        db_session,
+        event_id=uuid.uuid4(),
+        pool_fee=1_250_000,
+        starts_at=utc_now() - timedelta(days=3),
+        ends_at=utc_now() - timedelta(days=3, hours=-1),
+    )
+    linked_payment = uuid.uuid4() if payment_link else None
+    original = await _booking(
+        db_session,
+        session_id=session.id,
+        member_id=member_id,
+        status=status,
+        fee_amount_kobo=1_000_000,
+        member_fee_amount_kobo=1_000_000,
+        expires_at=utc_now() - timedelta(days=3),
+        notes="Original reservation",
+        **({payment_link: linked_payment} if payment_link else {}),
+    )
+    original_booked_at = original.booked_at
+    attendance = AsyncMock()
+    debit = AsyncMock()
+    with (
+        patch("libs.common.service_client.get_member_by_id", _member_mock(member_id)),
+        patch(f"{_BOOKINGS}._record_walk_in_attendance", attendance),
+        patch(_DEBIT, debit),
+    ):
+        for _ in range(2):
+            response = await sessions_client.post(
+                f"/sessions/{session.id}/admin/walk-in",
+                json={"member_id": str(member_id), "fee_amount_kobo": 1_250_000},
+            )
+            assert response.status_code == 201, response.text
+            assert response.json()["id"] == str(original.id)
+
+    await db_session.refresh(original)
+    assert original.status == SessionBookingStatus.CONFIRMED
+    assert original.channel == BookingChannel.ADMIN
+    assert original.expires_at is None
+    assert original.confirmed_at is not None
+    assert original.booked_at == original_booked_at
+    assert original.fee_amount_kobo == 1_000_000
+    assert original.member_fee_amount_kobo == 1_000_000
+    assert original.notes == "Original reservation"
+    assert original.payment_intent_id == (
+        linked_payment if payment_link == "payment_intent_id" else None
+    )
+    assert original.wallet_transaction_id == (
+        linked_payment if payment_link == "wallet_transaction_id" else None
+    )
+    rows = (
+        (
+            await db_session.execute(
+                select(SessionBooking).where(
+                    SessionBooking.session_id == session.id,
+                    SessionBooking.member_id == member_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+    debit.assert_not_awaited()
+    assert attendance.await_count == 2
+    attendance.assert_awaited_with(session.id, member_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_admin_walk_in_does_not_revive_cancelled_booking(
+    sessions_client, db_session
+):
+    member_id = uuid.uuid4()
+    session = await _session(db_session)
+    cancelled = await _booking(
+        db_session,
+        session_id=session.id,
+        member_id=member_id,
+        status=SessionBookingStatus.CANCELLED,
+    )
+    attendance = AsyncMock()
+    with (
+        patch("libs.common.service_client.get_member_by_id", _member_mock(member_id)),
+        patch(f"{_BOOKINGS}._record_walk_in_attendance", attendance),
+    ):
+        response = await sessions_client.post(
+            f"/sessions/{session.id}/admin/walk-in",
+            json={"member_id": str(member_id), "fee_amount_kobo": POOL_FEE_KOBO},
+        )
+    assert response.status_code == 409, response.text
+    await db_session.refresh(cancelled)
+    assert cancelled.status == SessionBookingStatus.CANCELLED
+    attendance.assert_not_awaited()
 
 
 @pytest.mark.asyncio

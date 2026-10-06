@@ -925,9 +925,10 @@ async def admin_walk_in_booking(
         use the same server-authoritative access/rate resolver as member booking
         (including cross-location Club visitor rates) unless Admin explicitly
         records an agreed override.
-      - Idempotent: if a PENDING or CONFIRMED booking already exists for
-        ``(session_id, member_id)``, returns it instead of creating a new one.
-        Cancelled/expired bookings raise 409 (admin must investigate).
+      - Idempotent: reuse a PENDING, EXPIRED or CONFIRMED booking for
+        ``(session_id, member_id)``. Confirming attendance preserves the
+        original price and payment links; it does not collect payment.
+        Cancelled bookings still require explicit reconciliation.
       - Channel is hard-coded to ``ADMIN`` so the row is distinguishable from
         member-self bookings in reporting.
       - Coach payouts pick this up like any other booking — paying happens
@@ -990,31 +991,44 @@ async def admin_walk_in_booking(
         )
     )
 
-    # Idempotency: return existing PENDING/CONFIRMED if any.
+    # An expired checkout only released a reservation. It must not prevent
+    # an admin recording the member's actual attendance against the same row.
     existing = (
         await db.execute(
-            select(SessionBooking).where(
+            select(SessionBooking)
+            .where(
                 SessionBooking.session_id == session_id,
                 SessionBooking.member_id == payload.member_id,
             )
+            .with_for_update()
         )
     ).scalar_one_or_none()
     if existing is not None:
         if existing.status in (
             SessionBookingStatus.PENDING,
+            SessionBookingStatus.EXPIRED,
             SessionBookingStatus.CONFIRMED,
         ):
-            # Upgrade PENDING to CONFIRMED if needed. Physical attendance and
+            # Upgrade PENDING/EXPIRED if needed. Physical attendance and
             # fee settlement are separate: without a payment/wallet link this
             # booking remains visible as outstanding for later collection.
-            if existing.status == SessionBookingStatus.PENDING:
+            if existing.status != SessionBookingStatus.CONFIRMED:
+                previous_status = existing.status.value
                 existing.status = SessionBookingStatus.CONFIRMED
                 existing.confirmed_at = utc_now()
+                existing.expires_at = None
                 existing.channel = BookingChannel.ADMIN
                 if not existing.notes and payload.notes:
                     existing.notes = payload.notes
                 await db.commit()
                 await db.refresh(existing)
+                logger.info(
+                    "Admin %s confirmed %s booking %s as walk-in for session %s",
+                    admin.user_id,
+                    previous_status,
+                    existing.id,
+                    session_id,
+                )
             await _record_walk_in_attendance(session_id, payload.member_id)
             return existing
         raise HTTPException(
