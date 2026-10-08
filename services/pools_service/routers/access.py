@@ -242,6 +242,40 @@ async def reserve_access(
     return booking
 
 
+@public.post("/bookings/{booking_id}/cancel")
+async def cancel_unpaid_hold(
+    booking_id: uuid.UUID,
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Only release holds that have never started a payment checkout.
+
+    Once checkout was claimed, Paystack may still accept money. Cancellation
+    must wait for verified provider closure and a refund review.
+    """
+    booking = (
+        await db.execute(
+            select(PoolAccessBooking)
+            .where(
+                PoolAccessBooking.id == booking_id,
+                PoolAccessBooking.buyer_auth_id == user.user_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(404, "Booking not found")
+    if booking.status == "cancelled":
+        return {"status": "cancelled"}
+    if booking.status != "pending_payment" or booking.checkout_reference:
+        raise HTTPException(
+            409, "Checkout started or payment received; contact SwimBuddz for cancellation review"
+        )
+    booking.status = "cancelled"
+    await db.commit()
+    return {"status": "cancelled"}
+
+
 @public.get("/bookings/me", response_model=list[BookingOut])
 async def my_bookings(
     user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_async_db)
