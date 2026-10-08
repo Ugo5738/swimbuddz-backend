@@ -159,6 +159,8 @@ async def redeem_at_partner(
         raise HTTPException(403, "Ticket belongs to another pool")
     if booking.status != "confirmed" or not booking.payment_reference:
         raise HTTPException(409, "Ticket is not paid")
+    if not booking.terms_accepted_at or not (booking.access_terms_snapshot or {}).get("no_coaching_included"):
+        raise HTTPException(409, "Facility safety acceptance is missing")
     now = utc_now()
     if not (offer.starts_at <= now <= offer.ends_at):
         raise HTTPException(409, "Outside reserved admission window")
