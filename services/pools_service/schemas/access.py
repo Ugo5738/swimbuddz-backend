@@ -71,6 +71,9 @@ class GuestInput(BaseModel):
 
 class BookingInput(BaseModel):
     offer_id: uuid.UUID
+    accept_access_rules: Literal[True]
+    accept_cancellation_policy: Literal[True]
+    acknowledge_uncoached_activity: Literal[True]
     guests: list[GuestInput] = Field(min_length=1, max_length=25)
     idempotency_key: str = Field(min_length=8, max_length=100)
 
