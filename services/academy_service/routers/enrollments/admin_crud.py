@@ -13,6 +13,7 @@ from libs.db.session import get_async_db
 from services.academy_service.models import (
     AcademyJourney,
     Cohort,
+    CohortStatus,
     Enrollment,
     EnrollmentStatus,
     PaymentStatus,
@@ -55,7 +56,18 @@ async def enroll_student(
         Enrollment.program_id == enrollment_in.program_id,
     )
     result = await db.execute(query)
-    existing = result.scalar_one_or_none()
+    existing = next((
+        row for row in result.scalars().all()
+        if row.status in {
+            EnrollmentStatus.ENROLLED,
+            EnrollmentStatus.PENDING_APPROVAL,
+            EnrollmentStatus.WAITLIST,
+        }
+        and (
+            row.cohort_id is None
+            or row.cohort_id == enrollment_in.cohort_id
+        )
+    ), None)
 
     if existing:
         raise HTTPException(
