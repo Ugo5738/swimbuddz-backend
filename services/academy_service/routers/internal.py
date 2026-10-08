@@ -10,7 +10,6 @@ from services.academy_service.models import (
     StudentProgress,
     AcademyFinancialCredit,
     InstallmentStatus,
-    PaymentStatus,
 )
 from services.academy_service.routers._shared import (
     AsyncSession,
