@@ -46,6 +46,10 @@ SERVICE_TABLES = {
     "pool_agreements",
     "pool_assets",
     "weather_snapshots",
+    "pool_access_offers",
+    "pool_access_bookings",
+    "pool_access_admissions",
+    "pool_access_reconciliations",
 }
 
 url = settings.DATABASE_URL.replace("%", "%%")
