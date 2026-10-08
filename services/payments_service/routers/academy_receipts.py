@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
-from libs.common.service_client import internal_get
+from libs.common.service_client import internal_get, internal_post
 from libs.common.config import get_settings
 from libs.db.session import get_async_db
 from libs.common.datetime_utils import utc_now
@@ -210,3 +210,55 @@ async def allocate_receipt(
     await db.flush()
     await db.commit()
     return await _receipt_summary(db, receipt)
+
+
+@router.post("/{receipt_id}/allocations/{allocation_id}/apply")
+async def apply_receipt_allocation(
+    receipt_id: uuid.UUID,
+    allocation_id: uuid.UUID,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Deliver verified credit to its true enrollment, with retry-safe acknowledgement.
+
+    Payments records cash once at receipt verification. The Academy service
+    applies tuition credit and owns installments; no synthetic second payment.
+    """
+    allocation = (await db.execute(
+        select(AcademyReceiptAllocation).where(
+            AcademyReceiptAllocation.id == allocation_id,
+            AcademyReceiptAllocation.receipt_id == receipt_id,
+        ).with_for_update()
+    )).scalar_one_or_none()
+    if not allocation:
+        raise HTTPException(404, "Receipt allocation not found")
+    if allocation.state == "applied":
+        return {"state": "applied", "allocation_id": str(allocation.id), "idempotent": True}
+    if allocation.state != "reserved":
+        raise HTTPException(409, "Allocation is not eligible for application")
+    source_reference = f"academy-receipt-allocation:{allocation.id}"
+    try:
+        response = await internal_post(
+            service_url=get_settings().ACADEMY_SERVICE_URL,
+            path=f"/internal/academy/enrollments/{allocation.enrollment_id}/verified-credit",
+            calling_service="payments",
+            json={
+                "source_reference": source_reference,
+                "source_kind": "receipt_allocation",
+                "member_auth_id": allocation.member_auth_id,
+                "amount_kobo": allocation.amount_kobo,
+                "actor_auth_id": admin.user_id,
+            },
+        )
+        response.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(
+            503, "Academy credit could not be confirmed. Do not re-record the bank receipt; retry this allocation"
+        ) from exc
+    allocation.state = "applied"
+    allocation.applied_at = utc_now()
+    await db.commit()
+    return {
+        "state": "applied", "allocation_id": str(allocation.id),
+        "enrollment_id": str(allocation.enrollment_id), "idempotent": False,
+    }
