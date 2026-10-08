@@ -109,6 +109,7 @@ class PoolAccessBooking(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending_payment"
     )
+    checkout_reference: Mapped[str | None] = mapped_column(String(160), unique=True, nullable=True)
     payment_reference: Mapped[str | None] = mapped_column(
         String(160), unique=True, nullable=True
     )
