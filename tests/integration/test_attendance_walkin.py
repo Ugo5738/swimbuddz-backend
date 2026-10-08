@@ -87,6 +87,8 @@ async def test_public_signin_links_booking_and_skips_tier_check(
         signin_mod, "get_confirmed_booking_for_session_member", fake_get_booking
     )
     monkeypatch.setattr(signin_mod, "validate_session_access", must_not_run)
+    # This test concerns booking/tier linking, not the independent safety workflow.
+    monkeypatch.setattr(signin_mod, "require_academy_safety_clearance", AsyncMock(return_value=None))
 
     resp = await attendance_client.post(
         f"/attendance/sessions/{session_id}/attendance/public",
@@ -127,6 +129,7 @@ async def test_public_signin_allows_controlled_walkin_without_booking(
     get_booking = AsyncMock(return_value=None)
     validate_access = AsyncMock(return_value=None)
 
+    monkeypatch.setattr(signin_mod, "require_academy_safety_clearance", AsyncMock(return_value=None))
     monkeypatch.setattr(signin_mod, "get_session_by_id", get_session)
     monkeypatch.setattr(
         signin_mod,
@@ -191,6 +194,7 @@ async def test_authenticated_signin_links_booking_and_uses_booking_override(
     )
     validate_access = AsyncMock(return_value=None)
 
+    monkeypatch.setattr(signin_mod, "require_academy_safety_clearance", AsyncMock(return_value=None))
     monkeypatch.setattr(
         signin_mod,
         "get_session_by_id",
