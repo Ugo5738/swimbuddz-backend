@@ -1,0 +1,26 @@
+name: Format Pool Access Feature Branch
+on:
+  push:
+    branches: [codex/pool-access-platform]
+permissions:
+  contents: write
+jobs:
+  format-feature:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply isolated Pool Access formatting
+        run: |
+          pip install ruff==0.4.10
+          ruff check --fix services/pools_service/models/access.py services/pools_service/routers/access.py services/pools_service/routers/access_internal.py services/pools_service/routers/access_redemption.py services/pools_service/routers/access_partner.py services/pools_service/services/access_policy.py services/pools_service/schemas/access.py services/pools_service/alembic/versions/ac20261008a1_pool_access.py services/pools_service/alembic/versions/ac20261008b2_partner_operators.py services/payments_service/routers/intents/_entitlement/_pool_access.py services/payments_service/alembic/versions/pa20261008b1_pool_access_purpose.py tests/pools/test_pool_access_policy.py || true
+          ruff format services/pools_service/models/access.py services/pools_service/routers/access.py services/pools_service/routers/access_internal.py services/pools_service/routers/access_redemption.py services/pools_service/routers/access_partner.py services/pools_service/services/access_policy.py services/pools_service/schemas/access.py services/pools_service/alembic/versions/ac20261008a1_pool_access.py services/pools_service/alembic/versions/ac20261008b2_partner_operators.py services/payments_service/routers/intents/_entitlement/_pool_access.py services/payments_service/alembic/versions/pa20261008b1_pool_access_purpose.py tests/pools/test_pool_access_policy.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add services/pools_service services/payments_service/routers/intents/_entitlement/_pool_access.py services/payments_service/alembic/versions/pa20261008b1_pool_access_purpose.py tests/pools/test_pool_access_policy.py
+          git diff --cached --quiet || (git commit -m "style: format Pool Access files [skip ci]" && git push)
