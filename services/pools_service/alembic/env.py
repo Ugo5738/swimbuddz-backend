@@ -51,6 +51,7 @@ SERVICE_TABLES = {
     "pool_access_admissions",
     "pool_access_reconciliations",
     "pool_access_partner_operators",
+    "pool_access_cancellation_requests",
 }
 
 url = settings.DATABASE_URL.replace("%", "%%")
