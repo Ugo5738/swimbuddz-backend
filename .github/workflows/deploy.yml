@@ -155,6 +155,12 @@ jobs:
       # schemas. The husky pre-commit hook regenerates these locally; this
       # step ensures a hard fail in CI if anyone bypasses the hook with
       # --no-verify or commits from an env without husky configured.
+      - name: Verify shared Academy bank receipts and paid transfers
+        run: |
+          pytest -v tests/integration/test_academy_shared_receipts.py
+          pytest -v tests/integration/test_academy_verified_credit.py
+          pytest -v tests/integration/test_academy_reviewed_paid_transfer.py
+
       - name: Verify Pool Access booking integration invariants
         run: pytest -v tests/integration/test_pool_access_bookings.py
 
