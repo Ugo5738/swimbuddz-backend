@@ -24,6 +24,9 @@ def upgrade() -> None:
         sa.Column("recorded_on", sa.Date(), nullable=True),
         sa.Column("consent_to_share", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("approved_for_public", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("coach_notes", sa.Text(), nullable=True),
+        sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("showcase_review_notes", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint("kind IN ('cohort_archive', 'continued_progress')", name="ck_milestone_evidence_kind"),
     )
