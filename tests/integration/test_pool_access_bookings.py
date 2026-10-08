@@ -171,4 +171,3 @@ async def test_paid_evidence_activates_exact_booking_only(pools_client, monkeypa
     assert tickets.status_code == 200, tickets.text
     assert len(tickets.json()) == 1
     assert tickets.json()[0]["ticket"].startswith("pa1.")
-
