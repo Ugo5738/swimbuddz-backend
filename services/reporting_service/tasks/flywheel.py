@@ -231,7 +231,11 @@ async def _compute_one_funnel(
         )
         if crossed:
             converted_count += 1
-            acquisition = member.get("acquisition_source", "unknown")
+            acquisition = (
+                member.get("content_source")
+                or member.get("acquisition_source")
+                or "unknown"
+            )
             breakdown[acquisition] += 1
 
     rate = (converted_count / source_count) if source_count > 0 else 0.0
@@ -250,7 +254,7 @@ async def _compute_one_funnel(
 
 
 async def _fetch_members_who_joined_tier(
-    members_url: str, tier: str, start: date, end: date
+    members_url: str, tier: str, start: date, end: date, *, strict: bool = False
 ) -> list[dict]:
     """Members who entered the given tier between start and end.
 
@@ -275,6 +279,8 @@ async def _fetch_members_who_joined_tier(
         data = resp.json()
         return data.get("members", data) if isinstance(data, dict) else data
     except Exception as e:
+        if strict:
+            raise
         logger.warning(
             f"_fetch_members_who_joined_tier({tier}, {start}, {end}) failed: {e}"
         )

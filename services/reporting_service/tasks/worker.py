@@ -56,6 +56,15 @@ async def task_refresh_all_flywheel(ctx: dict):
     return await refresh_all_flywheel_snapshots()
 
 
+async def task_refresh_content_acquisition(ctx: dict):
+    """Record confirmed member registrations by editorial source."""
+    from services.reporting_service.tasks.content_acquisition import (
+        refresh_content_acquisition,
+    )
+
+    return await refresh_content_acquisition()
+
+
 class WorkerSettings:
     """ARQ worker settings with cron job schedules."""
 
@@ -68,9 +77,16 @@ class WorkerSettings:
         task_refresh_funnel_conversions,
         task_refresh_wallet_ecosystem,
         task_refresh_all_flywheel,
+        task_refresh_content_acquisition,
     ]
 
     cron_jobs = [
+        cron(
+            task_refresh_content_acquisition,
+            hour=5,
+            minute=30,
+            run_at_startup=False,
+        ),
         # Quarterly: run on 2nd day of each quarter-start month at 3 AM WAT
         cron(
             task_generate_quarterly_snapshot,
