@@ -254,7 +254,7 @@ async def _compute_one_funnel(
 
 
 async def _fetch_members_who_joined_tier(
-    members_url: str, tier: str, start: date, end: date
+    members_url: str, tier: str, start: date, end: date, *, strict: bool = False
 ) -> list[dict]:
     """Members who entered the given tier between start and end.
 
@@ -279,6 +279,8 @@ async def _fetch_members_who_joined_tier(
         data = resp.json()
         return data.get("members", data) if isinstance(data, dict) else data
     except Exception as e:
+        if strict:
+            raise
         logger.warning(
             f"_fetch_members_who_joined_tier({tier}, {start}, {end}) failed: {e}"
         )
