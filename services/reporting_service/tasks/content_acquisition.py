@@ -29,7 +29,7 @@ async def refresh_content_acquisition(days: int = 90) -> int:
     from libs.common.config import get_settings
 
     members = await _fetch_members_who_joined_tier(
-        get_settings().MEMBERS_SERVICE_URL, "community", start, end
+        get_settings().MEMBERS_SERVICE_URL, "community", start, end, strict=True
     )
     counter: Counter[UUID] = Counter()
     for member in members:
