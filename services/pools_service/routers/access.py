@@ -33,10 +33,10 @@ admin = APIRouter(tags=["admin-pool-access"])
 
 
 @public.get("/offers", response_model=list[OfferOut])
-async def published_offers(db: AsyncSession = Depends(get_async_db)):
+async def published_offers(location_area: str | None = None, db: AsyncSession = Depends(get_async_db)):
     now = utc_now()
     result = await db.execute(
-        select(PoolAccessOffer)
+        select(PoolAccessOffer, Pool)
         .join(Pool, Pool.id == PoolAccessOffer.pool_id)
         .where(
             PoolAccessOffer.status == "published",
@@ -49,7 +49,20 @@ async def published_offers(db: AsyncSession = Depends(get_async_db)):
         .order_by(PoolAccessOffer.starts_at)
         .limit(100)
     )
-    return result.scalars().all()
+    rows = result.all()
+    return [
+        OfferOut.model_validate(offer).model_copy(update={
+            "pool_name": pool.name,
+            "location_area": pool.location_area,
+            "pool_address": pool.address,
+            "pool_length_m": pool.pool_length_m,
+            "depth_min_m": pool.depth_min_m,
+            "depth_max_m": pool.depth_max_m,
+            "has_lifeguard": pool.has_lifeguard,
+        })
+        for offer, pool in rows
+        if not location_area or location_area.casefold() in (pool.location_area or "").casefold()
+    ]
 
 
 @admin.post("/offers", response_model=AdminOfferOut, status_code=201)
@@ -87,6 +100,11 @@ async def publish_offer(
         )
     if offer.starts_at <= utc_now():
         raise HTTPException(409, "Offer must start in the future")
+    pool = await db.get(Pool, offer.pool_id)
+    if not pool or not pool.is_active or pool.has_lifeguard is not True:
+        raise HTTPException(409, "Pool Access requires a confirmed lifeguard-enabled facility")
+    if not offer.access_rules.strip() or not offer.cancellation_policy.strip():
+        raise HTTPException(409, "Publish safety and cancellation terms first")
     offer.status = "published"
     await db.commit()
     await db.refresh(offer)
