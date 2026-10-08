@@ -30,6 +30,8 @@ async def test_shared_receipt_allocates_only_verified_total(db_session, monkeypa
     )
     assert receipt["unallocated_kobo"] == total
     emit.assert_awaited_once()
+    from services.payments_service.models import PaymentPurpose
+    assert emit.await_args.args[1].purpose is PaymentPurpose.ACADEMY_COHORT
     monkeypatch.setattr(
         service,
         "internal_get",
