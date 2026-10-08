@@ -11,7 +11,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import (
@@ -24,8 +24,15 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.service_client.core import internal_get
+from libs.common.service_client import get_member_by_auth_id
 from libs.db.session import get_async_db
-from services.academy_service.models import Enrollment, EnrollmentStatus, Milestone
+from services.academy_service.models import (
+    CoachAssignment,
+    Cohort,
+    Enrollment,
+    EnrollmentStatus,
+    Milestone,
+)
 from services.academy_service.models.evidence import MilestoneEvidence
 from services.academy_service.routers._shared import require_coach_for_cohort
 
@@ -171,6 +178,40 @@ class EvidenceReviewResponse(BaseModel):
     reviewed_at: Optional[datetime] = None
     approved_for_public: bool
     showcase_review_notes: Optional[str] = None
+
+
+@router.get("/coach/evidence", response_model=list[MilestoneEvidenceResponse])
+async def list_coach_evidence(
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    if is_admin_or_service(current_user):
+        query = select(MilestoneEvidence)
+    else:
+        member = await get_member_by_auth_id(
+            current_user.user_id, calling_service="academy"
+        )
+        if member is None:
+            raise HTTPException(status_code=403, detail="Coach profile unavailable")
+        coach_id = uuid.UUID(str(member["id"]))
+        assigned_cohorts = select(CoachAssignment.cohort_id).where(
+            CoachAssignment.coach_id == coach_id,
+            CoachAssignment.status == "active",
+            CoachAssignment.is_session_override.is_(False),
+            CoachAssignment.role.in_(("lead", "assistant")),
+        )
+        assigned = select(Cohort.id).where(
+            or_(Cohort.coach_id == coach_id, Cohort.id.in_(assigned_cohorts))
+        )
+        query = (
+            select(MilestoneEvidence)
+            .join(Enrollment, Enrollment.id == MilestoneEvidence.enrollment_id)
+            .where(Enrollment.cohort_id.in_(assigned))
+        )
+    rows = await db.execute(
+        query.order_by(MilestoneEvidence.created_at.desc()).limit(200)
+    )
+    return list(rows.scalars().all())
 
 
 @router.get("/admin/evidence", response_model=list[MilestoneEvidenceResponse])
