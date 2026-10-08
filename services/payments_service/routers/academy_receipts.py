@@ -18,7 +18,7 @@ from services.payments_service.models import (
     PaymentStatus,
 )
 
-router = APIRouter(prefix="/payments/admin/academy-receipts", tags=["academy-receipts"])
+router = APIRouter(prefix="/admin/academy-receipts", tags=["academy-receipts"])
 
 
 class VerifyReceiptRequest(BaseModel):
