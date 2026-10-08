@@ -64,3 +64,74 @@ async def test_shared_receipt_allocates_only_verified_total(db_session, monkeypa
             admin, db_session,
         )
     assert exc.value.status_code == 409
+
+
+async def test_shared_receipt_reconciliation_preserves_original_proof(db_session):
+    from services.payments_service.models import (
+        AcademyBankReceipt, AcademyReceiptAllocation, Payment, PaymentPurpose, PaymentStatus,
+    )
+    enrollment_id = uuid4()
+    media_id = uuid4()
+    master = Payment(
+        reference=f"master-{uuid4()}",
+        member_auth_id="shared-academy-bank-receipt",
+        purpose=PaymentPurpose.ACADEMY_COHORT,
+        status=PaymentStatus.PAID,
+        amount=100000,
+        currency="NGN",
+        provider="offline",
+        provider_reference=f"BANK-{uuid4()}",
+        entitlement_applied_at=service.utc_now(),
+        payment_metadata={"academy_shared_bank_receipt_master": True},
+    )
+    db_session.add(master)
+    await db_session.flush()
+    receipt = AcademyBankReceipt(
+        payment_id=master.id, external_reference=master.provider_reference,
+        amount_kobo=10_000_000, currency="NGN",
+        verification_note="Verified one bank cash-in of 100000 NGN",
+        verified_by_auth_id="admin",
+    )
+    db_session.add(receipt)
+    await db_session.flush()
+    db_session.add(AcademyReceiptAllocation(
+        receipt_id=receipt.id,
+        enrollment_id=enrollment_id,
+        member_auth_id="student",
+        amount_kobo=5_000_000,
+        state="applied",
+        idempotency_key="student-credit",
+        created_by_auth_id="admin",
+    ))
+    legacy = Payment(
+        reference=f"old-checkout-{uuid4()}",
+        member_auth_id="student",
+        purpose=PaymentPurpose.ACADEMY_COHORT,
+        status=PaymentStatus.PENDING_REVIEW,
+        amount=235000,
+        currency="NGN",
+        proof_of_payment_media_id=media_id,
+        payment_method="manual_transfer",
+        payment_metadata={
+            "enrollment_id": str(enrollment_id),
+            "submitted_transfer": {"external_reference": master.provider_reference},
+        },
+    )
+    db_session.add(legacy)
+    await db_session.commit()
+    admin = AuthUser(user_id="admin")
+    body = service.ReconcileLegacyAttempt(
+        payment_reference=legacy.reference,
+        review_note="Verified this proof matches the one bank receipt assigned to the learner",
+    )
+    result = await service.link_superseded_academy_checkout_to_shared_receipt(
+        receipt.id, body, admin, db_session,
+    )
+    assert result["state"] == "reconciled"
+    assert legacy.status == PaymentStatus.FAILED
+    assert legacy.proof_of_payment_media_id == media_id
+    assert legacy.payment_metadata["superseded_by_shared_receipt"]["receipt_id"] == str(receipt.id)
+    again = await service.link_superseded_academy_checkout_to_shared_receipt(
+        receipt.id, body, admin, db_session,
+    )
+    assert again["idempotent"] is True
