@@ -1,6 +1,7 @@
 from datetime import datetime as _datetime
 
 from fastapi import APIRouter, Query
+from libs.auth.dependencies import require_service_role
 from pydantic import BaseModel as _BaseModel
 from pydantic import Field as _Field
 from sqlalchemy import func, or_
@@ -82,7 +83,7 @@ class ApplyVerifiedAcademyCredit(_BaseModel):
 async def apply_verified_academy_credit(
     enrollment_id: uuid.UUID,
     payload: ApplyVerifiedAcademyCredit,
-    _: AuthUser = Depends(require_admin),
+    _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Idempotent service-owned tuition application; does NOT record bank income.
@@ -206,7 +207,7 @@ async def apply_verified_academy_credit(
 @router.get("/enrollments/{enrollment_id}/allocation-identity")
 async def academy_allocation_identity(
     enrollment_id: uuid.UUID,
-    _: AuthUser = Depends(require_admin),
+    _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Private payments-service ownership projection; no user-controlled member ID."""
