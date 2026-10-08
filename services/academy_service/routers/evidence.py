@@ -385,6 +385,49 @@ async def play_showcase_video(
     )
 
 
+
+@router.get("/evidence/{evidence_id}/playback-url")
+async def evidence_playback_url(
+    evidence_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Resolve a private clip URL after checking owner/assigned-coach/admin access.
+
+    Browsers use this JSON endpoint with a bearer token, rather than opening a
+    protected redirect from a bare <video> tag without authorization headers.
+    """
+    evidence = await db.get(MilestoneEvidence, evidence_id)
+    if evidence is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    enrollment = await db.get(Enrollment, evidence.enrollment_id)
+    if enrollment is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    if not is_admin_or_service(current_user):
+        if enrollment.member_auth_id != str(current_user.user_id):
+            if not current_user.has_role("coach") or not enrollment.cohort_id:
+                raise HTTPException(status_code=403, detail="Video not accessible")
+            await require_coach_for_cohort(
+                current_user, str(enrollment.cohort_id), db
+            )
+    try:
+        response = await internal_get(
+            service_url=get_settings().MEDIA_SERVICE_URL,
+            path=(
+                f"/internal/media/alumni-evidence/"
+                f"{evidence.video_media_id}/public-playback"
+            ),
+            calling_service="academy",
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=503, detail="Video temporarily unavailable"
+        ) from exc
+    if response.status_code != 200:
+        raise HTTPException(status_code=503, detail="Video temporarily unavailable")
+    return {"url": response.json()["url"]}
+
+
 @router.get("/evidence/{evidence_id}/play")
 async def play_evidence_for_authorized_person(
     evidence_id: uuid.UUID,
