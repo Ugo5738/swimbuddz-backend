@@ -22,7 +22,7 @@ from services.attendance_service.schemas import (
     CoachAttendanceMarkResponse,
 )
 
-from ._shared import require_admin_or_coach_for_session
+from ._shared import require_admin_or_coach_for_session, require_academy_safety_clearance
 
 router = APIRouter()
 
@@ -76,6 +76,15 @@ async def coach_mark_session_attendance(
     # default-present model. Explicit attendance is now required for the
     # coach to get paid, so PRESENT always materialises a row regardless of
     # session kind. See payment_service/services/payout_calculator.py.
+
+    await require_academy_safety_clearance(
+        session_data,
+        [
+            entry.member_id
+            for entry in payload.entries
+            if entry.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE)
+        ],
+    )
 
     # Pull existing rows for this session for the members in the payload.
     member_ids = [e.member_id for e in payload.entries]
