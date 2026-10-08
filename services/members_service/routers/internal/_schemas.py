@@ -152,6 +152,7 @@ class JoinedTierMember(BaseModel):
     id: str
     source_joined_at: str
     acquisition_source: str | None = None
+    content_source: str | None = None
 
 
 class JoinedTierResponse(BaseModel):
