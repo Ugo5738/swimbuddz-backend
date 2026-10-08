@@ -84,8 +84,6 @@ def _bucket_type(raw: str) -> BucketType:
         raise HTTPException(status_code=400, detail="Invalid bucket_type") from exc
 
 
-
-
 @router.get("/alumni-evidence/{media_id}")
 async def validate_alumni_evidence(
     media_id: uuid.UUID,
