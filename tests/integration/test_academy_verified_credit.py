@@ -4,7 +4,7 @@ import uuid
 import pytest
 from sqlalchemy import select
 
-from services.academy_service.models import AcademyFinancialCredit, EnrollmentInstallment
+from services.academy_service.models import AcademyFinancialCredit, EnrollmentInstallment, PaymentStatus, EnrollmentStatus
 from tests.factories import MemberFactory, ProgramFactory, CohortFactory, EnrollmentFactory
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
@@ -24,6 +24,8 @@ async def test_receipt_credit_reduces_exact_outstanding_tuition(academy_client, 
         program_id=program.id,
         cohort_id=cohort.id,
         price_snapshot_amount=16_500_000,
+        payment_status=PaymentStatus.PENDING,
+        status=EnrollmentStatus.PENDING_APPROVAL,
         currency_snapshot="NGN",
     )
     db_session.add(enrollment)
@@ -70,6 +72,8 @@ async def test_credit_belonging_to_other_member_is_forbidden(academy_client, db_
         program_id=program.id,
         cohort_id=cohort.id,
         price_snapshot_amount=16_500_000,
+        payment_status=PaymentStatus.PENDING,
+        status=EnrollmentStatus.PENDING_APPROVAL,
     )
     db_session.add(enrollment)
     await db_session.commit()
