@@ -2,7 +2,7 @@
 
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -138,6 +138,138 @@ async def reject_enrollment_change(
     }
     await db.commit()
     return {"state": "rejected", "change_id": str(change.id)}
+
+
+class ApproveUnpaidCohortChange(BaseModel):
+    reason: str = Field(min_length=10, max_length=1000)
+
+
+@router.post("/admin/academy/enrollment-changes/{change_id}/approve-unpaid")
+async def approve_unpaid_enrollment_change(
+    change_id: uuid.UUID,
+    payload: ApproveUnpaidCohortChange,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Finalize a correction ONLY if no payment or attended progress can be lost.
+
+    Payments-service must certify that every previous attempt is documented
+    closed-unpaid. Verified or proof-pending receipts are never moved by this
+    endpoint; those need the separate finance allocation/credit process.
+    """
+    change = (await db.execute(
+        select(AcademyEnrollmentChange)
+        .where(AcademyEnrollmentChange.id == change_id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if not change:
+        raise HTTPException(404, "Change request not found")
+    if change.state == "completed" and change.to_enrollment_id:
+        return {"state": "completed", "enrollment_id": str(change.to_enrollment_id)}
+    if change.state != "needs_review":
+        raise HTTPException(409, "This request is no longer pending")
+
+    enrollment = (await db.execute(
+        select(Enrollment).where(Enrollment.id == change.from_enrollment_id)
+        .options(
+            selectinload(Enrollment.installments),
+            selectinload(Enrollment.progress_records),
+        )
+        .with_for_update()
+    )).scalar_one_or_none()
+    if not enrollment or enrollment.status not in {
+        EnrollmentStatus.PENDING_APPROVAL, EnrollmentStatus.WAITLIST,
+    }:
+        raise HTTPException(409, "Original enrollment is no longer eligible")
+    if (
+        enrollment.payment_status != PaymentStatus.PENDING
+        or enrollment.paid_at is not None
+        or enrollment.progress_records
+        or any(
+            item.status in {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
+            or item.payment_reference for item in enrollment.installments
+        )
+    ):
+        raise HTTPException(
+            409, "Enrollment has recorded settlement or progress requiring financial review"
+        )
+    financial = await financial_state(enrollment.id)
+    if not financial.get("all_unpaid_closed", False):
+        raise HTTPException(
+            409,
+            "Close and verify all unpaid checkout attempts in Payments, or reconcile received funds before approval",
+        )
+    target = (await db.execute(
+        select(Cohort).where(Cohort.id == change.target_cohort_id).with_for_update()
+    )).scalar_one_or_none()
+    if not target or target.program_id != enrollment.program_id or target.status not in {
+        CohortStatus.OPEN, CohortStatus.ACTIVE,
+    }:
+        raise HTTPException(409, "Destination cohort is unavailable")
+    now = utc_now()
+    if target.status == CohortStatus.ACTIVE:
+        week = max(1, ((now - target.start_date).days // 7) + 1)
+        if not target.allow_mid_entry or week > target.mid_entry_cutoff_week:
+            raise HTTPException(409, "Mid-entry cutoff has passed")
+    program = (await db.execute(
+        select(Program).where(Program.id == enrollment.program_id)
+    )).scalar_one_or_none()
+    if not program or not program.is_published:
+        raise HTTPException(409, "Academy programme is not published")
+    existing = (await db.execute(
+        select(Enrollment.id).where(
+            Enrollment.member_id == enrollment.member_id,
+            Enrollment.cohort_id == target.id,
+            Enrollment.status.in_([
+                EnrollmentStatus.PENDING_APPROVAL,
+                EnrollmentStatus.ENROLLED,
+                EnrollmentStatus.WAITLIST,
+            ]),
+        )
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(409, "Member already has an active destination placement")
+    count = (await db.execute(
+        select(func.count(Enrollment.id)).where(
+            Enrollment.cohort_id == target.id,
+            Enrollment.status.in_([
+                EnrollmentStatus.PENDING_APPROVAL, EnrollmentStatus.ENROLLED
+            ]),
+        )
+    )).scalar_one()
+    if target.capacity is not None and count >= target.capacity:
+        raise HTTPException(409, "Destination cohort is full")
+
+    enrollment.status = EnrollmentStatus.DROPPED
+    enrollment.dropped_at = now
+    replacement = Enrollment(
+        member_id=enrollment.member_id,
+        member_auth_id=enrollment.member_auth_id,
+        program_id=enrollment.program_id,
+        cohort_id=target.id,
+        preferences=dict(enrollment.preferences or {}),
+        status=EnrollmentStatus.PENDING_APPROVAL,
+        payment_status=PaymentStatus.PENDING,
+        price_snapshot_amount=_resolve_enrollment_total_fee(program, target),
+        currency_snapshot=program.currency or "NGN",
+        membership_policy_snapshot=_resolve_enrollment_membership_policy(program, target),
+        uses_installments=False,
+    )
+    db.add(replacement)
+    await db.flush()
+    await _sync_installment_state_for_enrollment(db, replacement)
+    change.state = "completed"
+    change.to_enrollment_id = replacement.id
+    change.snapshot = {
+        **(change.snapshot or {}),
+        "resolved_by_auth_id": current_user.user_id,
+        "resolved_at": now.isoformat(),
+        "resolution_reason": payload.reason,
+        "financial_state_at_approval": financial,
+        "financial_resolution": "all_unpaid_closed",
+    }
+    await db.commit()
+    return {"state": "completed", "enrollment_id": str(replacement.id)}
 
 
 @router.get("/my-enrollment-change-requests")
