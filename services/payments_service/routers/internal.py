@@ -1079,7 +1079,9 @@ async def academy_enrollment_financial_state(
             "reference": p.reference,
             "status": p.status.value,
             "amount_kobo": round(p.amount * 100),
-            "closed_unpaid": bool((p.payment_metadata or {}).get("checkout_closed_unpaid")),
+            "closed_unpaid": bool(
+                (p.payment_metadata or {}).get("checkout_closed_unpaid")
+            ),
             "proof_submitted": bool(p.proof_of_payment_media_id),
             "entitlement_applied": bool(p.entitlement_applied_at),
         }

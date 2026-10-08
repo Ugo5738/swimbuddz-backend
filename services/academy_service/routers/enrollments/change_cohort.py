@@ -80,15 +80,27 @@ async def list_academy_change_reviews(
     enrollment_ids = {item.from_enrollment_id for item in changes}
     target_ids = {item.target_cohort_id for item in changes}
     enrollments = (
-        await db.execute(select(Enrollment).where(Enrollment.id.in_(enrollment_ids)))
-    ).scalars().all() if enrollment_ids else []
+        (await db.execute(select(Enrollment).where(Enrollment.id.in_(enrollment_ids))))
+        .scalars()
+        .all()
+        if enrollment_ids
+        else []
+    )
     cohorts = (
-        await db.execute(select(Cohort).where(Cohort.id.in_(target_ids)))
-    ).scalars().all() if target_ids else []
+        (await db.execute(select(Cohort).where(Cohort.id.in_(target_ids))))
+        .scalars()
+        .all()
+        if target_ids
+        else []
+    )
     source_cohort_ids = {item.cohort_id for item in enrollments if item.cohort_id}
     source_cohorts = (
-        await db.execute(select(Cohort).where(Cohort.id.in_(source_cohort_ids)))
-    ).scalars().all() if source_cohort_ids else []
+        (await db.execute(select(Cohort).where(Cohort.id.in_(source_cohort_ids))))
+        .scalars()
+        .all()
+        if source_cohort_ids
+        else []
+    )
     enrollment_by_id = {item.id: item for item in enrollments}
     cohort_by_id = {item.id: item for item in cohorts + source_cohorts}
     return [
@@ -98,12 +110,17 @@ async def list_academy_change_reviews(
             "from_enrollment_id": str(change.from_enrollment_id),
             "target_cohort_id": str(change.target_cohort_id),
             "member_id": str(enrollment_by_id[change.from_enrollment_id].member_id)
-                if change.from_enrollment_id in enrollment_by_id else None,
-            "original_cohort_name": cohort_by_id[enrollment_by_id[change.from_enrollment_id].cohort_id].name
-                if change.from_enrollment_id in enrollment_by_id
-                and enrollment_by_id[change.from_enrollment_id].cohort_id in cohort_by_id else None,
+            if change.from_enrollment_id in enrollment_by_id
+            else None,
+            "original_cohort_name": cohort_by_id[
+                enrollment_by_id[change.from_enrollment_id].cohort_id
+            ].name
+            if change.from_enrollment_id in enrollment_by_id
+            and enrollment_by_id[change.from_enrollment_id].cohort_id in cohort_by_id
+            else None,
             "target_cohort_name": cohort_by_id[change.target_cohort_id].name
-                if change.target_cohort_id in cohort_by_id else None,
+            if change.target_cohort_id in cohort_by_id
+            else None,
             "state": change.state,
             "snapshot": change.snapshot,
             "created_at": change.created_at.isoformat(),
@@ -119,11 +136,13 @@ async def reject_enrollment_change(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Reject a request without altering the source enrollment or its money."""
-    change = (await db.execute(
-        select(AcademyEnrollmentChange)
-        .where(AcademyEnrollmentChange.id == change_id)
-        .with_for_update()
-    )).scalar_one_or_none()
+    change = (
+        await db.execute(
+            select(AcademyEnrollmentChange)
+            .where(AcademyEnrollmentChange.id == change_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not change:
         raise HTTPException(status_code=404, detail="Change request not found")
     if change.state == "rejected":
@@ -157,11 +176,13 @@ async def approve_unpaid_enrollment_change(
     closed-unpaid. Verified or proof-pending receipts are never moved by this
     endpoint; those need the separate finance allocation/credit process.
     """
-    change = (await db.execute(
-        select(AcademyEnrollmentChange)
-        .where(AcademyEnrollmentChange.id == change_id)
-        .with_for_update()
-    )).scalar_one_or_none()
+    change = (
+        await db.execute(
+            select(AcademyEnrollmentChange)
+            .where(AcademyEnrollmentChange.id == change_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not change:
         raise HTTPException(404, "Change request not found")
     if change.state == "completed" and change.to_enrollment_id:
@@ -169,16 +190,20 @@ async def approve_unpaid_enrollment_change(
     if change.state != "needs_review":
         raise HTTPException(409, "This request is no longer pending")
 
-    enrollment = (await db.execute(
-        select(Enrollment).where(Enrollment.id == change.from_enrollment_id)
-        .options(
-            selectinload(Enrollment.installments),
-            selectinload(Enrollment.progress_records),
+    enrollment = (
+        await db.execute(
+            select(Enrollment)
+            .where(Enrollment.id == change.from_enrollment_id)
+            .options(
+                selectinload(Enrollment.installments),
+                selectinload(Enrollment.progress_records),
+            )
+            .with_for_update()
         )
-        .with_for_update()
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not enrollment or enrollment.status not in {
-        EnrollmentStatus.PENDING_APPROVAL, EnrollmentStatus.WAITLIST,
+        EnrollmentStatus.PENDING_APPROVAL,
+        EnrollmentStatus.WAITLIST,
     }:
         raise HTTPException(409, "Original enrollment is no longer eligible")
     if (
@@ -187,11 +212,13 @@ async def approve_unpaid_enrollment_change(
         or enrollment.progress_records
         or any(
             item.status in {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
-            or item.payment_reference for item in enrollment.installments
+            or item.payment_reference
+            for item in enrollment.installments
         )
     ):
         raise HTTPException(
-            409, "Enrollment has recorded settlement or progress requiring financial review"
+            409,
+            "Enrollment has recorded settlement or progress requiring financial review",
         )
     financial = await financial_state(enrollment.id)
     if not financial.get("all_unpaid_closed", False):
@@ -199,44 +226,58 @@ async def approve_unpaid_enrollment_change(
             409,
             "Close and verify all unpaid checkout attempts in Payments, or reconcile received funds before approval",
         )
-    target = (await db.execute(
-        select(Cohort).where(Cohort.id == change.target_cohort_id).with_for_update()
-    )).scalar_one_or_none()
-    if not target or target.program_id != enrollment.program_id or target.status not in {
-        CohortStatus.OPEN, CohortStatus.ACTIVE,
-    }:
+    target = (
+        await db.execute(
+            select(Cohort).where(Cohort.id == change.target_cohort_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if (
+        not target
+        or target.program_id != enrollment.program_id
+        or target.status
+        not in {
+            CohortStatus.OPEN,
+            CohortStatus.ACTIVE,
+        }
+    ):
         raise HTTPException(409, "Destination cohort is unavailable")
     now = utc_now()
     if target.status == CohortStatus.ACTIVE:
         week = max(1, ((now - target.start_date).days // 7) + 1)
         if not target.allow_mid_entry or week > target.mid_entry_cutoff_week:
             raise HTTPException(409, "Mid-entry cutoff has passed")
-    program = (await db.execute(
-        select(Program).where(Program.id == enrollment.program_id)
-    )).scalar_one_or_none()
+    program = (
+        await db.execute(select(Program).where(Program.id == enrollment.program_id))
+    ).scalar_one_or_none()
     if not program or not program.is_published:
         raise HTTPException(409, "Academy programme is not published")
-    existing = (await db.execute(
-        select(Enrollment.id).where(
-            Enrollment.member_id == enrollment.member_id,
-            Enrollment.cohort_id == target.id,
-            Enrollment.status.in_([
-                EnrollmentStatus.PENDING_APPROVAL,
-                EnrollmentStatus.ENROLLED,
-                EnrollmentStatus.WAITLIST,
-            ]),
+    existing = (
+        await db.execute(
+            select(Enrollment.id).where(
+                Enrollment.member_id == enrollment.member_id,
+                Enrollment.cohort_id == target.id,
+                Enrollment.status.in_(
+                    [
+                        EnrollmentStatus.PENDING_APPROVAL,
+                        EnrollmentStatus.ENROLLED,
+                        EnrollmentStatus.WAITLIST,
+                    ]
+                ),
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if existing:
         raise HTTPException(409, "Member already has an active destination placement")
-    count = (await db.execute(
-        select(func.count(Enrollment.id)).where(
-            Enrollment.cohort_id == target.id,
-            Enrollment.status.in_([
-                EnrollmentStatus.PENDING_APPROVAL, EnrollmentStatus.ENROLLED
-            ]),
+    count = (
+        await db.execute(
+            select(func.count(Enrollment.id)).where(
+                Enrollment.cohort_id == target.id,
+                Enrollment.status.in_(
+                    [EnrollmentStatus.PENDING_APPROVAL, EnrollmentStatus.ENROLLED]
+                ),
+            )
         )
-    )).scalar_one()
+    ).scalar_one()
     if target.capacity is not None and count >= target.capacity:
         raise HTTPException(409, "Destination cohort is full")
 
@@ -252,7 +293,9 @@ async def approve_unpaid_enrollment_change(
         payment_status=PaymentStatus.PENDING,
         price_snapshot_amount=_resolve_enrollment_total_fee(program, target),
         currency_snapshot=program.currency or "NGN",
-        membership_policy_snapshot=_resolve_enrollment_membership_policy(program, target),
+        membership_policy_snapshot=_resolve_enrollment_membership_policy(
+            program, target
+        ),
         uses_installments=False,
     )
     db.add(replacement)
@@ -411,12 +454,20 @@ async def change_my_cohort(
         )
         db.add(journey)
         await db.flush()
-    existing_request = (await db.execute(
-        select(AcademyEnrollmentChange).where(
-            AcademyEnrollmentChange.from_enrollment_id == enrollment.id,
-            AcademyEnrollmentChange.state == "needs_review",
-        ).order_by(AcademyEnrollmentChange.created_at.desc())
-    )).scalars().first()
+    existing_request = (
+        (
+            await db.execute(
+                select(AcademyEnrollmentChange)
+                .where(
+                    AcademyEnrollmentChange.from_enrollment_id == enrollment.id,
+                    AcademyEnrollmentChange.state == "needs_review",
+                )
+                .order_by(AcademyEnrollmentChange.created_at.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
     if existing_request:
         if existing_request.target_cohort_id != target.id:
             raise HTTPException(409, "A cohort change is already awaiting review")
