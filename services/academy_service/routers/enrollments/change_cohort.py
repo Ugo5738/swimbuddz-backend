@@ -91,6 +91,58 @@ async def list_academy_change_reviews(
     ]
 
 
+@router.post("/admin/academy/enrollment-changes/{change_id}/reject")
+async def reject_enrollment_change(
+    change_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Reject a request without altering the source enrollment or its money."""
+    change = (await db.execute(
+        select(AcademyEnrollmentChange)
+        .where(AcademyEnrollmentChange.id == change_id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if not change:
+        raise HTTPException(status_code=404, detail="Change request not found")
+    if change.state == "rejected":
+        return {"state": "rejected", "change_id": str(change.id)}
+    if change.state != "needs_review":
+        raise HTTPException(status_code=409, detail="This request is no longer pending")
+    change.state = "rejected"
+    change.snapshot = {
+        **(change.snapshot or {}),
+        "reviewed_by_auth_id": current_user.user_id,
+        "reviewed_at": utc_now().isoformat(),
+    }
+    await db.commit()
+    return {"state": "rejected", "change_id": str(change.id)}
+
+
+@router.get("/my-enrollment-change-requests")
+async def my_enrollment_change_requests(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Member-visible request status, scoped by the original enrollment owner."""
+    result = await db.execute(
+        select(AcademyEnrollmentChange, Enrollment)
+        .join(Enrollment, AcademyEnrollmentChange.from_enrollment_id == Enrollment.id)
+        .where(Enrollment.member_auth_id == current_user.user_id)
+        .order_by(AcademyEnrollmentChange.created_at.desc())
+    )
+    return [
+        {
+            "id": str(change.id),
+            "from_enrollment_id": str(change.from_enrollment_id),
+            "target_cohort_id": str(change.target_cohort_id),
+            "state": change.state,
+            "created_at": change.created_at.isoformat(),
+        }
+        for change, _ in result.all()
+    ]
+
+
 @router.get("/my-academy-journeys")
 async def my_academy_journeys(
     current_user: AuthUser = Depends(get_current_user),
@@ -206,6 +258,20 @@ async def change_my_cohort(
         )
         db.add(journey)
         await db.flush()
+    existing_request = (await db.execute(
+        select(AcademyEnrollmentChange).where(
+            AcademyEnrollmentChange.from_enrollment_id == enrollment.id,
+            AcademyEnrollmentChange.state == "needs_review",
+        ).order_by(AcademyEnrollmentChange.created_at.desc())
+    )).scalars().first()
+    if existing_request:
+        if existing_request.target_cohort_id != target.id:
+            raise HTTPException(409, "A cohort change is already awaiting review")
+        return ChangeCohortResult(
+            state="needs_review",
+            change_id=existing_request.id,
+            message="Your request is already awaiting review. Your existing enrollment remains unchanged.",
+        )
     # Inspect BOTH service-owned payment rows and academy-side settlement
     # artifacts. An initiated bank transfer is not necessarily unpaid.
     financial = await financial_state(enrollment.id)
