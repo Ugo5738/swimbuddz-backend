@@ -19,7 +19,7 @@ async def apply_pool_access(payment: Payment) -> None:
             json={
                 "payment_reference": payment.reference,
                 "member_auth_id": payment.member_auth_id,
-                "amount_kobo": naira_to_kobo(payment.amount),
+                "amount_kobo": int((payment.payment_metadata or {}).get("pool_access_subtotal_kobo") or naira_to_kobo(payment.amount)),
             },
             headers={"Authorization": f"Bearer {_service_role_jwt('payments')}"},
         )
