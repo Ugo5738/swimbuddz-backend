@@ -40992,6 +40992,111 @@
         }
       }
     },
+    "/api/v1/pools/access/reconciliations/{reconciliation_id}/record-external-settlement": {
+      "post": {
+        "tags": [
+          "pool-access-redemption"
+        ],
+        "summary": "Record External Settlement",
+        "description": "Record bank-confirmed settlement, never execute or claim to execute a transfer.",
+        "operationId": "record_external_settlement_pools_access_reconciliations__reconciliation_id__record_external_settlement_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reconciliation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Reconciliation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/reconciliations/{reconciliation_id}/settlements": {
+      "get": {
+        "tags": [
+          "pool-access-redemption"
+        ],
+        "summary": "Settlement Records",
+        "operationId": "settlement_records_pools_access_reconciliations__reconciliation_id__settlements_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reconciliation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Reconciliation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/pools/access/offers": {
       "get": {
         "tags": [
@@ -41090,6 +41195,112 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/pools/access/bookings/{booking_id}/cancel": {
+      "post": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "Cancel Unpaid Hold",
+        "description": "Only release holds that have never started a payment checkout.\n\nOnce checkout was claimed, Paystack may still accept money. Cancellation\nmust wait for verified provider closure and a refund review.",
+        "operationId": "cancel_unpaid_hold_pools_access_bookings__booking_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/bookings/{booking_id}/request-cancellation": {
+      "post": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "Request Paid Cancellation",
+        "description": "Request review without revoking a paid ticket or claiming a refund.",
+        "operationId": "request_paid_cancellation_pools_access_bookings__booking_id__request_cancellation_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/pools/access/bookings/me": {
@@ -41266,6 +41477,30 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/admin/pools/access/cancellation-requests": {
+      "get": {
+        "tags": [
+          "admin-pool-access"
+        ],
+        "summary": "Cancellation Review Queue",
+        "operationId": "cancellation_review_queue_admin_pools_access_cancellation_requests_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/pools": {

@@ -164,6 +164,7 @@ async def reconcile(
         "status": "snapshotted",
     }
 
+
 @router.post("/reconciliations/{reconciliation_id}/record-external-settlement")
 async def record_external_settlement(
     reconciliation_id: uuid.UUID,
@@ -187,7 +188,9 @@ async def record_external_settlement(
         or isinstance(amount, bool)
         or amount <= 0
     ):
-        raise HTTPException(422, "Bank reference, payment evidence and positive amount are required")
+        raise HTTPException(
+            422, "Bank reference, payment evidence and positive amount are required"
+        )
     reconciliation = (
         await db.execute(
             select(PoolAccessReconciliation)
@@ -205,21 +208,20 @@ async def record_external_settlement(
         )
     ).scalar_one_or_none()
     if prior:
-        if (
-            prior.reconciliation_id == reconciliation.id
-            and prior.amount_kobo == amount
-        ):
+        if prior.reconciliation_id == reconciliation.id and prior.amount_kobo == amount:
             return {"status": "already_recorded", "settlement_id": str(prior.id)}
         raise HTTPException(409, "Bank reference already used for another settlement")
     settled = (
         await db.execute(
-            select(func.coalesce(func.sum(PoolAccessPartnerSettlement.amount_kobo), 0)).where(
-                PoolAccessPartnerSettlement.reconciliation_id == reconciliation.id
-            )
+            select(
+                func.coalesce(func.sum(PoolAccessPartnerSettlement.amount_kobo), 0)
+            ).where(PoolAccessPartnerSettlement.reconciliation_id == reconciliation.id)
         )
     ).scalar_one()
     if amount > reconciliation.payable_kobo - settled:
-        raise HTTPException(409, "Settlement exceeds outstanding verified pool liability")
+        raise HTTPException(
+            409, "Settlement exceeds outstanding verified pool liability"
+        )
     settlement = PoolAccessPartnerSettlement(
         reconciliation_id=reconciliation.id,
         amount_kobo=amount,
@@ -249,12 +251,18 @@ async def settlement_records(
     if reconciliation is None:
         raise HTTPException(404, "Partner liability not found")
     rows = (
-        await db.execute(
-            select(PoolAccessPartnerSettlement)
-            .where(PoolAccessPartnerSettlement.reconciliation_id == reconciliation_id)
-            .order_by(PoolAccessPartnerSettlement.recorded_at)
+        (
+            await db.execute(
+                select(PoolAccessPartnerSettlement)
+                .where(
+                    PoolAccessPartnerSettlement.reconciliation_id == reconciliation_id
+                )
+                .order_by(PoolAccessPartnerSettlement.recorded_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "liability_kobo": reconciliation.payable_kobo,
         "settled_kobo": sum(s.amount_kobo for s in rows),
@@ -269,4 +277,3 @@ async def settlement_records(
             for s in rows
         ],
     }
-

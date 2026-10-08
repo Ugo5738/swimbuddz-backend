@@ -255,6 +255,7 @@ async def test_member_cannot_request_refund_for_unpaid_visit(pools_client):
     )
     assert response.status_code == 409
 
+
 async def test_partner_settlement_is_limited_to_verified_admissions(
     pools_client, db_session, monkeypatch
 ):
@@ -315,9 +316,7 @@ async def test_partner_settlement_is_limited_to_verified_admissions(
     admission.checked_in_at = utc_now() - timedelta(hours=2)
     await db_session.commit()
 
-    recon = await pools_client.post(
-        f"/pools/access/bookings/{booking_id}/reconcile"
-    )
+    recon = await pools_client.post(f"/pools/access/bookings/{booking_id}/reconcile")
     assert recon.status_code == 200, recon.text
     admin_records = await pools_client.get("/admin/pools/access/bookings")
     reconciliation_id = next(
@@ -325,7 +324,9 @@ async def test_partner_settlement_is_limited_to_verified_admissions(
         for row in admin_records.json()
         if row["booking_id"] == booking_id
     )
-    url = f"/pools/access/reconciliations/{reconciliation_id}/record-external-settlement"
+    url = (
+        f"/pools/access/reconciliations/{reconciliation_id}/record-external-settlement"
+    )
     first = await pools_client.post(
         url,
         json={
