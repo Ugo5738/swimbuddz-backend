@@ -6,6 +6,7 @@ Revises: c9f2a7e41b30
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision = "a08e16d7c9fa"
 down_revision = "c9f2a7e41b30"
@@ -24,7 +25,7 @@ def upgrade() -> None:
         sa.Column("paying_members", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("payment_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("paid_amount_ngn", sa.Float(), nullable=False, server_default="0"),
-        sa.Column("payments_by_purpose", sa.dialects.postgresql.JSONB(), nullable=True),
+        sa.Column("payments_by_purpose", postgresql.JSONB(), nullable=True),
         sa.Column("source", sa.String(32), nullable=False, server_default="members_registration"),
         sa.Column("computed_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint(
