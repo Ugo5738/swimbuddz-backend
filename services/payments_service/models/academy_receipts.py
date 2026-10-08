@@ -18,6 +18,7 @@ class AcademyBankReceipt(Base):
         UniqueConstraint("external_reference", name="uq_academy_receipt_external_reference"),
     )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=False, unique=True)
     external_reference: Mapped[str] = mapped_column(String(160), nullable=False)
     amount_kobo: Mapped[int] = mapped_column(BigInteger, nullable=False)
     currency: Mapped[str] = mapped_column(String(8), nullable=False, default="NGN")
