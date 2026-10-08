@@ -19,6 +19,7 @@ from libs.db.session import get_async_db
 from services.academy_service.models import (
     AcademyEnrollmentChange,
     AcademyFinancialCredit,
+    AcademyTransferRefundObligation,
     Cohort,
     CohortStatus,
     Enrollment,
@@ -45,12 +46,16 @@ class ApproveReviewedTransfer(BaseModel):
     reason: str = Field(min_length=20, max_length=2000)
     transferable_credit_kobo: int = Field(ge=0)
     consumed_services_kobo: int = Field(ge=0)
+    refund_due_kobo: int = Field(default=0, ge=0)
+    refund_reason: str | None = Field(default=None, min_length=20, max_length=1000)
     discount_kobo: int = Field(default=0, ge=0)
     discount_reason: str | None = Field(default=None, min_length=10, max_length=1000)
     confirmed_attendance_review: bool = False
 
     @model_validator(mode="after")
     def valid_discount(self):
+        if self.refund_due_kobo and not self.refund_reason:
+            raise ValueError("A refundable tuition surplus requires a written reason")
         if self.discount_kobo and not self.discount_reason:
             raise ValueError("A manual discount requires a written approval reason")
         return self
@@ -214,12 +219,14 @@ async def approve_reviewed_transfer(
         item.amount_kobo for item in active_credits
     )
     if (
-        payload.transferable_credit_kobo + payload.consumed_services_kobo
+        payload.transferable_credit_kobo
+        + payload.consumed_services_kobo
+        + payload.refund_due_kobo
         != verified_total
     ):
         raise HTTPException(
             409,
-            "Every verified tuition kobo must be assigned to destination credit or approved consumed services. Refunds and unallocated balances require separate reconciliation",
+            "Verified tuition must equal destination credit plus consumed services plus a recorded refund liability",
         )
     if (source.progress_records or payload.consumed_services_kobo > 0) and not payload.confirmed_attendance_review:
         raise HTTPException(
@@ -378,6 +385,16 @@ async def approve_reviewed_transfer(
             )
         )
 
+    if payload.refund_due_kobo:
+        db.add(AcademyTransferRefundObligation(
+            change_id=change.id,
+            source_enrollment_id=source.id,
+            member_auth_id=source.member_auth_id,
+            amount_kobo=payload.refund_due_kobo,
+            reason=payload.refund_reason or payload.reason,
+            state="pending",
+        ))
+
     change.state = "completed"
     change.to_enrollment_id = new_enrollment.id
     change.snapshot = {
@@ -387,6 +404,8 @@ async def approve_reviewed_transfer(
         "approval_reason": payload.reason,
         "attendance_reviewed": payload.confirmed_attendance_review,
         "consumed_services_kobo": payload.consumed_services_kobo,
+        "refund_due_kobo": payload.refund_due_kobo,
+        "refund_reason": payload.refund_reason,
         "transferable_credit_kobo": payload.transferable_credit_kobo,
         "old_verified_tuition_kobo": verified_total,
         "credit_source_provenance": [
@@ -408,5 +427,6 @@ async def approve_reviewed_transfer(
         "new_tuition_kobo": new_fee_kobo,
         "transferred_credit_kobo": payload.transferable_credit_kobo,
         "remaining_tuition_kobo": new_fee_kobo - payload.transferable_credit_kobo,
+        "refund_due_kobo": payload.refund_due_kobo,
         "idempotent": False,
     }
