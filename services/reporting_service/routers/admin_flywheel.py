@@ -23,6 +23,7 @@ from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.reporting_service.models import (
     CohortFillSnapshot,
+    ContentAcquisitionSnapshot,
     FunnelConversionSnapshot,
     FunnelStage,
     WalletEcosystemSnapshot,
@@ -143,6 +144,46 @@ async def flywheel_funnel(
     stmt = stmt.order_by(desc(FunnelConversionSnapshot.snapshot_taken_at)).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+@router.get("/content-acquisition")
+async def content_acquisition(
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Reporting-owned confirmed registration counts, not attributed payments."""
+    from sqlalchemy import func
+
+    latest_period = (
+        await db.execute(
+            select(
+                ContentAcquisitionSnapshot.period_start,
+                ContentAcquisitionSnapshot.period_end,
+            )
+            .order_by(ContentAcquisitionSnapshot.computed_at.desc())
+            .limit(1)
+        )
+    ).first()
+    if not latest_period:
+        return []
+    rows = await db.execute(
+        select(ContentAcquisitionSnapshot)
+        .where(
+            ContentAcquisitionSnapshot.period_start == latest_period[0],
+            ContentAcquisitionSnapshot.period_end == latest_period[1],
+        )
+        .order_by(ContentAcquisitionSnapshot.registrations.desc())
+    )
+    return [
+        {
+            "content_id": str(item.content_id),
+            "registrations": item.registrations,
+            "period_start": item.period_start.isoformat(),
+            "period_end": item.period_end.isoformat(),
+            "computed_at": item.computed_at.isoformat(),
+        }
+        for item in rows.scalars().all()
+    ]
 
 
 @router.get("/wallet", response_model=Optional[WalletEcosystemSnapshotResponse])
