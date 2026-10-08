@@ -179,6 +179,7 @@ async def content_acquisition(
             "paying_members": item.paying_members,
             "payment_count": item.payment_count,
             "paid_amount_ngn": item.paid_amount_ngn,
+            "payments_by_purpose": item.payments_by_purpose or {},
             "period_start": item.period_start.isoformat(),
             "period_end": item.period_end.isoformat(),
             "computed_at": item.computed_at.isoformat(),
