@@ -1074,6 +1074,7 @@ async def create_payment_intent(
         payment_metadata = {
             "pool_access_booking_id": str(payload.pool_access_booking_id),
             "reservation_expires_at": quote["hold_expires_at"],
+            "pool_access_subtotal_kobo": int(quote["total_kobo"]),
         }
 
     # Session fee payment (pool fee + ride share)
