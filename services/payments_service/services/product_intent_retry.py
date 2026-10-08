@@ -128,6 +128,8 @@ async def resume_product_payment(db, payment, payload):
         )
         from services.payments_service.models import PaymentPurpose
 
+        if payment.purpose == PaymentPurpose.POOL_ACCESS:
+            redirect = "/account/pool-access"
         if payment.purpose == PaymentPurpose.SESSION_BOOKING:
             from services.payments_service.services.booking_payment_attempts import (
                 initialize_booking_checkout,
