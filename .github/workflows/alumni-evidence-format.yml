@@ -1,0 +1,29 @@
+name: Temporary alumni evidence format
+on:
+  push:
+    branches:
+      - codex/alumni-evidence-beyond-pool
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Format the branch's new Python changes
+        run: |
+          python -m pip install 'ruff==0.4.10'
+          ruff format services/academy_service/models/evidence.py services/academy_service/routers/evidence.py services/communications_service/app/main.py services/communications_service/models/engagement.py services/communications_service/routers/engagement.py services/media_service/routers/internal.py tests/unit/test_alumni_evidence.py services/media_service/routers/media.py
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add services/academy_service/models/evidence.py services/academy_service/routers/evidence.py services/communications_service/app/main.py services/communications_service/models/engagement.py services/communications_service/routers/engagement.py services/media_service/routers/internal.py tests/unit/test_alumni_evidence.py services/media_service/routers/media.py
+          if ! git diff --cached --quiet; then
+            git commit -m "style: format alumni evidence and content analytics implementation"
+            git push origin HEAD:codex/alumni-evidence-beyond-pool
+          fi
