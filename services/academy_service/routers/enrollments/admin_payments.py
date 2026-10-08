@@ -102,6 +102,15 @@ async def admin_mark_enrollment_paid(
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
 
+    if enrollment.status in {
+        EnrollmentStatus.DROPPED,
+        EnrollmentStatus.GRADUATED,
+    }:
+        raise HTTPException(
+            status_code=409,
+            detail="This Academy enrollment is closed; reconcile any late provider receipt instead of reactivating it",
+        )
+
     if enrollment.status == EnrollmentStatus.WAITLIST:
         raise HTTPException(
             status_code=409,
