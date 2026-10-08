@@ -64,8 +64,12 @@ async def refresh_content_acquisition(days: int = 90) -> int:
             calling_service="reporting",
             json={
                 "member_auth_ids": batch,
-                "date_from": datetime.combine(start, time.min, tzinfo=timezone.utc).isoformat(),
-                "date_to": datetime.combine(end, time.max, tzinfo=timezone.utc).isoformat(),
+                "date_from": datetime.combine(
+                    start, time.min, tzinfo=timezone.utc
+                ).isoformat(),
+                "date_to": datetime.combine(
+                    end, time.max, tzinfo=timezone.utc
+                ).isoformat(),
             },
         )
         response.raise_for_status()

@@ -24422,6 +24422,51 @@
         }
       }
     },
+    "/api/v1/internal/payments/reports/attributed-payments": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Attributed Payments Report",
+        "description": "Payment-owned settled rows, grouped by payer and canonical purpose.\n\nThe Reporting Service joins these aggregates to its first-party Member\nacquisition origin. No Payment -> Members or Payment -> Content dependency.",
+        "operationId": "attributed_payments_report_internal_payments_reports_attributed_payments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttributionPaymentQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/payments/{reference}/proof": {
       "post": {
         "tags": [
@@ -68617,6 +68662,17 @@
             "type": "string",
             "title": "Id"
           },
+          "member_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Auth Id"
+          },
           "source_joined_at": {
             "type": "string",
             "title": "Source Joined At"
@@ -89686,6 +89742,35 @@
           "proof_media_id"
         ],
         "title": "AttachPaymentReceipt"
+      },
+      "AttributionPaymentQuery": {
+        "properties": {
+          "member_auth_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Member Auth Ids"
+          },
+          "date_from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Date From"
+          },
+          "date_to": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Date To"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date_from",
+          "date_to"
+        ],
+        "title": "AttributionPaymentQuery",
+        "description": "Bounded bulk reporting query; never callable by public clients."
       },
       "Body_upload_transfer_receipt_payments_manual_transfer__reference__upload_post": {
         "properties": {

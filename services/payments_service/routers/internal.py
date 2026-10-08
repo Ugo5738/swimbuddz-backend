@@ -1014,12 +1014,15 @@ async def annotate_refund_obligation(
 
 class AttributionPaymentQuery(BaseModel):
     """Bounded bulk reporting query; never callable by public clients."""
+
     member_auth_ids: list[str] = Field(default_factory=list, max_length=500)
     date_from: datetime
     date_to: datetime
 
 
-@router.post("/reports/attributed-payments", dependencies=[Depends(require_service_role)])
+@router.post(
+    "/reports/attributed-payments", dependencies=[Depends(require_service_role)]
+)
 async def attributed_payments_report(
     request: AttributionPaymentQuery,
     db: AsyncSession = Depends(get_async_db),
