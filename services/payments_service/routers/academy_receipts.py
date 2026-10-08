@@ -31,7 +31,6 @@ class VerifyReceiptRequest(BaseModel):
 
 
 class AllocateReceiptRequest(BaseModel):
-    member_auth_id: str = Field(min_length=1)
     enrollment_id: uuid.UUID
     amount_kobo: int = Field(gt=0)
     idempotency_key: str = Field(min_length=8, max_length=160)
@@ -167,7 +166,6 @@ async def allocate_receipt(
     if prior:
         if (
             prior.amount_kobo != body.amount_kobo
-            or prior.member_auth_id != body.member_auth_id
             or prior.enrollment_id != body.enrollment_id
         ):
             raise HTTPException(409, "Idempotency key belongs to a different allocation")
@@ -185,8 +183,9 @@ async def allocate_receipt(
         enrollment = response.json()
     except Exception as exc:
         raise HTTPException(503, "Academy enrollment ownership cannot be verified") from exc
-    if str(enrollment.get("member_auth_id")) != body.member_auth_id:
-        raise HTTPException(403, "The target enrollment belongs to another member")
+    beneficiary_auth_id = str(enrollment.get("member_auth_id") or "")
+    if not beneficiary_auth_id:
+        raise HTTPException(409, "Academy enrollment has no verified member identity")
     if str(enrollment.get("currency_snapshot") or "NGN").upper() != receipt.currency:
         raise HTTPException(409, "Currency mismatch")
 
@@ -200,7 +199,7 @@ async def allocate_receipt(
 
     db.add(AcademyReceiptAllocation(
         receipt_id=receipt_id,
-        member_auth_id=body.member_auth_id,
+        member_auth_id=beneficiary_auth_id,
         enrollment_id=body.enrollment_id,
         amount_kobo=body.amount_kobo,
         idempotency_key=body.idempotency_key,
