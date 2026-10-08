@@ -1058,6 +1058,16 @@ async def create_payment_intent(
         quote = response.json()
         if payload.currency != quote["currency"]:
             raise HTTPException(409, "Booking currency mismatch")
+        # Reserve exactly one payment reference while the inventory hold is valid.
+        async with httpx.AsyncClient(timeout=30) as client:
+            claimed = await client.post(
+                f"{settings.POOLS_SERVICE_URL}/internal/pools/access/bookings/{payload.pool_access_booking_id}/claim-checkout",
+                json={"member_auth_id": current_user.user_id,
+                      "payment_reference": payment_reference},
+                headers=headers,
+            )
+        if claimed.status_code >= 400:
+            raise HTTPException(409, "This booking already has an active checkout")
         amount = kobo_to_naira(int(quote["total_kobo"]))
         payment_metadata = {
             "pool_access_booking_id": str(payload.pool_access_booking_id),
