@@ -51,6 +51,8 @@ from services.academy_service.models.progress import (
 )
 
 __all__ = [
+    "AcademyJourney",
+    "AcademyEnrollmentChange",
     "BillingType",
     "CoachAssignment",
     "CoachAssignmentRole",
