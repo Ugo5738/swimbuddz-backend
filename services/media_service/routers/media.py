@@ -465,7 +465,10 @@ async def upload_file(
 
     # Supabase's legacy generic upload targets a public bucket regardless of
     # purpose. Never silently publish private swimmer evidence to that bucket.
-    if purpose in {"milestone_evidence", "milestone_video"} and storage_service.backend != "s3":
+    if (
+        purpose in {"milestone_evidence", "milestone_video"}
+        and storage_service.backend != "s3"
+    ):
         raise HTTPException(
             status_code=503,
             detail="Private milestone video upload requires configured private S3 storage",
