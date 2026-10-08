@@ -1,0 +1,29 @@
+name: Temporary alumni Ruff normalization
+on:
+  push:
+    branches: [codex/alumni-evidence-beyond-pool]
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Format remaining Reporting snapshot file
+        run: |
+          python -m pip install ruff==0.4.10
+          ruff format services/reporting_service/tasks/content_acquisition.py
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add services/reporting_service/tasks/content_acquisition.py
+          if ! git diff --cached --quiet; then
+            git commit -m "style(reporting): canonical paid attribution format"
+            git pull --rebase origin codex/alumni-evidence-beyond-pool
+            git push origin HEAD:codex/alumni-evidence-beyond-pool
+          fi
