@@ -18,7 +18,9 @@ class ContentAcquisitionSnapshot(Base):
     __tablename__ = "content_acquisition_snapshots"
     __table_args__ = (
         UniqueConstraint(
-            "content_id", "period_start", "period_end",
+            "content_id",
+            "period_start",
+            "period_end",
             name="uq_content_acquisition_period",
         ),
     )

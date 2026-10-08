@@ -1,4 +1,5 @@
 """Regression guards for public video episode metadata and attribution."""
+
 import pytest
 from pydantic import ValidationError
 
@@ -32,12 +33,15 @@ def test_episode_metadata_survives_content_create_and_update():
     assert edited.episode_number == 3
 
 
-@pytest.mark.parametrize("url", [
-    "https://evil.example.com/watch?v=g_4oasxw46M",
-    "https://youtube.com.evil.example.com/watch?v=g_4oasxw46M",
-    "http://www.youtube.com/watch?v=g_4oasxw46M",
-    "https://www.youtube.com/watch?v=invalid",
-])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.example.com/watch?v=g_4oasxw46M",
+        "https://youtube.com.evil.example.com/watch?v=g_4oasxw46M",
+        "http://www.youtube.com/watch?v=g_4oasxw46M",
+        "https://www.youtube.com/watch?v=invalid",
+    ],
+)
 def test_video_embed_url_rejects_untrusted_hosts_and_ids(url):
     with pytest.raises(ValidationError):
         _draft(video_url=url)
