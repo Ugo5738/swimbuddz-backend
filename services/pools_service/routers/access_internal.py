@@ -91,11 +91,14 @@ async def confirm(
     # Service JWT proves the caller is internal, not that a payment occurred.
     # Read persisted PAID evidence from payments_service before granting access.
     settings = get_settings()
-    async with httpx.AsyncClient(timeout=30) as client:
-        evidence = await client.get(
-            f"{settings.PAYMENTS_SERVICE_URL}/internal/payments/pool-access/paid/{reference}",
-            headers={"Authorization": f"Bearer {_service_role_jwt('pools')}"},
-        )
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            evidence = await client.get(
+                f"{settings.PAYMENTS_SERVICE_URL}/internal/payments/pool-access/paid/{reference}",
+                headers={"Authorization": f"Bearer {_service_role_jwt('pools')}"},
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(503, "Payment verification is temporarily unavailable") from exc
     if evidence.status_code >= 400:
         raise HTTPException(409, "Verified payment evidence not found")
     record = evidence.json()
