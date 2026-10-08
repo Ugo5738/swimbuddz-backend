@@ -1,0 +1,29 @@
+name: Temporary alumni evidence OpenAPI update
+on:
+  push:
+    branches:
+      - codex/alumni-evidence-beyond-pool
+permissions:
+  contents: write
+jobs:
+  regenerate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Rebuild API snapshot and commit changes
+        run: |
+          python -m pip install -e .
+          python scripts/api/generate-openapi.py > openapi.json
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add openapi.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(api): regenerate OpenAPI with alumni and learning endpoints"
+            git push origin HEAD:codex/alumni-evidence-beyond-pool
+          fi
