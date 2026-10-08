@@ -9,6 +9,7 @@ from libs.common.datetime_utils import utc_now
 from libs.common.service_client import dispatch_notification, get_member_by_auth_id
 from libs.db.session import get_async_db
 from services.academy_service.models import (
+    AcademyJourney,
     Cohort,
     CohortStatus,
     Enrollment,
@@ -200,6 +201,15 @@ async def self_enroll(
         if enrolled_count >= cohort.capacity:
             # Cohort is at capacity - add to waitlist
             enrollment_status = EnrollmentStatus.WAITLIST
+
+    # Ensure the long-lived learning journey exists independently of cohort placement.
+    journey = (await db.execute(select(AcademyJourney).where(
+        AcademyJourney.member_id == member["id"],
+        AcademyJourney.program_id == program_id,
+    ))).scalar_one_or_none()
+    if journey is None:
+        db.add(AcademyJourney(member_id=member["id"], program_id=program_id))
+        await db.flush()
 
     # 5. Create Enrollment Request
     # Status is PENDING_APPROVAL by default, or WAITLIST if at capacity
