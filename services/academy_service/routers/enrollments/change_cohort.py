@@ -77,12 +77,33 @@ async def list_academy_change_reviews(
         .scalars()
         .all()
     )
+    enrollment_ids = {item.from_enrollment_id for item in changes}
+    target_ids = {item.target_cohort_id for item in changes}
+    enrollments = (
+        await db.execute(select(Enrollment).where(Enrollment.id.in_(enrollment_ids)))
+    ).scalars().all() if enrollment_ids else []
+    cohorts = (
+        await db.execute(select(Cohort).where(Cohort.id.in_(target_ids)))
+    ).scalars().all() if target_ids else []
+    source_cohort_ids = {item.cohort_id for item in enrollments if item.cohort_id}
+    source_cohorts = (
+        await db.execute(select(Cohort).where(Cohort.id.in_(source_cohort_ids)))
+    ).scalars().all() if source_cohort_ids else []
+    enrollment_by_id = {item.id: item for item in enrollments}
+    cohort_by_id = {item.id: item for item in cohorts + source_cohorts}
     return [
         {
             "id": str(change.id),
             "journey_id": str(change.journey_id),
             "from_enrollment_id": str(change.from_enrollment_id),
             "target_cohort_id": str(change.target_cohort_id),
+            "member_id": str(enrollment_by_id[change.from_enrollment_id].member_id)
+                if change.from_enrollment_id in enrollment_by_id else None,
+            "original_cohort_name": cohort_by_id[enrollment_by_id[change.from_enrollment_id].cohort_id].name
+                if change.from_enrollment_id in enrollment_by_id
+                and enrollment_by_id[change.from_enrollment_id].cohort_id in cohort_by_id else None,
+            "target_cohort_name": cohort_by_id[change.target_cohort_id].name
+                if change.target_cohort_id in cohort_by_id else None,
             "state": change.state,
             "snapshot": change.snapshot,
             "created_at": change.created_at.isoformat(),
