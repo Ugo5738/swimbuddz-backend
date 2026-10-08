@@ -46,7 +46,7 @@ class ApproveReviewedTransfer(BaseModel):
     transferable_credit_kobo: int = Field(ge=0)
     consumed_services_kobo: int = Field(ge=0)
     discount_kobo: int = Field(default=0, ge=0)
-    discount_reason: str | None = Field(default=None, max_length=1000)
+    discount_reason: str | None = Field(default=None, min_length=10, max_length=1000)
     confirmed_attendance_review: bool = False
 
     @model_validator(mode="after")
@@ -221,7 +221,7 @@ async def approve_reviewed_transfer(
             409,
             "Every verified tuition kobo must be assigned to destination credit or approved consumed services. Refunds and unallocated balances require separate reconciliation",
         )
-    if source.progress_records and not payload.confirmed_attendance_review:
+    if (source.progress_records or payload.consumed_services_kobo > 0) and not payload.confirmed_attendance_review:
         raise HTTPException(
             409,
             "Confirm the attendance and milestone review before transferring progress",
