@@ -105,7 +105,7 @@ async def test_shared_receipt_reconciliation_preserves_original_proof(db_session
         amount=100000,
         currency="NGN",
         provider="offline",
-        provider_reference=f"BANK-{uuid4()}",
+        provider_reference=f"BANK-{uuid4()}".upper(),
         entitlement_applied_at=service.utc_now(),
         payment_metadata={"academy_shared_bank_receipt_master": True},
     )
