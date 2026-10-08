@@ -1010,3 +1010,35 @@ async def annotate_refund_obligation(
     flag_modified(payment, "payment_metadata")
     await db.commit()
     return {"reference": reference, "refund_obligations": len(refunds)}
+
+
+class AcademyEnrollmentFinancialState(BaseModel):
+    """Fail-closed transfer gate: any initiated payment needs reconciliation."""
+    has_payment_activity: bool
+    references: list[str]
+    statuses: list[str]
+
+
+@router.get(
+    "/academy/enrollments/{enrollment_id}/financial-state",
+    response_model=AcademyEnrollmentFinancialState,
+    dependencies=[Depends(require_service_role)],
+)
+async def academy_enrollment_financial_state(
+    enrollment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    # Search on canonical enrollment ID in payment metadata. Do not assume
+    # PENDING means no money moved; manual transfers can precede proof upload.
+    result = await db.execute(
+        select(Payment).where(
+            Payment.purpose == PaymentPurpose.ACADEMY_COHORT,
+            Payment.payment_metadata["enrollment_id"].astext == str(enrollment_id),
+        )
+    )
+    payments = result.scalars().all()
+    return AcademyEnrollmentFinancialState(
+        has_payment_activity=bool(payments),
+        references=[p.reference for p in payments],
+        statuses=[p.status.value for p in payments],
+    )
