@@ -38,12 +38,16 @@ async def list_reception_operators(
     db: AsyncSession = Depends(get_async_db),
 ):
     rows = (
-        await db.execute(
-            select(PoolAccessPartnerOperator)
-            .where(PoolAccessPartnerOperator.pool_id == pool_id)
-            .order_by(PoolAccessPartnerOperator.created_at.desc())
+        (
+            await db.execute(
+                select(PoolAccessPartnerOperator)
+                .where(PoolAccessPartnerOperator.pool_id == pool_id)
+                .order_by(PoolAccessPartnerOperator.created_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         {"auth_id": row.auth_id, "active": row.is_active, "pool_id": str(row.pool_id)}
         for row in rows

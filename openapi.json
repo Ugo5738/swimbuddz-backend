@@ -23276,6 +23276,52 @@
         }
       }
     },
+    "/api/v1/internal/payments/pool-access/paid/{reference}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Verified Pool Access Payment",
+        "description": "Authoritative ledger-side paid evidence; never accepts a client paid flag.",
+        "operationId": "verified_pool_access_payment_internal_payments_pool_access_paid__reference__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Reference"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/payments/recurring-payouts/cohorts/{cohort_id}/extend": {
       "post": {
         "tags": [
@@ -40390,6 +40436,821 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PoolSubmissionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/partner/assigned-pools": {
+      "get": {
+        "tags": [
+          "pool-access-partners"
+        ],
+        "summary": "Assigned Pools",
+        "operationId": "assigned_pools_pools_access_partner_assigned_pools_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pools/access/partner/{pool_id}/redeem": {
+      "post": {
+        "tags": [
+          "pool-access-partners"
+        ],
+        "summary": "Redeem At Partner",
+        "operationId": "redeem_at_partner_pools_access_partner__pool_id__redeem_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pool Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/pools/access/partner/{pool_id}/operators": {
+      "get": {
+        "tags": [
+          "admin-pool-access-partners"
+        ],
+        "summary": "List Reception Operators",
+        "operationId": "list_reception_operators_admin_pools_access_partner__pool_id__operators_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pool Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin-pool-access-partners"
+        ],
+        "summary": "Authorize Reception",
+        "operationId": "authorize_reception_admin_pools_access_partner__pool_id__operators_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pool Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartnerGrant"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/pools/access/partner/{pool_id}/operators/{auth_id}": {
+      "delete": {
+        "tags": [
+          "admin-pool-access-partners"
+        ],
+        "summary": "Revoke Reception",
+        "operationId": "revoke_reception_admin_pools_access_partner__pool_id__operators__auth_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pool Id"
+            }
+          },
+          {
+            "name": "auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/pools/access/bookings/{booking_id}/quote": {
+      "get": {
+        "tags": [
+          "internal-pool-access"
+        ],
+        "summary": "Quote",
+        "operationId": "quote_internal_pools_access_bookings__booking_id__quote_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          },
+          {
+            "name": "member_auth_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/pools/access/bookings/{booking_id}/claim-checkout": {
+      "post": {
+        "tags": [
+          "internal-pool-access"
+        ],
+        "summary": "Claim Checkout",
+        "operationId": "claim_checkout_internal_pools_access_bookings__booking_id__claim_checkout_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/pools/access/bookings/{booking_id}/confirm": {
+      "post": {
+        "tags": [
+          "internal-pool-access"
+        ],
+        "summary": "Confirm",
+        "operationId": "confirm_internal_pools_access_bookings__booking_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/bookings/{booking_id}/tickets": {
+      "get": {
+        "tags": [
+          "pool-access-redemption"
+        ],
+        "summary": "My Tickets",
+        "operationId": "my_tickets_pools_access_bookings__booking_id__tickets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/redeem": {
+      "post": {
+        "tags": [
+          "pool-access-redemption"
+        ],
+        "summary": "Redeem",
+        "description": "Admin-only check-in for first pilot. Partner-scoped roles required before rollout.",
+        "operationId": "redeem_pools_access_redeem_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticket"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/bookings/{booking_id}/reconcile": {
+      "post": {
+        "tags": [
+          "pool-access-redemption"
+        ],
+        "summary": "Reconcile",
+        "operationId": "reconcile_pools_access_bookings__booking_id__reconcile_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/offers": {
+      "get": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "Published Offers",
+        "operationId": "published_offers_pools_access_offers_get",
+        "parameters": [
+          {
+            "name": "location_area",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Location Area"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OfferOut"
+                  },
+                  "title": "Response Published Offers Pools Access Offers Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/bookings": {
+      "post": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "Reserve Access",
+        "description": "Temporary reservation; NEVER issues a valid QR or paid entitlement.",
+        "operationId": "reserve_access_pools_access_bookings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pools/access/bookings/me": {
+      "get": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "My Bookings",
+        "operationId": "my_bookings_pools_access_bookings_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BookingOut"
+                  },
+                  "type": "array",
+                  "title": "Response My Bookings Pools Access Bookings Me Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/pools/access/offers": {
+      "get": {
+        "tags": [
+          "admin-pool-access"
+        ],
+        "summary": "Admin List Offers",
+        "operationId": "admin_list_offers_admin_pools_access_offers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminOfferOut"
+                  },
+                  "type": "array",
+                  "title": "Response Admin List Offers Admin Pools Access Offers Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "admin-pool-access"
+        ],
+        "summary": "Create Offer",
+        "operationId": "create_offer_admin_pools_access_offers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfferInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOfferOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/pools/access/bookings": {
+      "get": {
+        "tags": [
+          "admin-pool-access"
+        ],
+        "summary": "Admin List Access Bookings",
+        "operationId": "admin_list_access_bookings_admin_pools_access_bookings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/pools/access/offers/{offer_id}/publish": {
+      "post": {
+        "tags": [
+          "admin-pool-access"
+        ],
+        "summary": "Publish Offer",
+        "operationId": "publish_offer_admin_pools_access_offers__offer_id__publish_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOfferOut"
                 }
               }
             }
@@ -89713,6 +90574,18 @@
             ],
             "title": "Order Id"
           },
+          "pool_access_booking_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Access Booking Id"
+          },
           "discount_code": {
             "anyOf": [
               {
@@ -91374,6 +92247,7 @@
           "ride_share",
           "session_booking",
           "guest_pass",
+          "pool_access",
           "community_experience",
           "strokelab_founding"
         ],
@@ -108541,6 +109415,200 @@
         ],
         "title": "VolunteerTier"
       },
+      "AdminOfferOut": {
+        "properties": {
+          "pool_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pool Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "capacity": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Capacity"
+          },
+          "selling_price_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Selling Price Kobo"
+          },
+          "negotiated_cost_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Negotiated Cost Kobo"
+          },
+          "cost_basis": {
+            "type": "string",
+            "enum": [
+              "per_person",
+              "per_group"
+            ],
+            "title": "Cost Basis",
+            "default": "per_person"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "self_directed_permitted": {
+            "type": "boolean",
+            "title": "Self Directed Permitted",
+            "default": false
+          },
+          "admissions_require_lifeguard": {
+            "type": "boolean",
+            "title": "Admissions Require Lifeguard",
+            "default": true
+          },
+          "amenities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Amenities"
+          },
+          "access_rules": {
+            "type": "string",
+            "title": "Access Rules",
+            "default": ""
+          },
+          "cancellation_policy": {
+            "type": "string",
+            "title": "Cancellation Policy",
+            "default": ""
+          },
+          "public_booking_enabled": {
+            "type": "boolean",
+            "title": "Public Booking Enabled",
+            "default": false
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pool_id",
+          "title",
+          "starts_at",
+          "ends_at",
+          "capacity",
+          "selling_price_kobo",
+          "negotiated_cost_kobo",
+          "id",
+          "status"
+        ],
+        "title": "AdminOfferOut"
+      },
+      "BookingInput": {
+        "properties": {
+          "offer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Offer Id"
+          },
+          "guests": {
+            "items": {
+              "$ref": "#/components/schemas/GuestInput"
+            },
+            "type": "array",
+            "maxItems": 25,
+            "minItems": 1,
+            "title": "Guests"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Idempotency Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "offer_id",
+          "guests",
+          "idempotency_key"
+        ],
+        "title": "BookingInput"
+      },
+      "BookingOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "offer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Offer Id"
+          },
+          "headcount": {
+            "type": "integer",
+            "title": "Headcount"
+          },
+          "selling_total_kobo": {
+            "type": "integer",
+            "title": "Selling Total Kobo"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          },
+          "hold_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Hold Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "offer_id",
+          "headcount",
+          "selling_total_kobo",
+          "status",
+          "payment_reference",
+          "hold_expires_at"
+        ],
+        "title": "BookingOut"
+      },
       "CostQuoteLine": {
         "properties": {
           "category": {
@@ -108726,6 +109794,21 @@
         ],
         "title": "CostQuoteResponse"
       },
+      "GuestInput": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 150,
+            "minLength": 2,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "GuestInput"
+      },
       "IndoorOutdoor": {
         "type": "string",
         "enum": [
@@ -108734,6 +109817,252 @@
           "both"
         ],
         "title": "IndoorOutdoor"
+      },
+      "OfferInput": {
+        "properties": {
+          "pool_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pool Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "capacity": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Capacity"
+          },
+          "selling_price_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Selling Price Kobo"
+          },
+          "negotiated_cost_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Negotiated Cost Kobo"
+          },
+          "cost_basis": {
+            "type": "string",
+            "enum": [
+              "per_person",
+              "per_group"
+            ],
+            "title": "Cost Basis",
+            "default": "per_person"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "self_directed_permitted": {
+            "type": "boolean",
+            "title": "Self Directed Permitted",
+            "default": false
+          },
+          "admissions_require_lifeguard": {
+            "type": "boolean",
+            "title": "Admissions Require Lifeguard",
+            "default": true
+          },
+          "amenities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Amenities"
+          },
+          "access_rules": {
+            "type": "string",
+            "title": "Access Rules",
+            "default": ""
+          },
+          "cancellation_policy": {
+            "type": "string",
+            "title": "Cancellation Policy",
+            "default": ""
+          },
+          "public_booking_enabled": {
+            "type": "boolean",
+            "title": "Public Booking Enabled",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "pool_id",
+          "title",
+          "starts_at",
+          "ends_at",
+          "capacity",
+          "selling_price_kobo",
+          "negotiated_cost_kobo"
+        ],
+        "title": "OfferInput"
+      },
+      "OfferOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "pool_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pool Id"
+          },
+          "pool_name": {
+            "type": "string",
+            "title": "Pool Name",
+            "default": ""
+          },
+          "location_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Area"
+          },
+          "pool_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Address"
+          },
+          "pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Length M"
+          },
+          "depth_min_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth Min M"
+          },
+          "depth_max_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth Max M"
+          },
+          "has_lifeguard": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Lifeguard"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "capacity": {
+            "type": "integer",
+            "title": "Capacity"
+          },
+          "selling_price_kobo": {
+            "type": "integer",
+            "title": "Selling Price Kobo"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "amenities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Amenities"
+          },
+          "access_rules": {
+            "type": "string",
+            "title": "Access Rules"
+          },
+          "cancellation_policy": {
+            "type": "string",
+            "title": "Cancellation Policy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "pool_id",
+          "title",
+          "starts_at",
+          "ends_at",
+          "capacity",
+          "selling_price_kobo",
+          "currency",
+          "status",
+          "amenities",
+          "access_rules",
+          "cancellation_policy"
+        ],
+        "title": "OfferOut",
+        "description": "Public catalog representation: NEVER expose negotiated partner costs."
       },
       "OperatingAreaCreate": {
         "properties": {
@@ -109582,6 +110911,19 @@
         },
         "type": "object",
         "title": "OperatingCostRateUpdate"
+      },
+      "PartnerGrant": {
+        "properties": {
+          "auth_id": {
+            "type": "string",
+            "title": "Auth Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auth_id"
+        ],
+        "title": "PartnerGrant"
       },
       "PartnershipStatus": {
         "type": "string",
@@ -113690,6 +115032,19 @@
           "in_person"
         ],
         "title": "PreferredContactChannel"
+      },
+      "ScanInput": {
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "title": "Ticket"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket"
+        ],
+        "title": "ScanInput"
       },
       "WeatherRefreshResult": {
         "properties": {

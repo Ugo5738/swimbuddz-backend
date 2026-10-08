@@ -77,7 +77,10 @@ async def verified_pool_access_payment(
         "reference": payment.reference,
         "booking_id": (payment.payment_metadata or {}).get("pool_access_booking_id"),
         "member_auth_id": payment.member_auth_id,
-        "amount_kobo": int((payment.payment_metadata or {}).get("pool_access_subtotal_kobo") or _to_kobo(payment.amount)),
+        "amount_kobo": int(
+            (payment.payment_metadata or {}).get("pool_access_subtotal_kobo")
+            or _to_kobo(payment.amount)
+        ),
         "paid_total_kobo": _to_kobo(payment.amount),
         "currency": payment.currency,
         "provider": payment.provider,
