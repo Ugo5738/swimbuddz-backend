@@ -51,7 +51,7 @@ async def refresh_content_acquisition(days: int = 90) -> int:
     # Only Reporting aggregates the independent Members and Payments contracts.
     # The Payments service never knows about content or member acquisition.
     totals: dict[UUID, dict] = defaultdict(
-        lambda: {"paying_members": set(), "payment_count": 0, "paid_amount_ngn": 0.0}
+        lambda: {"paying_members": set(), "payment_count": 0, "paid_amount_ngn": 0.0, "by_purpose": defaultdict(lambda: {"payment_count": 0, "amount_ngn": 0.0})}
     )
     from libs.common.config import get_settings as settings_factory
 
@@ -82,6 +82,9 @@ async def refresh_content_acquisition(days: int = 90) -> int:
             bucket["paying_members"].add(auth_id)
             bucket["payment_count"] += int(item["payment_count"])
             bucket["paid_amount_ngn"] += float(item["amount_ngn"])
+            purpose = item["purpose"]
+            bucket["by_purpose"][purpose]["payment_count"] += int(item["payment_count"])
+            bucket["by_purpose"][purpose]["amount_ngn"] += float(item["amount_ngn"])
 
     async with AsyncSessionLocal() as db:
         # Recompute the entire period so corrected/deleted registrations cannot
@@ -102,6 +105,7 @@ async def refresh_content_acquisition(days: int = 90) -> int:
                 paying_members=len(totals[content_id]["paying_members"]),
                 payment_count=totals[content_id]["payment_count"],
                 paid_amount_ngn=totals[content_id]["paid_amount_ngn"],
+                payments_by_purpose=dict(totals[content_id]["by_purpose"]),
                 computed_at=utc_now(),
                 source="members_registration",
             )
@@ -112,6 +116,7 @@ async def refresh_content_acquisition(days: int = 90) -> int:
                     "paying_members": len(totals[content_id]["paying_members"]),
                     "payment_count": totals[content_id]["payment_count"],
                     "paid_amount_ngn": totals[content_id]["paid_amount_ngn"],
+                    "payments_by_purpose": dict(totals[content_id]["by_purpose"]),
                     "computed_at": utc_now(),
                 },
             )
