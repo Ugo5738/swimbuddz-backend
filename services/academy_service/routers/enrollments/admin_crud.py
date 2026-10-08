@@ -11,7 +11,6 @@ from libs.common.logging import get_logger
 from libs.common.service_client import dispatch_notification, get_member_by_id
 from libs.db.session import get_async_db
 from services.academy_service.models import (
-    AcademyJourney,
     Cohort,
     Enrollment,
     EnrollmentStatus,
@@ -55,18 +54,7 @@ async def enroll_student(
         Enrollment.program_id == enrollment_in.program_id,
     )
     result = await db.execute(query)
-    existing = next((
-        row for row in result.scalars().all()
-        if row.status in {
-            EnrollmentStatus.ENROLLED,
-            EnrollmentStatus.PENDING_APPROVAL,
-            EnrollmentStatus.WAITLIST,
-        }
-        and (
-            row.cohort_id is None
-            or row.cohort_id == enrollment_in.cohort_id
-        )
-    ), None)
+    existing = result.scalar_one_or_none()
 
     if existing:
         raise HTTPException(
@@ -116,15 +104,6 @@ async def enroll_student(
                 current_user.user_id,
                 enrollment_in.member_id,
             )
-
-    # Keep a durable programme identity across repeated cohorts.
-    journey = (await db.execute(select(AcademyJourney).where(
-        AcademyJourney.member_id == enrollment_in.member_id,
-        AcademyJourney.program_id == enrollment_in.program_id,
-    ))).scalar_one_or_none()
-    if journey is None:
-        db.add(AcademyJourney(member_id=enrollment_in.member_id, program_id=enrollment_in.program_id))
-        await db.flush()
 
     price_snapshot = _resolve_enrollment_total_fee(program, cohort)
     enrollment = Enrollment(
