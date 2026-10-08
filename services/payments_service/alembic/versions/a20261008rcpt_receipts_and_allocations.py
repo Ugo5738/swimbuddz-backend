@@ -15,6 +15,7 @@ depends_on = None
 def upgrade():
     op.create_table("academy_bank_receipts",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("payment_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("payments.id"), nullable=False, unique=True),
         sa.Column("external_reference", sa.String(160), nullable=False),
         sa.Column("amount_kobo", sa.BigInteger(), nullable=False),
         sa.Column("currency", sa.String(8), nullable=False),
