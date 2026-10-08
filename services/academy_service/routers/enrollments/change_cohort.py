@@ -517,7 +517,11 @@ async def change_my_cohort(
     }
     # A financial hold is recorded, not silently overridden or automatically
     # reallocated. Reviewers handle shared-transfer evidence separately.
-    if snapshot["requires_financial_review"] or enrollment.progress_records:
+    if (
+        snapshot["requires_financial_review"]
+        or enrollment.progress_records
+        or enrollment.status == EnrollmentStatus.ENROLLED
+    ):
         change = AcademyEnrollmentChange(
             journey_id=journey.id,
             from_enrollment_id=enrollment.id,
