@@ -81,10 +81,10 @@ async def verify_bank_receipt(
 ):
     # One canonical payment records cash-in, while allocations only track
     # beneficiaries and never book any additional income.
-    await lock_external_reference(db, body.external_reference)
+    reference = body.external_reference.strip().upper()
+    await lock_external_reference(db, reference)
     # Existing paid Payment rows may already represent the same cash; never
     # silently create a second receipt with the same bank reference.
-    reference = body.external_reference.strip().upper()
     existing = (
         await db.execute(
             select(AcademyBankReceipt)
