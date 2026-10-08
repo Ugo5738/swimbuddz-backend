@@ -55,14 +55,22 @@ from services.payments_service.services.recurring_payout_extensions import (
 router = APIRouter(prefix="/internal/payments", tags=["internal"])
 
 
-@router.get("/pool-access/paid/{reference}", dependencies=[Depends(require_service_role)])
-async def verified_pool_access_payment(reference: str, db: AsyncSession = Depends(get_async_db)):
+@router.get(
+    "/pool-access/paid/{reference}", dependencies=[Depends(require_service_role)]
+)
+async def verified_pool_access_payment(
+    reference: str, db: AsyncSession = Depends(get_async_db)
+):
     """Authoritative ledger-side paid evidence; never accepts a client paid flag."""
-    payment = (await db.execute(select(Payment).where(
-        Payment.reference == reference,
-        Payment.purpose == PaymentPurpose.POOL_ACCESS,
-        Payment.status == PaymentStatus.PAID,
-    ))).scalar_one_or_none()
+    payment = (
+        await db.execute(
+            select(Payment).where(
+                Payment.reference == reference,
+                Payment.purpose == PaymentPurpose.POOL_ACCESS,
+                Payment.status == PaymentStatus.PAID,
+            )
+        )
+    ).scalar_one_or_none()
     if not payment:
         raise HTTPException(404, "Verified payment not found")
     return {
@@ -73,6 +81,7 @@ async def verified_pool_access_payment(reference: str, db: AsyncSession = Depend
         "currency": payment.currency,
         "provider": payment.provider,
     }
+
 
 settings = get_settings()
 logger = get_logger(__name__)
