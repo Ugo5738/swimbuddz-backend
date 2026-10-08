@@ -50,6 +50,9 @@ class MilestoneEvidence(Base):
     approved_for_public: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    coach_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    showcase_review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
