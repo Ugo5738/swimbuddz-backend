@@ -38,7 +38,7 @@ async def test_shared_receipt_allocates_only_verified_total(db_session, monkeypa
     )
     receipt_id = UUID(receipt["id"])
     first_allocation = service.AllocateReceiptRequest(
-        member_auth_id="member", enrollment_id=uuid4(),
+        enrollment_id=uuid4(),
         amount_kobo=first, idempotency_key="first-member-installment",
     )
     a = await service.allocate_receipt(receipt_id, first_allocation, admin, db_session)
