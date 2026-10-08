@@ -8760,6 +8760,98 @@
         ]
       }
     },
+    "/api/v1/internal/members/academy-swim-clearance/{member_id}": {
+      "get": {
+        "tags": [
+          "internal",
+          "internal-academy-clearance"
+        ],
+        "summary": "Academy Clearance",
+        "operationId": "academy_clearance_internal_members_academy_swim_clearance__member_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/members/academy-swim-clearance/batch": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal-academy-clearance"
+        ],
+        "summary": "Academy Clearance Batch",
+        "operationId": "academy_clearance_batch_internal_members_academy_swim_clearance_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClearanceBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/internal/members/birthdays-today": {
       "get": {
         "tags": [
@@ -18184,6 +18276,114 @@
         ]
       }
     },
+    "/api/v1/academy/admin/academy/enrollment-changes": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "List Academy Change Reviews",
+        "description": "Admin review queue. Financial settlement is not approved by this endpoint.",
+        "operationId": "list_academy_change_reviews_academy_admin_academy_enrollment_changes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/my-academy-journeys": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "My Academy Journeys",
+        "description": "Group a member's cohort attempts by programme without collapsing history.",
+        "operationId": "my_academy_journeys_academy_my_academy_journeys_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/my-enrollments/{enrollment_id}/change-cohort": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Change My Cohort",
+        "operationId": "change_my_cohort_academy_my_enrollments__enrollment_id__change_cohort_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeCohortRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeCohortResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/my-enrollments": {
       "get": {
         "tags": [
@@ -19034,6 +19234,519 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/academy/enrollments/{enrollment_id}/evidence": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "List Milestone Evidence",
+        "operationId": "list_milestone_evidence_academy_enrollments__enrollment_id__evidence_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MilestoneEvidenceResponse"
+                  },
+                  "title": "Response List Milestone Evidence Academy Enrollments  Enrollment Id  Evidence Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Create Milestone Evidence",
+        "operationId": "create_milestone_evidence_academy_enrollments__enrollment_id__evidence_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MilestoneEvidenceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneEvidenceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/coach/evidence": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "List Coach Evidence",
+        "operationId": "list_coach_evidence_academy_coach_evidence_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MilestoneEvidenceResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Coach Evidence Academy Coach Evidence Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/admin/evidence": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "List Admin Evidence",
+        "operationId": "list_admin_evidence_academy_admin_evidence_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MilestoneEvidenceResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Admin Evidence Academy Admin Evidence Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/evidence/{evidence_id}/coach-review": {
+      "post": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Review Evidence",
+        "operationId": "review_evidence_academy_evidence__evidence_id__coach_review_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/evidence/{evidence_id}/showcase": {
+      "post": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Review Showcase",
+        "operationId": "review_showcase_academy_admin_evidence__evidence_id__showcase_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceShowcaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/enrollments/{enrollment_id}/evidence/{evidence_id}/publication-consent": {
+      "patch": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Update Publication Consent",
+        "description": "Owners can withdraw publication immediately; approval must be redone.",
+        "operationId": "update_publication_consent_academy_enrollments__enrollment_id__evidence__evidence_id__publication_consent_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          },
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicationConsentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneEvidenceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/public/showcase": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "List Public Showcase",
+        "operationId": "list_public_showcase_academy_public_showcase_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublicShowcaseItem"
+                  },
+                  "type": "array",
+                  "title": "Response List Public Showcase Academy Public Showcase Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/public/showcase/{evidence_id}/play": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Play Showcase Video",
+        "description": "Check current consent on every playback, including after withdrawal.",
+        "operationId": "play_showcase_video_academy_public_showcase__evidence_id__play_get",
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/evidence/{evidence_id}/playback-url": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Evidence Playback Url",
+        "description": "Resolve a private clip URL after checking owner/assigned-coach/admin access.\n\nBrowsers use this JSON endpoint with a bearer token, rather than opening a\nprotected redirect from a bare <video> tag without authorization headers.",
+        "operationId": "evidence_playback_url_academy_evidence__evidence_id__playback_url_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/evidence/{evidence_id}/play": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Play Evidence For Authorized Person",
+        "operationId": "play_evidence_for_authorized_person_academy_evidence__evidence_id__play_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/academy/coach/me/dashboard": {
@@ -23276,6 +23989,52 @@
         }
       }
     },
+    "/api/v1/internal/payments/pool-access/paid/{reference}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Verified Pool Access Payment",
+        "description": "Authoritative ledger-side paid evidence; never accepts a client paid flag.",
+        "operationId": "verified_pool_access_payment_internal_payments_pool_access_paid__reference__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Reference"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/payments/recurring-payouts/cohorts/{cohort_id}/extend": {
       "post": {
         "tags": [
@@ -23907,6 +24666,99 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/internal/payments/academy/enrollments/{enrollment_id}/financial-state": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Academy Enrollment Financial State",
+        "operationId": "academy_enrollment_financial_state_internal_payments_academy_enrollments__enrollment_id__financial_state_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcademyEnrollmentFinancialState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/payments/reports/attributed-payments": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Attributed Payments Report",
+        "description": "Payment-owned settled rows, grouped by payer and canonical purpose.\n\nThe Reporting Service joins these aggregates to its first-party Member\nacquisition origin. No Payment -> Members or Payment -> Content dependency.",
+        "operationId": "attributed_payments_report_internal_payments_reports_attributed_payments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttributionPaymentQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/payments/{reference}/proof": {
@@ -26595,6 +27447,76 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/content/{post_id}/engagement": {
+      "post": {
+        "tags": [
+          "content-engagement"
+        ],
+        "summary": "Record Engagement",
+        "operationId": "record_engagement_content__post_id__engagement_post",
+        "parameters": [
+          {
+            "name": "post_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Post Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/content/admin/engagement": {
+      "get": {
+        "tags": [
+          "content-engagement"
+        ],
+        "summary": "Engagement Report",
+        "operationId": "engagement_report_content_admin_engagement_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/content/": {
@@ -30413,6 +31335,31 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/admin/reports/flywheel/content-acquisition": {
+      "get": {
+        "tags": [
+          "admin-flywheel"
+        ],
+        "summary": "Content Acquisition",
+        "description": "Reporting-owned confirmed registration counts, not attributed payments.",
+        "operationId": "content_acquisition_admin_reports_flywheel_content_acquisition_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/admin/reports/flywheel/wallet": {
@@ -40407,6 +41354,1056 @@
         }
       }
     },
+    "/api/v1/pools/access/partner/assigned-pools": {
+      "get": {
+        "tags": [
+          "pool-access-partners"
+        ],
+        "summary": "Assigned Pools",
+        "operationId": "assigned_pools_pools_access_partner_assigned_pools_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pools/access/partner/{pool_id}/redeem": {
+      "post": {
+        "tags": [
+          "pool-access-partners"
+        ],
+        "summary": "Redeem At Partner",
+        "operationId": "redeem_at_partner_pools_access_partner__pool_id__redeem_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pool Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/pools/access/partner/{pool_id}/operators": {
+      "get": {
+        "tags": [
+          "admin-pool-access-partners"
+        ],
+        "summary": "List Reception Operators",
+        "operationId": "list_reception_operators_admin_pools_access_partner__pool_id__operators_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pool Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin-pool-access-partners"
+        ],
+        "summary": "Authorize Reception",
+        "operationId": "authorize_reception_admin_pools_access_partner__pool_id__operators_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pool Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartnerGrant"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/pools/access/partner/{pool_id}/operators/{auth_id}": {
+      "delete": {
+        "tags": [
+          "admin-pool-access-partners"
+        ],
+        "summary": "Revoke Reception",
+        "operationId": "revoke_reception_admin_pools_access_partner__pool_id__operators__auth_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pool Id"
+            }
+          },
+          {
+            "name": "auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/pools/access/bookings/{booking_id}/quote": {
+      "get": {
+        "tags": [
+          "internal-pool-access"
+        ],
+        "summary": "Quote",
+        "operationId": "quote_internal_pools_access_bookings__booking_id__quote_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          },
+          {
+            "name": "member_auth_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/pools/access/bookings/{booking_id}/claim-checkout": {
+      "post": {
+        "tags": [
+          "internal-pool-access"
+        ],
+        "summary": "Claim Checkout",
+        "operationId": "claim_checkout_internal_pools_access_bookings__booking_id__claim_checkout_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/pools/access/bookings/{booking_id}/confirm": {
+      "post": {
+        "tags": [
+          "internal-pool-access"
+        ],
+        "summary": "Confirm",
+        "operationId": "confirm_internal_pools_access_bookings__booking_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/bookings/{booking_id}/tickets": {
+      "get": {
+        "tags": [
+          "pool-access-redemption"
+        ],
+        "summary": "My Tickets",
+        "operationId": "my_tickets_pools_access_bookings__booking_id__tickets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/redeem": {
+      "post": {
+        "tags": [
+          "pool-access-redemption"
+        ],
+        "summary": "Redeem",
+        "description": "Admin-only check-in for first pilot. Partner-scoped roles required before rollout.",
+        "operationId": "redeem_pools_access_redeem_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticket"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/bookings/{booking_id}/reconcile": {
+      "post": {
+        "tags": [
+          "pool-access-redemption"
+        ],
+        "summary": "Reconcile",
+        "operationId": "reconcile_pools_access_bookings__booking_id__reconcile_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/reconciliations/{reconciliation_id}/record-external-settlement": {
+      "post": {
+        "tags": [
+          "pool-access-redemption"
+        ],
+        "summary": "Record External Settlement",
+        "description": "Record bank-confirmed settlement, never execute or claim to execute a transfer.",
+        "operationId": "record_external_settlement_pools_access_reconciliations__reconciliation_id__record_external_settlement_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reconciliation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Reconciliation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/reconciliations/{reconciliation_id}/settlements": {
+      "get": {
+        "tags": [
+          "pool-access-redemption"
+        ],
+        "summary": "Settlement Records",
+        "operationId": "settlement_records_pools_access_reconciliations__reconciliation_id__settlements_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reconciliation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Reconciliation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/offers": {
+      "get": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "Published Offers",
+        "operationId": "published_offers_pools_access_offers_get",
+        "parameters": [
+          {
+            "name": "location_area",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Location Area"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OfferOut"
+                  },
+                  "title": "Response Published Offers Pools Access Offers Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/bookings": {
+      "post": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "Reserve Access",
+        "description": "Temporary reservation; NEVER issues a valid QR or paid entitlement.",
+        "operationId": "reserve_access_pools_access_bookings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pools/access/bookings/{booking_id}/cancel": {
+      "post": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "Cancel Unpaid Hold",
+        "description": "Only release holds that have never started a payment checkout.\n\nOnce checkout was claimed, Paystack may still accept money. Cancellation\nmust wait for verified provider closure and a refund review.",
+        "operationId": "cancel_unpaid_hold_pools_access_bookings__booking_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/bookings/{booking_id}/request-cancellation": {
+      "post": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "Request Paid Cancellation",
+        "description": "Request review without revoking a paid ticket or claiming a refund.",
+        "operationId": "request_paid_cancellation_pools_access_bookings__booking_id__request_cancellation_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/bookings/me": {
+      "get": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "My Bookings",
+        "operationId": "my_bookings_pools_access_bookings_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BookingOut"
+                  },
+                  "type": "array",
+                  "title": "Response My Bookings Pools Access Bookings Me Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/pools/access/offers": {
+      "get": {
+        "tags": [
+          "admin-pool-access"
+        ],
+        "summary": "Admin List Offers",
+        "operationId": "admin_list_offers_admin_pools_access_offers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminOfferOut"
+                  },
+                  "type": "array",
+                  "title": "Response Admin List Offers Admin Pools Access Offers Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "admin-pool-access"
+        ],
+        "summary": "Create Offer",
+        "operationId": "create_offer_admin_pools_access_offers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfferInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOfferOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/pools/access/bookings": {
+      "get": {
+        "tags": [
+          "admin-pool-access"
+        ],
+        "summary": "Admin List Access Bookings",
+        "operationId": "admin_list_access_bookings_admin_pools_access_bookings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/pools/access/offers/{offer_id}/publish": {
+      "post": {
+        "tags": [
+          "admin-pool-access"
+        ],
+        "summary": "Publish Offer",
+        "operationId": "publish_offer_admin_pools_access_offers__offer_id__publish_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Offer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOfferOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/pools/access/cancellation-requests": {
+      "get": {
+        "tags": [
+          "admin-pool-access"
+        ],
+        "summary": "Cancellation Review Queue",
+        "operationId": "cancellation_review_queue_admin_pools_access_cancellation_requests_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/pools": {
       "get": {
         "tags": [
@@ -50296,6 +52293,122 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MediaItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/media/alumni-evidence/{media_id}": {
+      "get": {
+        "tags": [
+          "media-internal"
+        ],
+        "summary": "Validate Alumni Evidence",
+        "description": "Check ownership and private video purpose without leaking media URLs.\n\nOnly backend service callers can use this route. Any mismatch is a 404,\nincluding media owned by another person or media intended for a gallery.",
+        "operationId": "validate_alumni_evidence_internal_media_alumni_evidence__media_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "media_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Id"
+            }
+          },
+          {
+            "name": "owner_auth_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Owner Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Validate Alumni Evidence Internal Media Alumni Evidence  Media Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/media/alumni-evidence/{media_id}/public-playback": {
+      "get": {
+        "tags": [
+          "media-internal"
+        ],
+        "summary": "Get Alumni Public Playback",
+        "description": "Return a short-lived private URL only to a trusted calling service.\n\nAuthorization to publish must be checked on each request by Academy. Public\nclients must never be able to call this internal service route directly.",
+        "operationId": "get_alumni_public_playback_internal_media_alumni_evidence__media_id__public_playback_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "media_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Get Alumni Public Playback Internal Media Alumni Evidence  Media Id  Public Playback Get"
                 }
               }
             }
@@ -61141,6 +63254,25 @@
         "title": "ChallengeWinnerPublicInfo",
         "description": "Winner summary shown on the public landing page.\n\nOnly populated when format='competition' AND winner_submission_id is set.\nMember emails / auth_ids are NEVER included \u2014 only display names.\nproof_media is only populated when show_winner_media_publicly is true on\nthe challenge."
       },
+      "ClearanceBatchRequest": {
+        "properties": {
+          "member_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Member Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_ids"
+        ],
+        "title": "ClearanceBatchRequest"
+      },
       "ClubAccessCheck": {
         "properties": {
           "context_key": {
@@ -67893,6 +70025,17 @@
             "type": "string",
             "title": "Id"
           },
+          "member_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Auth Id"
+          },
           "source_joined_at": {
             "type": "string",
             "title": "Source Joined At"
@@ -67907,6 +70050,17 @@
               }
             ],
             "title": "Acquisition Source"
+          },
+          "content_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Source"
           }
         },
         "type": "object",
@@ -82753,6 +84907,56 @@
         ],
         "title": "BillingType"
       },
+      "ChangeCohortRequest": {
+        "properties": {
+          "target_cohort_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Cohort Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_cohort_id"
+        ],
+        "title": "ChangeCohortRequest"
+      },
+      "ChangeCohortResult": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "enrollment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrollment Id"
+          },
+          "change_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Change Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "change_id",
+          "message"
+        ],
+        "title": "ChangeCohortResult"
+      },
       "CoachAssignmentCreate": {
         "properties": {
           "cohort_id": {
@@ -86345,6 +88549,99 @@
         ],
         "title": "EvalRecommendation"
       },
+      "EvidenceReviewRequest": {
+        "properties": {
+          "coach_notes": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Coach Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "coach_notes"
+        ],
+        "title": "EvidenceReviewRequest"
+      },
+      "EvidenceReviewResponse": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evidence Id"
+          },
+          "coach_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Notes"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "approved_for_public": {
+            "type": "boolean",
+            "title": "Approved For Public"
+          },
+          "showcase_review_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Showcase Review Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "approved_for_public"
+        ],
+        "title": "EvidenceReviewResponse"
+      },
+      "EvidenceShowcaseRequest": {
+        "properties": {
+          "approve": {
+            "type": "boolean",
+            "title": "Approve"
+          },
+          "review_notes": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Review Notes"
+          },
+          "publication_consent_confirmed": {
+            "type": "boolean",
+            "title": "Publication Consent Confirmed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "approve",
+          "review_notes"
+        ],
+        "title": "EvidenceShowcaseRequest"
+      },
       "InstallmentStatus": {
         "type": "string",
         "enum": [
@@ -86586,6 +88883,202 @@
           "override"
         ],
         "title": "MilestoneEventType"
+      },
+      "MilestoneEvidenceCreate": {
+        "properties": {
+          "milestone_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Id"
+          },
+          "video_media_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Video Media Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cohort_archive",
+              "continued_progress"
+            ],
+            "title": "Kind"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "recorded_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded On"
+          },
+          "consent_to_share": {
+            "type": "boolean",
+            "title": "Consent To Share",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "milestone_id",
+          "video_media_id",
+          "kind"
+        ],
+        "title": "MilestoneEvidenceCreate"
+      },
+      "MilestoneEvidenceResponse": {
+        "properties": {
+          "milestone_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Id"
+          },
+          "video_media_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Video Media Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cohort_archive",
+              "continued_progress"
+            ],
+            "title": "Kind"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "recorded_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded On"
+          },
+          "consent_to_share": {
+            "type": "boolean",
+            "title": "Consent To Share",
+            "default": false
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "approved_for_public": {
+            "type": "boolean",
+            "title": "Approved For Public"
+          },
+          "public_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Display Name"
+          },
+          "publication_consent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Consent At"
+          },
+          "coach_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Notes"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "showcase_review_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Showcase Review Notes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "milestone_id",
+          "video_media_id",
+          "kind",
+          "id",
+          "enrollment_id",
+          "approved_for_public",
+          "created_at"
+        ],
+        "title": "MilestoneEvidenceResponse"
       },
       "MilestoneResponse": {
         "properties": {
@@ -87758,6 +90251,61 @@
         ],
         "title": "ProgressStatus"
       },
+      "PublicShowcaseItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Published At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "display_name",
+          "published_at"
+        ],
+        "title": "PublicShowcaseItem"
+      },
+      "PublicationConsentRequest": {
+        "properties": {
+          "consent": {
+            "type": "boolean",
+            "title": "Consent"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consent"
+        ],
+        "title": "PublicationConsentRequest"
+      },
       "ReadinessCheckItem": {
         "properties": {
           "name": {
@@ -88348,6 +90896,36 @@
         "title": "WithdrawEnrollmentResponse",
         "description": "Summary of a withdrawal action \u2014 what was refunded and waived."
       },
+      "AcademyEnrollmentFinancialState": {
+        "properties": {
+          "has_payment_activity": {
+            "type": "boolean",
+            "title": "Has Payment Activity"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "References"
+          },
+          "statuses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Statuses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "has_payment_activity",
+          "references",
+          "statuses"
+        ],
+        "title": "AcademyEnrollmentFinancialState",
+        "description": "Fail-closed transfer gate: any initiated payment needs reconciliation."
+      },
       "AdminBookingOfflinePaymentRequest": {
         "properties": {
           "payment_method": {
@@ -88607,6 +91185,35 @@
           "proof_media_id"
         ],
         "title": "AttachPaymentReceipt"
+      },
+      "AttributionPaymentQuery": {
+        "properties": {
+          "member_auth_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Member Auth Ids"
+          },
+          "date_from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Date From"
+          },
+          "date_to": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Date To"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date_from",
+          "date_to"
+        ],
+        "title": "AttributionPaymentQuery",
+        "description": "Bounded bulk reporting query; never callable by public clients."
       },
       "Body_upload_transfer_receipt_payments_manual_transfer__reference__upload_post": {
         "properties": {
@@ -89712,6 +92319,18 @@
               }
             ],
             "title": "Order Id"
+          },
+          "pool_access_booking_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Access Booking Id"
           },
           "discount_code": {
             "anyOf": [
@@ -91374,6 +93993,7 @@
           "ride_share",
           "session_booking",
           "guest_pass",
+          "pool_access",
           "community_experience",
           "strokelab_founding"
         ],
@@ -94016,6 +96636,42 @@
             ],
             "title": "Featured Image Media Id"
           },
+          "video_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Url"
+          },
+          "episode_number": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Number"
+          },
+          "guest_names": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Names"
+          },
           "featured_image_prompt": {
             "anyOf": [
               {
@@ -94106,6 +96762,42 @@
               }
             ],
             "title": "Featured Image Media Id"
+          },
+          "video_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Url"
+          },
+          "episode_number": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Number"
+          },
+          "guest_names": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Names"
           },
           "featured_image_prompt": {
             "anyOf": [
@@ -94391,6 +97083,42 @@
             ],
             "title": "Category"
           },
+          "video_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Url"
+          },
+          "episode_number": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Number"
+          },
+          "guest_names": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Names"
+          },
           "featured_image_media_id": {
             "anyOf": [
               {
@@ -94567,6 +97295,39 @@
         ],
         "title": "EmailResponse",
         "description": "Response schema for email operations."
+      },
+      "EventInput": {
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "page_view",
+              "watch_click",
+              "assessment_click",
+              "academy_click",
+              "club_click",
+              "event_click",
+              "register_click"
+            ],
+            "title": "Event Type"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "website",
+              "beyond_the_pool",
+              "articles",
+              "stories"
+            ],
+            "title": "Source",
+            "default": "website"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_type"
+        ],
+        "title": "EventInput"
       },
       "MessageLogResponse": {
         "properties": {
@@ -108541,6 +111302,218 @@
         ],
         "title": "VolunteerTier"
       },
+      "AdminOfferOut": {
+        "properties": {
+          "pool_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pool Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "capacity": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Capacity"
+          },
+          "selling_price_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Selling Price Kobo"
+          },
+          "negotiated_cost_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Negotiated Cost Kobo"
+          },
+          "cost_basis": {
+            "type": "string",
+            "enum": [
+              "per_person",
+              "per_group"
+            ],
+            "title": "Cost Basis",
+            "default": "per_person"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "self_directed_permitted": {
+            "type": "boolean",
+            "title": "Self Directed Permitted",
+            "default": false
+          },
+          "admissions_require_lifeguard": {
+            "type": "boolean",
+            "title": "Admissions Require Lifeguard",
+            "default": true
+          },
+          "amenities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Amenities"
+          },
+          "access_rules": {
+            "type": "string",
+            "title": "Access Rules",
+            "default": ""
+          },
+          "cancellation_policy": {
+            "type": "string",
+            "title": "Cancellation Policy",
+            "default": ""
+          },
+          "public_booking_enabled": {
+            "type": "boolean",
+            "title": "Public Booking Enabled",
+            "default": false
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pool_id",
+          "title",
+          "starts_at",
+          "ends_at",
+          "capacity",
+          "selling_price_kobo",
+          "negotiated_cost_kobo",
+          "id",
+          "status"
+        ],
+        "title": "AdminOfferOut"
+      },
+      "BookingInput": {
+        "properties": {
+          "offer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Offer Id"
+          },
+          "accept_access_rules": {
+            "type": "boolean",
+            "const": true,
+            "title": "Accept Access Rules"
+          },
+          "accept_cancellation_policy": {
+            "type": "boolean",
+            "const": true,
+            "title": "Accept Cancellation Policy"
+          },
+          "acknowledge_uncoached_activity": {
+            "type": "boolean",
+            "const": true,
+            "title": "Acknowledge Uncoached Activity"
+          },
+          "guests": {
+            "items": {
+              "$ref": "#/components/schemas/GuestInput"
+            },
+            "type": "array",
+            "maxItems": 25,
+            "minItems": 1,
+            "title": "Guests"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Idempotency Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "offer_id",
+          "accept_access_rules",
+          "accept_cancellation_policy",
+          "acknowledge_uncoached_activity",
+          "guests",
+          "idempotency_key"
+        ],
+        "title": "BookingInput"
+      },
+      "BookingOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "offer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Offer Id"
+          },
+          "headcount": {
+            "type": "integer",
+            "title": "Headcount"
+          },
+          "selling_total_kobo": {
+            "type": "integer",
+            "title": "Selling Total Kobo"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          },
+          "hold_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Hold Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "offer_id",
+          "headcount",
+          "selling_total_kobo",
+          "status",
+          "payment_reference",
+          "hold_expires_at"
+        ],
+        "title": "BookingOut"
+      },
       "CostQuoteLine": {
         "properties": {
           "category": {
@@ -108726,6 +111699,21 @@
         ],
         "title": "CostQuoteResponse"
       },
+      "GuestInput": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 150,
+            "minLength": 2,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "GuestInput"
+      },
       "IndoorOutdoor": {
         "type": "string",
         "enum": [
@@ -108734,6 +111722,252 @@
           "both"
         ],
         "title": "IndoorOutdoor"
+      },
+      "OfferInput": {
+        "properties": {
+          "pool_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pool Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "capacity": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Capacity"
+          },
+          "selling_price_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Selling Price Kobo"
+          },
+          "negotiated_cost_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Negotiated Cost Kobo"
+          },
+          "cost_basis": {
+            "type": "string",
+            "enum": [
+              "per_person",
+              "per_group"
+            ],
+            "title": "Cost Basis",
+            "default": "per_person"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "default": "NGN"
+          },
+          "self_directed_permitted": {
+            "type": "boolean",
+            "title": "Self Directed Permitted",
+            "default": false
+          },
+          "admissions_require_lifeguard": {
+            "type": "boolean",
+            "title": "Admissions Require Lifeguard",
+            "default": true
+          },
+          "amenities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Amenities"
+          },
+          "access_rules": {
+            "type": "string",
+            "title": "Access Rules",
+            "default": ""
+          },
+          "cancellation_policy": {
+            "type": "string",
+            "title": "Cancellation Policy",
+            "default": ""
+          },
+          "public_booking_enabled": {
+            "type": "boolean",
+            "title": "Public Booking Enabled",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "pool_id",
+          "title",
+          "starts_at",
+          "ends_at",
+          "capacity",
+          "selling_price_kobo",
+          "negotiated_cost_kobo"
+        ],
+        "title": "OfferInput"
+      },
+      "OfferOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "pool_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pool Id"
+          },
+          "pool_name": {
+            "type": "string",
+            "title": "Pool Name",
+            "default": ""
+          },
+          "location_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Area"
+          },
+          "pool_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Address"
+          },
+          "pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Length M"
+          },
+          "depth_min_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth Min M"
+          },
+          "depth_max_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth Max M"
+          },
+          "has_lifeguard": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Lifeguard"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "capacity": {
+            "type": "integer",
+            "title": "Capacity"
+          },
+          "selling_price_kobo": {
+            "type": "integer",
+            "title": "Selling Price Kobo"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "amenities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Amenities"
+          },
+          "access_rules": {
+            "type": "string",
+            "title": "Access Rules"
+          },
+          "cancellation_policy": {
+            "type": "string",
+            "title": "Cancellation Policy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "pool_id",
+          "title",
+          "starts_at",
+          "ends_at",
+          "capacity",
+          "selling_price_kobo",
+          "currency",
+          "status",
+          "amenities",
+          "access_rules",
+          "cancellation_policy"
+        ],
+        "title": "OfferOut",
+        "description": "Public catalog representation: NEVER expose negotiated partner costs."
       },
       "OperatingAreaCreate": {
         "properties": {
@@ -109582,6 +112816,19 @@
         },
         "type": "object",
         "title": "OperatingCostRateUpdate"
+      },
+      "PartnerGrant": {
+        "properties": {
+          "auth_id": {
+            "type": "string",
+            "title": "Auth Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auth_id"
+        ],
+        "title": "PartnerGrant"
       },
       "PartnershipStatus": {
         "type": "string",
@@ -113690,6 +116937,19 @@
           "in_person"
         ],
         "title": "PreferredContactChannel"
+      },
+      "ScanInput": {
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "title": "Ticket"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket"
+        ],
+        "title": "ScanInput"
       },
       "WeatherRefreshResult": {
         "properties": {
