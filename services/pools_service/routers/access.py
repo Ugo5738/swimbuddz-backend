@@ -276,6 +276,94 @@ async def cancel_unpaid_hold(
     return {"status": "cancelled"}
 
 
+@public.post("/bookings/{booking_id}/request-cancellation", status_code=202)
+async def request_paid_cancellation(
+    booking_id: uuid.UUID,
+    payload: dict,
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Request review without revoking a paid ticket or claiming a refund."""
+    from services.pools_service.models.access import (
+        PoolAccessAdmission,
+        PoolAccessCancellationRequest,
+    )
+
+    reason = str(payload.get("reason") or "").strip()
+    if not 5 <= len(reason) <= 2000:
+        raise HTTPException(422, "Please provide a cancellation reason")
+    booking = (
+        await db.execute(
+            select(PoolAccessBooking)
+            .where(
+                PoolAccessBooking.id == booking_id,
+                PoolAccessBooking.buyer_auth_id == user.user_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(404, "Booking not found")
+    if booking.status != "confirmed" or not booking.payment_reference:
+        raise HTTPException(409, "Only confirmed visits support paid cancellation review")
+    existing_admission = (
+        await db.execute(
+            select(PoolAccessAdmission.id).where(
+                PoolAccessAdmission.booking_id == booking.id,
+                PoolAccessAdmission.checked_in_at.is_not(None),
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing_admission:
+        raise HTTPException(409, "Visit already started; request a billing dispute review")
+    prior = (
+        await db.execute(
+            select(PoolAccessCancellationRequest).where(
+                PoolAccessCancellationRequest.booking_id == booking.id
+            )
+        )
+    ).scalar_one_or_none()
+    if prior:
+        return {"request_id": str(prior.id), "status": prior.status}
+    request = PoolAccessCancellationRequest(
+        booking_id=booking.id,
+        requested_by=user.user_id,
+        reason=reason,
+    )
+    db.add(request)
+    await db.commit()
+    return {"request_id": str(request.id), "status": "requested"}
+
+
+@admin.get("/cancellation-requests")
+async def cancellation_review_queue(
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    from services.pools_service.models.access import PoolAccessCancellationRequest
+
+    result = await db.execute(
+        select(PoolAccessCancellationRequest, PoolAccessBooking)
+        .join(
+            PoolAccessBooking,
+            PoolAccessBooking.id == PoolAccessCancellationRequest.booking_id,
+        )
+        .order_by(PoolAccessCancellationRequest.created_at.desc())
+        .limit(200)
+    )
+    return [
+        {
+            "id": str(request.id),
+            "booking_id": str(booking.id),
+            "buyer_email": booking.buyer_email,
+            "payment_reference": booking.payment_reference,
+            "reason": request.reason,
+            "status": request.status,
+        }
+        for request, booking in result.all()
+    ]
+
+
 @public.get("/bookings/me", response_model=list[BookingOut])
 async def my_bookings(
     user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_async_db)
