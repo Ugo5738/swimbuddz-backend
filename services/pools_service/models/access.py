@@ -90,3 +90,14 @@ class PoolAccessReconciliation(Base):
     payment_reference: Mapped[str] = mapped_column(String(160), nullable=False)
     reconciled_by: Mapped[str] = mapped_column(String(255), nullable=False)
     reconciled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class PoolAccessPartnerOperator(Base):
+    """Pool-scoped reception access. Never a general platform administrator."""
+    __tablename__ = "pool_access_partner_operators"
+    __table_args__ = (UniqueConstraint("pool_id", "auth_id", name="uq_pool_access_operator_scope"),)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    pool_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("pools.id", ondelete="RESTRICT"), nullable=False, index=True)
+    auth_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
