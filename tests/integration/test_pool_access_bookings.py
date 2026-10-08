@@ -5,7 +5,11 @@ from uuid import UUID, uuid4
 import pytest
 import httpx
 from libs.common.datetime_utils import utc_now
-from services.pools_service.models.access import PoolAccessBooking
+from services.pools_service.models.access import (
+    PoolAccessBooking,
+    PoolAccessOffer,
+    PoolAccessAdmission,
+)
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -250,3 +254,94 @@ async def test_member_cannot_request_refund_for_unpaid_visit(pools_client):
         json={"reason": "My schedule has changed"},
     )
     assert response.status_code == 409
+
+async def test_partner_settlement_is_limited_to_verified_admissions(
+    pools_client, db_session, monkeypatch
+):
+    offer_id = await _published_offer(pools_client)
+    created = await pools_client.post(
+        "/pools/access/bookings",
+        json={
+            "offer_id": offer_id,
+            "idempotency_key": str(uuid4()),
+            "guests": [{"name": "Ada Person"}],
+        },
+    )
+    assert created.status_code == 201
+    booking_id = created.json()["id"]
+    booking = await db_session.get(PoolAccessBooking, UUID(booking_id))
+    reference = "PAY-" + uuid4().hex
+    claim = await pools_client.post(
+        f"/internal/pools/access/bookings/{booking_id}/claim-checkout",
+        json={"member_auth_id": booking.buyer_auth_id, "payment_reference": reference},
+    )
+    assert claim.status_code == 200, claim.text
+
+    async def provider_evidence(*args, **kwargs):
+        return httpx.Response(
+            200,
+            json={
+                "reference": reference,
+                "booking_id": booking_id,
+                "member_auth_id": booking.buyer_auth_id,
+                "amount_kobo": 700000,
+                "currency": "NGN",
+            },
+        )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(httpx.AsyncClient, "get", provider_evidence)
+        confirmed = await pools_client.post(
+            f"/internal/pools/access/bookings/{booking_id}/confirm",
+            json={
+                "member_auth_id": booking.buyer_auth_id,
+                "payment_reference": reference,
+                "amount_kobo": 700000,
+            },
+        )
+    assert confirmed.status_code == 200, confirmed.text
+    offer = await db_session.get(PoolAccessOffer, UUID(offer_id))
+    offer.starts_at = utc_now() - timedelta(hours=3)
+    offer.ends_at = utc_now() - timedelta(hours=1)
+    from sqlalchemy import select
+
+    admission = (
+        await db_session.execute(
+            select(PoolAccessAdmission).where(
+                PoolAccessAdmission.booking_id == UUID(booking_id)
+            )
+        )
+    ).scalar_one()
+    admission.checked_in_at = utc_now() - timedelta(hours=2)
+    await db_session.commit()
+
+    recon = await pools_client.post(
+        f"/pools/access/bookings/{booking_id}/reconcile"
+    )
+    assert recon.status_code == 200, recon.text
+    admin_records = await pools_client.get("/admin/pools/access/bookings")
+    reconciliation_id = next(
+        row["reconciliation_id"]
+        for row in admin_records.json()
+        if row["booking_id"] == booking_id
+    )
+    url = f"/pools/access/reconciliations/{reconciliation_id}/record-external-settlement"
+    first = await pools_client.post(
+        url,
+        json={
+            "amount_kobo": 200000,
+            "bank_reference": "BANK-FIRST-" + uuid4().hex,
+            "evidence_note": "Confirmed transfer from operations account",
+        },
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["remaining_kobo"] == 300000
+    over = await pools_client.post(
+        url,
+        json={
+            "amount_kobo": 300001,
+            "bank_reference": "BANK-OVER-" + uuid4().hex,
+            "evidence_note": "Invalid excess bank transaction",
+        },
+    )
+    assert over.status_code == 409, over.text
