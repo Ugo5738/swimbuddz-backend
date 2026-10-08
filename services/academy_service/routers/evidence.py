@@ -1,11 +1,13 @@
-"""Member-owned supplementary milestone videos (including completed cohorts).
+"""Member-owned supplementary milestone videos, including completed cohorts.
 
-This route never mutates StudentProgress, milestone reviews, or graduation.
+Uploading evidence NEVER changes StudentProgress or a coach's verified assessment.
 """
+
 import uuid
 from datetime import date, datetime
 from typing import Literal, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
@@ -13,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
+from libs.common.config import get_settings
+from libs.common.service_client.core import internal_get
 from libs.db.session import get_async_db
 from services.academy_service.models import Enrollment, EnrollmentStatus, Milestone
 from services.academy_service.models.evidence import MilestoneEvidence
@@ -51,9 +55,35 @@ async def _own_enrollment(
     ).scalar_one_or_none()
     if enrollment is None:
         raise HTTPException(status_code=404, detail="Enrollment not found")
-    if enrollment.member_auth_id != current_user.user_id:
-        raise HTTPException(status_code=403, detail="This enrollment does not belong to you")
+    if enrollment.member_auth_id != str(current_user.user_id):
+        raise HTTPException(
+            status_code=403, detail="This enrollment does not belong to you"
+        )
     return enrollment
+
+
+async def _validate_video_owner(media_id: uuid.UUID, auth_id: str) -> None:
+    """Fail closed if the Media Service cannot verify the private upload."""
+    try:
+        resp = await internal_get(
+            service_url=get_settings().MEDIA_SERVICE_URL,
+            path=f"/internal/media/alumni-evidence/{media_id}",
+            calling_service="academy",
+            params={"owner_auth_id": auth_id},
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=503, detail="Video verification is temporarily unavailable"
+        ) from exc
+
+    if resp.status_code == 404:
+        raise HTTPException(
+            status_code=400, detail="Upload your own milestone video first"
+        )
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=503, detail="Video verification is temporarily unavailable"
+        )
 
 
 @router.get(
@@ -65,7 +95,6 @@ async def list_milestone_evidence(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    # Historical uploads remain readable even after membership lapses.
     await _own_enrollment(enrollment_id, current_user, db)
     rows = await db.execute(
         select(MilestoneEvidence)
@@ -88,15 +117,20 @@ async def create_milestone_evidence(
 ):
     enrollment = await _own_enrollment(enrollment_id, current_user, db)
     if enrollment.status not in (EnrollmentStatus.ENROLLED, EnrollmentStatus.GRADUATED):
-        raise HTTPException(status_code=403, detail="An active or graduated enrollment is required")
+        raise HTTPException(
+            status_code=403, detail="An active or graduated enrollment is required"
+        )
     if enrollment.access_suspended:
         raise HTTPException(status_code=403, detail="Enrollment access is suspended")
     milestone = (
         await db.execute(select(Milestone).where(Milestone.id == payload.milestone_id))
     ).scalar_one_or_none()
     if milestone is None or milestone.program_id != enrollment.program_id:
-        raise HTTPException(status_code=400, detail="Milestone does not belong to this enrollment")
+        raise HTTPException(
+            status_code=400, detail="Milestone does not belong to this enrollment"
+        )
 
+    await _validate_video_owner(payload.video_media_id, str(current_user.user_id))
     record = MilestoneEvidence(
         enrollment_id=enrollment_id,
         **payload.model_dump(),
