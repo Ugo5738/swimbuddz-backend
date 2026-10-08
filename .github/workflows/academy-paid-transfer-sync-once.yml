@@ -36,7 +36,9 @@ jobs:
             services/academy_service/routers/enrollments/paid_transfer.py \
             services/academy_service/routers/enrollments/admin_payments.py \
             services/academy_service/routers/enrollments/__init__.py \
-            tests/integration/test_academy_shared_receipts.py
+            tests/integration/test_academy_shared_receipts.py \
+            tests/integration/test_academy_reviewed_paid_transfer.py \
+            tests/integration/test_academy_verified_credit.py
       - name: Generate backend OpenAPI contract
         env:
           DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
