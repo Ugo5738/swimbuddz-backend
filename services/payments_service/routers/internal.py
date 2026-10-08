@@ -1010,3 +1010,65 @@ async def annotate_refund_obligation(
     flag_modified(payment, "payment_metadata")
     await db.commit()
     return {"reference": reference, "refund_obligations": len(refunds)}
+
+
+class AttributionPaymentQuery(BaseModel):
+    """Bounded bulk reporting query; never callable by public clients."""
+    member_auth_ids: list[str] = Field(default_factory=list, max_length=500)
+    date_from: datetime
+    date_to: datetime
+
+
+@router.post("/reports/attributed-payments", dependencies=[Depends(require_service_role)])
+async def attributed_payments_report(
+    request: AttributionPaymentQuery,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Payment-owned settled rows, grouped by payer and canonical purpose.
+
+    The Reporting Service joins these aggregates to its first-party Member
+    acquisition origin. No Payment -> Members or Payment -> Content dependency.
+    """
+    if request.date_from > request.date_to:
+        raise HTTPException(status_code=422, detail="Invalid date window")
+    if not request.member_auth_ids:
+        return {"items": []}
+    results = await db.execute(
+        select(
+            Payment.member_auth_id,
+            Payment.purpose,
+            func.count(Payment.id),
+            func.coalesce(func.sum(Payment.amount), 0),
+        )
+        .where(
+            Payment.member_auth_id.in_(request.member_auth_ids),
+            Payment.status == PaymentStatus.PAID,
+            Payment.paid_at >= request.date_from,
+            Payment.paid_at <= request.date_to,
+            Payment.currency == "NGN",
+            Payment.purpose.in_(
+                [
+                    PaymentPurpose.ACADEMY_COHORT,
+                    PaymentPurpose.CLUB,
+                    PaymentPurpose.CLUB_BUNDLE,
+                    PaymentPurpose.SESSION_BOOKING,
+                    PaymentPurpose.SESSION_FEE,
+                    PaymentPurpose.SESSION_BUNDLE,
+                    PaymentPurpose.GUEST_PASS,
+                    PaymentPurpose.COMMUNITY_EXPERIENCE,
+                ]
+            ),
+        )
+        .group_by(Payment.member_auth_id, Payment.purpose)
+    )
+    return {
+        "items": [
+            {
+                "member_auth_id": member_auth_id,
+                "purpose": purpose.value if hasattr(purpose, "value") else str(purpose),
+                "payment_count": count,
+                "amount_ngn": float(amount),
+            }
+            for member_auth_id, purpose, count, amount in results.all()
+        ]
+    }
