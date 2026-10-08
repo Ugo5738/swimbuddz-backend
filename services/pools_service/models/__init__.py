@@ -11,6 +11,15 @@ from services.pools_service.models.enums import (
     PoolVisitType,
     PreferredContactChannel,
 )
+from services.pools_service.models.access import (
+    PoolAccessOffer,
+    PoolAccessBooking,
+    PoolAccessAdmission,
+    PoolAccessReconciliation,
+    PoolAccessPartnerOperator,
+    PoolAccessCancellationRequest,
+    PoolAccessPartnerSettlement,
+)
 from services.pools_service.models.pool import Pool
 from services.pools_service.models.pool_agreement import PoolAgreement
 from services.pools_service.models.pool_asset import PoolAsset
@@ -33,6 +42,13 @@ __all__ = [
     "OperatingArea",
     "OperatingCostRate",
     "Pool",
+    "PoolAccessOffer",
+    "PoolAccessBooking",
+    "PoolAccessAdmission",
+    "PoolAccessReconciliation",
+    "PoolAccessPartnerOperator",
+    "PoolAccessCancellationRequest",
+    "PoolAccessPartnerSettlement",
     "PoolRate",
     "PoolAgreement",
     "PoolAgreementStatus",

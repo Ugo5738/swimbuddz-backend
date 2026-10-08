@@ -44,6 +44,7 @@ from ._club import apply_club
 from ._club_bundle import apply_club_bundle
 from ._community import apply_community
 from ._guest_pass import apply_guest_pass
+from ._pool_access import apply_pool_access
 from ._community_experience import apply_community_experience
 from ._ride_share import apply_ride_share
 from ._session_booking import apply_session_booking
@@ -73,6 +74,7 @@ _PURPOSE_HANDLERS = {
     PaymentPurpose.SESSION_BUNDLE: apply_session_bundle,
     PaymentPurpose.SESSION_BOOKING: apply_session_booking,
     PaymentPurpose.GUEST_PASS: apply_guest_pass,
+    PaymentPurpose.POOL_ACCESS: apply_pool_access,
     PaymentPurpose.COMMUNITY_EXPERIENCE: apply_community_experience,
     PaymentPurpose.RIDE_SHARE: apply_ride_share,
     PaymentPurpose.STROKELAB_FOUNDING: apply_strokelab_founding,

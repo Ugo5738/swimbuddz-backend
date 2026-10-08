@@ -190,6 +190,10 @@ class ContentPost(Base):
     featured_image_media_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )  # FK to media_service.media_items
+    # Public editorial series metadata; stored alongside existing content posts.
+    video_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    episode_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    guest_names: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     featured_image_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ai_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True

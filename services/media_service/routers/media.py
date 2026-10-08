@@ -108,9 +108,9 @@ def _require_original_access(
     metadata = item.metadata_info or {}
     # The path check protects older receipts created before purpose metadata
     # was persisted. Never issue a signed private receipt URL anonymously.
-    is_receipt = metadata.get("purpose") == "payment_proof" or "/payment-proofs/" in (
-        item.file_url or ""
-    )
+    restricted_purposes = {"payment_proof", "milestone_evidence", "milestone_video"}
+    is_receipt = metadata.get("purpose") in restricted_purposes
+    is_receipt = is_receipt or "/payment-proofs/" in (item.file_url or "")
     if not metadata.get("presentation_original") and not is_receipt:
         return
     if current_user and (
@@ -463,6 +463,17 @@ async def upload_file(
     storage_prefix = storage_prefixes.get(purpose, "uploads")
     storage_name = f"{storage_prefix}/{uuid.uuid4()}.{file_ext}"
 
+    # Supabase's legacy generic upload targets a public bucket regardless of
+    # purpose. Never silently publish private swimmer evidence to that bucket.
+    if (
+        purpose in {"milestone_evidence", "milestone_video"}
+        and storage_service.backend != "s3"
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail="Private milestone video upload requires configured private S3 storage",
+        )
+
     # Determine which bucket to use based on purpose
     bucket_type = get_bucket_for_purpose(purpose)
 
@@ -811,7 +822,9 @@ async def list_media(
         ).is_(False)
     )
     query = query.where(
-        func.coalesce(MediaItem.metadata_info["purpose"].astext, "") != "payment_proof",
+        func.coalesce(MediaItem.metadata_info["purpose"].astext, "").notin_(
+            ("payment_proof", "milestone_evidence", "milestone_video")
+        ),
         MediaItem.file_url.not_like("%/payment-proofs/%"),
     )
     query = query.order_by(desc(MediaItem.created_at))

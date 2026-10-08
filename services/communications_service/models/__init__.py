@@ -24,6 +24,7 @@ from services.communications_service.models.core import (
     WeeklyDigestConfig,
     WeeklyDigestDispatch,
 )
+from services.communications_service.models.engagement import ContentEngagement
 from services.communications_service.models.testimonial import Testimonial
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "ContentComment",
     "ContentCommentLike",
     "ContentPost",
+    "ContentEngagement",
     "ContentPostEmailLog",
     "MemberRef",
     "MessageLog",

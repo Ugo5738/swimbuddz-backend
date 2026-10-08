@@ -740,6 +740,10 @@ async def create_payment_intent(
                 }
             }
         )
+    if payload.purpose == PaymentPurpose.POOL_ACCESS and payload.pool_access_booking_id:
+        payload = payload.model_copy(
+            update={"idempotency_key": payload.pool_access_booking_id}
+        )
     payment_id = uuid.uuid4()
     payment_reference = Payment.generate_reference()
     session_booking_id: uuid.UUID | None = None
@@ -760,7 +764,12 @@ async def create_payment_intent(
         await lock_booking_payment(db, session_booking_id)
     previous = None
     if (
-        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING}
+        payload.purpose
+        in {
+            *PRODUCT_PURPOSES,
+            PaymentPurpose.SESSION_BOOKING,
+            PaymentPurpose.POOL_ACCESS,
+        }
         and payload.idempotency_key
     ):
         from services.payments_service.services.product_intent_retry import (
@@ -1031,6 +1040,51 @@ async def create_payment_intent(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Store Bubbles must be selected through store checkout",
             )
+
+    # Independent Pool Access: server-owned price and reservation context.
+    elif payload.purpose == PaymentPurpose.POOL_ACCESS:
+        if not payload.pool_access_booking_id:
+            raise HTTPException(400, "pool_access_booking_id is required")
+        if (
+            payload.payment_method != "paystack"
+            or payload.discount_code
+            or payload.bubbles_to_apply
+        ):
+            raise HTTPException(
+                422, "Pool Access currently supports online payment without adjustments"
+            )
+        if not _paystack_enabled():
+            raise HTTPException(503, "Online payments are currently unavailable")
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                f"{settings.POOLS_SERVICE_URL}/internal/pools/access/bookings/{payload.pool_access_booking_id}/quote",
+                params={"member_auth_id": current_user.user_id},
+                headers=headers,
+            )
+        if response.status_code >= 400:
+            raise HTTPException(409, "Pool Access booking no longer available")
+        quote = response.json()
+        if payload.currency != quote["currency"]:
+            raise HTTPException(409, "Booking currency mismatch")
+        # Reserve exactly one payment reference while the inventory hold is valid.
+        async with httpx.AsyncClient(timeout=30) as client:
+            claimed = await client.post(
+                f"{settings.POOLS_SERVICE_URL}/internal/pools/access/bookings/{payload.pool_access_booking_id}/claim-checkout",
+                json={
+                    "member_auth_id": current_user.user_id,
+                    "payment_reference": payment_reference,
+                },
+                headers=headers,
+            )
+        if claimed.status_code >= 400:
+            raise HTTPException(409, "This booking already has an active checkout")
+        amount = kobo_to_naira(int(quote["total_kobo"]))
+        payment_metadata = {
+            "pool_access_booking_id": str(payload.pool_access_booking_id),
+            "reservation_expires_at": quote["hold_expires_at"],
+            "pool_access_subtotal_kobo": int(quote["total_kobo"]),
+        }
 
     # Session fee payment (pool fee + ride share)
     elif payload.purpose == PaymentPurpose.SESSION_FEE:
@@ -1572,7 +1626,12 @@ async def create_payment_intent(
         ),
     )
     if (
-        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING}
+        payload.purpose
+        in {
+            *PRODUCT_PURPOSES,
+            PaymentPurpose.SESSION_BOOKING,
+            PaymentPurpose.POOL_ACCESS,
+        }
         and payload.idempotency_key
     ):
         from services.payments_service.services.product_intent_retry import (
@@ -1672,6 +1731,8 @@ async def create_payment_intent(
         redirect_path = None
         if payload.purpose == PaymentPurpose.ACADEMY_COHORT and payload.enrollment_id:
             redirect_path = f"/account/academy/enrollment-success?enrollment_id={payload.enrollment_id}"
+        elif payload.purpose == PaymentPurpose.POOL_ACCESS:
+            redirect_path = "/pool-access/my-bookings"
 
         try:
             await protect_club_checkout(db, payment)
@@ -1699,9 +1760,10 @@ async def create_payment_intent(
                     payment, current_user.email, redirect_path
                 )
         except Exception:
-            if payload.purpose == PaymentPurpose.SESSION_BOOKING or (
-                payload.purpose in PRODUCT_PURPOSES and payload.idempotency_key
-            ):
+            if payload.purpose in {
+                PaymentPurpose.SESSION_BOOKING,
+                PaymentPurpose.POOL_ACCESS,
+            } or (payload.purpose in PRODUCT_PURPOSES and payload.idempotency_key):
                 # Provider may have accepted the request. Retain the reference,
                 # code use and hold; a retry resumes this exact frozen payment.
                 await _set_pending_tier_payment_for_payment(payment)

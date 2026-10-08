@@ -66,6 +66,7 @@ jobs:
         run: |
           alembic -c services/members_service/alembic.ini upgrade head
           alembic -c services/academy_service/alembic.ini upgrade head
+          alembic -c services/pools_service/alembic.ini upgrade head
           alembic -c services/attendance_service/alembic.ini upgrade head
           alembic -c services/communications_service/alembic.ini upgrade head
           alembic -c services/events_service/alembic.ini upgrade head
@@ -154,6 +155,9 @@ jobs:
       # schemas. The husky pre-commit hook regenerates these locally; this
       # step ensures a hard fail in CI if anyone bypasses the hook with
       # --no-verify or commits from an env without husky configured.
+      - name: Verify Pool Access booking integration invariants
+        run: pytest -v tests/integration/test_pool_access_bookings.py
+
       - name: Verify openapi.json is up to date
         run: |
           python scripts/api/generate-openapi.py > /tmp/openapi.json.generated
