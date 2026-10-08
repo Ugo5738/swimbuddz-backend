@@ -1,0 +1,59 @@
+"""Pool Access reservation quote and activation, service-to-service only."""
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from libs.auth.dependencies import require_service_role
+from libs.common.datetime_utils import utc_now
+from libs.db.session import get_async_db
+from services.pools_service.models.access import PoolAccessBooking, PoolAccessOffer
+
+router = APIRouter(tags=["internal-pool-access"])
+
+
+@router.get("/bookings/{booking_id}/quote")
+async def quote(booking_id: uuid.UUID, member_auth_id: str,
+                _user=Depends(require_service_role), db: AsyncSession=Depends(get_async_db)):
+    booking = await db.get(PoolAccessBooking, booking_id)
+    if not booking or booking.buyer_auth_id != member_auth_id:
+        raise HTTPException(404, "Booking not found")
+    if booking.status != "pending_payment" or booking.hold_expires_at <= utc_now():
+        raise HTTPException(409, "Booking hold has expired")
+    offer = await db.get(PoolAccessOffer, booking.offer_id)
+    if not offer or offer.starts_at <= utc_now():
+        raise HTTPException(409, "Visit no longer available")
+    if booking.currency != "NGN":
+        raise HTTPException(422, "Only NGN checkout is currently supported")
+    return {"booking_id": str(booking.id), "total_kobo": booking.selling_total_kobo,
+            "currency": booking.currency, "hold_expires_at": booking.hold_expires_at.isoformat()}
+
+
+@router.post("/bookings/{booking_id}/confirm")
+async def confirm(booking_id: uuid.UUID, payload: dict,
+                  _user=Depends(require_service_role), db: AsyncSession=Depends(get_async_db)):
+    reference = str(payload.get("payment_reference") or "")
+    member_auth_id = str(payload.get("member_auth_id") or "")
+    amount_kobo = payload.get("amount_kobo")
+    if not reference.startswith("PAY-") or not member_auth_id or type(amount_kobo) is not int:
+        raise HTTPException(422, "Missing verified payment context")
+    booking = (await db.execute(select(PoolAccessBooking).where(
+        PoolAccessBooking.id == booking_id).with_for_update())).scalar_one_or_none()
+    if not booking or booking.buyer_auth_id != member_auth_id:
+        raise HTTPException(404, "Booking not found")
+    if booking.status == "confirmed":
+        if booking.payment_reference != reference:
+            raise HTTPException(409, "Booking confirmed by another payment")
+        return {"status": "confirmed", "booking_id": str(booking.id)}
+    if booking.status != "pending_payment":
+        raise HTTPException(409, "Booking unavailable")
+    if booking.selling_total_kobo != amount_kobo or booking.currency != "NGN":
+        raise HTTPException(409, "Payment amount or currency mismatch")
+    if booking.hold_expires_at <= utc_now():
+        raise HTTPException(409, "Booking expired; requires refund review")
+    booking.payment_reference = reference
+    booking.status = "confirmed"
+    booking.confirmed_at = utc_now()
+    await db.commit()
+    return {"status": "confirmed", "booking_id": str(booking.id)}
