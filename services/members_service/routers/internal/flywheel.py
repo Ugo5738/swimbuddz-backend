@@ -90,6 +90,7 @@ async def get_members_who_joined_tier(
             )
             .join(MemberMembership, MemberMembership.member_id == Member.id)
             .outerjoin(MemberProfile, MemberProfile.member_id == Member.id)
+            .outerjoin(MemberPreferences, MemberPreferences.member_id == Member.id)
             .where(
                 paid_until_col.is_not(None),
                 paid_until_col >= start_dt,
