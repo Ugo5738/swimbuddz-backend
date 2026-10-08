@@ -17,6 +17,7 @@ from services.pools_service.models.access import (
     PoolAccessAdmission,
     PoolAccessReconciliation,
     PoolAccessPartnerOperator,
+    PoolAccessCancellationRequest,
 )
 from services.pools_service.models.pool import Pool
 from services.pools_service.models.pool_agreement import PoolAgreement
@@ -45,6 +46,7 @@ __all__ = [
     "PoolAccessAdmission",
     "PoolAccessReconciliation",
     "PoolAccessPartnerOperator",
+    "PoolAccessCancellationRequest",
     "PoolRate",
     "PoolAgreement",
     "PoolAgreementStatus",
