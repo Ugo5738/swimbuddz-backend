@@ -86,7 +86,7 @@ async def change_my_cohort(
         select(Enrollment).where(
             Enrollment.id == enrollment_id,
             Enrollment.member_auth_id == current_user.user_id,
-        ).with_for_update()
+        ).options(selectinload(Enrollment.installments), selectinload(Enrollment.progress_records)).with_for_update()
     )).scalar_one_or_none()
     if not enrollment:
         raise HTTPException(404, "Enrollment not found")
