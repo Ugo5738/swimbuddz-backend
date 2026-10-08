@@ -6,6 +6,7 @@ Re-exports all models and enums so that:
   - SQLAlchemy's mapper registry sees every model class on import
 """
 
+from services.reporting_service.models.content_acquisition import ContentAcquisitionSnapshot
 from services.reporting_service.models.core import (  # noqa: F401
     CommunityQuarterlyStats,
     MemberQuarterlyReport,
@@ -41,6 +42,7 @@ __all__ = [
     "MonthlyActual",
     "SeasonalityForecast",
     "ExternalFactor",
+    "ContentAcquisitionSnapshot",
     "CohortFillSnapshot",
     "FunnelConversionSnapshot",
     "WalletEcosystemSnapshot",
