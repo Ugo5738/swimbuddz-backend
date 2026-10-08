@@ -11,6 +11,9 @@ from libs.auth.models import AuthUser
 from libs.common.service_client import internal_get
 from libs.common.config import get_settings
 from libs.db.session import get_async_db
+from libs.common.datetime_utils import utc_now
+from services.payments_service.services.manual_transfer import lock_external_reference
+from services.payments_service.services.ledger_emit import emit_payment_to_ledger
 from services.payments_service.models import (
     AcademyBankReceipt,
     AcademyReceiptAllocation,
@@ -64,7 +67,9 @@ async def verify_bank_receipt(
     admin: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    # This is attribution of verified funds, not a payment or new cash-in.
+    # One canonical payment records cash-in, while allocations only track
+    # beneficiaries and never book any additional income.
+    await lock_external_reference(db, body.external_reference)
     # Existing paid Payment rows may already represent the same cash; never
     # silently create a second receipt with the same bank reference.
     reference = body.external_reference.strip().upper()
@@ -87,7 +92,29 @@ async def verify_bank_receipt(
         raise HTTPException(
             409, "An existing payment already settled this bank reference. Reconcile that payment rather than record a second receipt"
         )
+    now = utc_now()
+    canonical = Payment(
+        reference=f"ACADEMY-RECEIPT-{uuid.uuid4()}",
+        member_auth_id=admin.user_id,
+        purpose="academy_cohort",
+        amount=body.amount_kobo / 100,
+        currency="NGN",
+        status=PaymentStatus.PAID,
+        provider="offline",
+        provider_reference=reference,
+        payment_method="bank_transfer",
+        paid_at=now,
+        entitlement_applied_at=now,  # Master receipt never activates an enrollment.
+        payment_metadata={
+            "academy_shared_bank_receipt_master": True,
+            "verified_by_auth_id": admin.user_id,
+            "verification_note": body.verification_note,
+        },
+    )
+    db.add(canonical)
+    await db.flush()
     receipt = AcademyBankReceipt(
+        payment_id=canonical.id,
         external_reference=reference,
         amount_kobo=body.amount_kobo,
         currency="NGN",
@@ -97,6 +124,9 @@ async def verify_bank_receipt(
     db.add(receipt)
     await db.flush()
     await db.commit()
+    # The existing ledger posts exactly one cash-in under canonical.reference.
+    # Allocation writes do not emit journal entries.
+    await emit_payment_to_ledger(db, canonical)
     return await _receipt_summary(db, receipt)
 
 
