@@ -90,8 +90,11 @@ async def test_withdrawing_publication_permission_revokes_showcase(monkeypatch):
     )
     payload = module.PublicationConsentRequest(consent=False)
     await module.update_publication_consent(
-        enrollment_id, evidence_id, payload,
-        SimpleNamespace(user_id=user_id), db,
+        enrollment_id,
+        evidence_id,
+        payload,
+        SimpleNamespace(user_id=user_id),
+        db,
     )
     assert evidence.publication_consent_at is None
     assert evidence.approved_for_public is False
@@ -127,7 +130,5 @@ async def test_admin_cannot_approve_contact_consent_as_publication_consent():
         publication_consent_confirmed=True,
     )
     with pytest.raises(HTTPException) as exc:
-        await module.review_showcase(
-            uuid.uuid4(), payload, SimpleNamespace(), db,
-        )
+        await module.review_showcase(uuid.uuid4(), payload, SimpleNamespace(), db)
     assert exc.value.status_code == 409
