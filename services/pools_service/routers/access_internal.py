@@ -36,7 +36,7 @@ async def confirm(booking_id: uuid.UUID, payload: dict,
     reference = str(payload.get("payment_reference") or "")
     member_auth_id = str(payload.get("member_auth_id") or "")
     amount_kobo = payload.get("amount_kobo")
-    if not reference.startswith("PAY-") or not member_auth_id or type(amount_kobo) is not int:
+    if not reference.startswith("PAY-") or not member_auth_id or not isinstance(amount_kobo, int) or isinstance(amount_kobo, bool):
         raise HTTPException(422, "Missing verified payment context")
     booking = (await db.execute(select(PoolAccessBooking).where(
         PoolAccessBooking.id == booking_id).with_for_update())).scalar_one_or_none()
