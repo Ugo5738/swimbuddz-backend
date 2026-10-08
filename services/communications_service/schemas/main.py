@@ -201,9 +201,6 @@ class ContentPostUpdate(BaseModel):
     guest_names: Optional[str] = Field(None, max_length=500)
     featured_image_media_id: Optional[uuid.UUID] = None
     featured_image_prompt: Optional[str] = Field(None, max_length=1200)
-    video_url: Optional[str] = Field(None, max_length=500)
-    episode_number: Optional[int] = Field(None, ge=1)
-    guest_names: Optional[str] = Field(None, max_length=500)
     tier_access: Optional[Literal["community", "club", "academy"]] = None
     is_published: Optional[bool] = None
     scheduled_for: Optional[datetime] = None
