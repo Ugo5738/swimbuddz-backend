@@ -61,6 +61,7 @@ async def get_members_who_joined_tier(
         stmt = (
             select(
                 Member.id,
+                Member.auth_id,
                 Member.created_at,
                 MemberProfile.acquisition_source,
                 MemberPreferences.discovery_source,
@@ -82,6 +83,7 @@ async def get_members_who_joined_tier(
         stmt = (
             select(
                 Member.id,
+                Member.auth_id,
                 paid_until_col,
                 MemberProfile.acquisition_source,
                 MemberPreferences.discovery_source,
@@ -101,13 +103,14 @@ async def get_members_who_joined_tier(
     members = [
         JoinedTierMember(
             id=str(row[0]),
-            source_joined_at=row[1].isoformat() if row[1] else "",
-            acquisition_source=(row[2].value if row[2] is not None else None),
+            member_auth_id=str(row[1]) if row[1] else None,
+            source_joined_at=row[2].isoformat() if row[2] else "",
+            acquisition_source=(row[3].value if row[3] is not None else None),
             content_source=(
-                row[3] if row[3] and row[3].startswith("content:") else None
+                row[4] if row[4] and row[4].startswith("content:") else None
             ),
         )
         for row in rows
-        if row[1] is not None
+        if row[2] is not None
     ]
     return JoinedTierResponse(members=members)
