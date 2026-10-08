@@ -1,4 +1,5 @@
 """Supplementary swimmer evidence, independent from assessed cohort results."""
+
 import uuid
 from datetime import date, datetime
 from typing import Optional
@@ -16,21 +17,39 @@ class MilestoneEvidence(Base):
 
     __tablename__ = "milestone_evidence"
     __table_args__ = (
-        Index("ix_milestone_evidence_enrollment_milestone", "enrollment_id", "milestone_id"),
+        Index(
+            "ix_milestone_evidence_enrollment_milestone",
+            "enrollment_id",
+            "milestone_id",
+        ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     enrollment_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("enrollments.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("enrollments.id", ondelete="CASCADE"),
+        nullable=False,
     )
     milestone_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("milestones.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("milestones.id", ondelete="CASCADE"),
+        nullable=False,
     )
-    video_media_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    video_media_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False
+    )
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     caption: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     recorded_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    consent_to_share: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # Separate editorial approval is required. Consent alone NEVER makes an asset public.
-    approved_for_public: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    consent_to_share: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    # Consent alone does not approve public use. No public approval API exists.
+    approved_for_public: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
