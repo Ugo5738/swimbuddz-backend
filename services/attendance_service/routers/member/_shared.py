@@ -20,6 +20,7 @@ from libs.common.service_client import (
     get_pod_by_id,
     get_session_by_id,
     internal_get,
+    internal_post,
 )
 from libs.common.datetime_utils import utc_now
 from libs.common.session_access import denial_message, evaluate_session_access
@@ -182,3 +183,39 @@ async def validate_session_access(
             detail=denial_message(decision.reason),
         )
     return decision
+
+
+
+async def require_academy_safety_clearance(
+    session_data: dict,
+    member_ids: list[uuid.UUID],
+) -> None:
+    """Restrict only Academy attendance marked PRESENT/LATE, never historical absence.
+
+    Members is the authority for emergency contact and swim background.
+    Attendance receives only boolean readiness and missing field identifiers.
+    """
+    if session_data.get("session_type") != "cohort_class" or not member_ids:
+        return
+    settings = get_settings()
+    response = await internal_post(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path="/internal/members/academy-swim-clearance/batch",
+        calling_service="attendance",
+        json={"member_ids": [str(member_id) for member_id in set(member_ids)]},
+    )
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=503,
+            detail="Cannot verify Academy pre-swim safety setup right now",
+        )
+    results = response.json()
+    missing = [member_id for member_id in set(member_ids) if not results.get(str(member_id), {}).get("ready")]
+    if missing:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Complete emergency contact and swimming background before Academy class attendance",
+                "member_ids": [str(member_id) for member_id in missing],
+            },
+        )
