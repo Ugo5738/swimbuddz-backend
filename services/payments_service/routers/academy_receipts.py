@@ -95,7 +95,7 @@ async def verify_bank_receipt(
     now = utc_now()
     canonical = Payment(
         reference=f"ACADEMY-RECEIPT-{uuid.uuid4()}",
-        member_auth_id=admin.user_id,
+        member_auth_id="shared-academy-bank-receipt",
         purpose="academy_cohort",
         amount=body.amount_kobo / 100,
         currency="NGN",
