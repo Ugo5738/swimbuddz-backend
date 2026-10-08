@@ -1,0 +1,34 @@
+name: Academy transfer formatter and OpenAPI (one-shot)
+on:
+  push:
+    branches: [codex/academy-transfer-resolution-and-admin-ux]
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: "!contains(github.event.head_commit.message, '[academy-transfer-synced]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/academy-transfer-resolution-and-admin-ux
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]" -c constraints.txt
+      - run: |
+          ruff format services/academy_service/routers/enrollments/change_cohort.py services/academy_service/routers/enrollments/admin_crud.py services/payments_service/routers/internal.py services/payments_service/routers/checkout_reconciliation.py tests/unit/test_academy_cohort_change_review.py tests/integration/test_checkout_reconciliation.py
+      - name: Regenerate backend schema
+        env:
+          DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+          DATABASE_SESSION_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+        run: python scripts/api/generate-openapi.py > openapi.json
+      - run: |
+          git diff --check
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add services/academy_service/routers/enrollments/change_cohort.py services/academy_service/routers/enrollments/admin_crud.py services/payments_service/routers/internal.py services/payments_service/routers/checkout_reconciliation.py tests/unit/test_academy_cohort_change_review.py tests/integration/test_checkout_reconciliation.py openapi.json
+            git commit -m "chore(academy): format and regenerate API [academy-transfer-synced]"
+            git push origin HEAD:codex/academy-transfer-resolution-and-admin-ux
+          fi
