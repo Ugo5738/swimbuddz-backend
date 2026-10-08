@@ -108,12 +108,10 @@ def _require_original_access(
     metadata = item.metadata_info or {}
     # The path check protects older receipts created before purpose metadata
     # was persisted. Never issue a signed private receipt URL anonymously.
-    is_receipt = metadata.get("purpose") in (
-        "payment_proof",
-        "milestone_evidence",
-        "milestone_video",
-    ) or "/payment-proofs/" in (
-        item.file_url or ""
+    is_receipt = (
+        metadata.get("purpose")
+        in ("payment_proof", "milestone_evidence", "milestone_video")
+        or "/payment-proofs/" in (item.file_url or "")
     )
     if not metadata.get("presentation_original") and not is_receipt:
         return
