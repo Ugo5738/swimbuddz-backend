@@ -220,12 +220,16 @@ async def list_admin_evidence(
     db: AsyncSession = Depends(get_async_db),
 ):
     rows = await db.execute(
-        select(MilestoneEvidence).order_by(MilestoneEvidence.created_at.desc()).limit(200)
+        select(MilestoneEvidence)
+        .order_by(MilestoneEvidence.created_at.desc())
+        .limit(200)
     )
     return list(rows.scalars().all())
 
 
-@router.post("/evidence/{evidence_id}/coach-review", response_model=EvidenceReviewResponse)
+@router.post(
+    "/evidence/{evidence_id}/coach-review", response_model=EvidenceReviewResponse
+)
 async def review_evidence(
     evidence_id: uuid.UUID,
     payload: EvidenceReviewRequest,
@@ -252,7 +256,9 @@ async def review_evidence(
     )
 
 
-@router.post("/admin/evidence/{evidence_id}/showcase", response_model=EvidenceReviewResponse)
+@router.post(
+    "/admin/evidence/{evidence_id}/showcase", response_model=EvidenceReviewResponse
+)
 async def review_showcase(
     evidence_id: uuid.UUID,
     payload: EvidenceShowcaseRequest,
@@ -395,9 +401,7 @@ async def play_evidence_for_authorized_person(
         if enrollment.member_auth_id != str(current_user.user_id):
             if not current_user.has_role("coach") or not enrollment.cohort_id:
                 raise HTTPException(status_code=403, detail="Video not accessible")
-            await require_coach_for_cohort(
-                current_user, str(enrollment.cohort_id), db
-            )
+            await require_coach_for_cohort(current_user, str(enrollment.cohort_id), db)
     try:
         result = await internal_get(
             service_url=get_settings().MEDIA_SERVICE_URL,

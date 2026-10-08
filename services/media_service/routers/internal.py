@@ -129,8 +129,11 @@ async def get_alumni_public_playback(
     """
     item = await db.scalar(select(MediaItem).where(MediaItem.id == media_id))
     media_type = (
-        item.media_type.value if item and isinstance(item.media_type, MediaType)
-        else item.media_type if item else None
+        item.media_type.value
+        if item and isinstance(item.media_type, MediaType)
+        else item.media_type
+        if item
+        else None
     )
     if (
         item is None

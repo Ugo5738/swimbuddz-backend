@@ -50,7 +50,9 @@ class MilestoneEvidence(Base):
     approved_for_public: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
-    public_display_name: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    public_display_name: Mapped[Optional[str]] = mapped_column(
+        String(80), nullable=True
+    )
     publication_consent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
