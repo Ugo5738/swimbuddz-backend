@@ -100,6 +100,8 @@ class PoolAccessBooking(Base):
         String(255), index=True, nullable=True
     )
     buyer_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    access_terms_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    terms_accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
     headcount: Mapped[int] = mapped_column(Integer, nullable=False)
     selling_total_kobo: Mapped[int] = mapped_column(Integer, nullable=False)
