@@ -18,6 +18,7 @@ from services.payments_service.models import (
     AcademyBankReceipt,
     AcademyReceiptAllocation,
     Payment,
+    PaymentPurpose,
     PaymentStatus,
 )
 
@@ -261,3 +262,89 @@ async def apply_receipt_allocation(
         "state": "applied", "allocation_id": str(allocation.id),
         "enrollment_id": str(allocation.enrollment_id), "idempotent": False,
     }
+
+
+class ReconcileLegacyAttempt(BaseModel):
+    payment_reference: str = Field(min_length=3, max_length=180)
+    review_note: str = Field(min_length=20, max_length=2000)
+
+
+@router.post("/{receipt_id}/reconcile-attempt")
+async def link_superseded_academy_checkout_to_shared_receipt(
+    receipt_id: uuid.UUID,
+    body: ReconcileLegacyAttempt,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Retire an individual proof/checkout after its verified shared allocation.
+
+    A proof is never treated as unpaid. Instead, we preserve it on the old
+    attempt and link its claim to the one bank receipt already recorded.
+    """
+    receipt = (await db.execute(
+        select(AcademyBankReceipt).where(
+            AcademyBankReceipt.id == receipt_id,
+        ).with_for_update()
+    )).scalar_one_or_none()
+    if not receipt:
+        raise HTTPException(404, "Shared bank receipt not found")
+    payment = (await db.execute(
+        select(Payment).where(
+            Payment.reference == body.payment_reference,
+        ).with_for_update()
+    )).scalar_one_or_none()
+    if not payment or payment.purpose != PaymentPurpose.ACADEMY_COHORT:
+        raise HTTPException(404, "Academy payment attempt not found")
+    if payment.id == receipt.payment_id:
+        raise HTTPException(409, "Cannot reconcile the canonical shared receipt against itself")
+    metadata = payment.payment_metadata or {}
+    already_linked = metadata.get("superseded_by_shared_receipt") or {}
+    if already_linked:
+        if str(already_linked.get("receipt_id")) == str(receipt_id):
+            return {"state": "reconciled", "payment_reference": payment.reference, "idempotent": True}
+        raise HTTPException(409, "This checkout already belongs to another verified receipt")
+    if payment.status not in {
+        PaymentStatus.PENDING,
+        PaymentStatus.PENDING_REVIEW,
+        PaymentStatus.FAILED,
+    } or payment.entitlement_applied_at:
+        raise HTTPException(409, "Paid or fulfilled checkouts must be reconciled as paid funds, not superseded")
+    enrollment_id = metadata.get("enrollment_id")
+    if not enrollment_id:
+        raise HTTPException(409, "Original Academy enrollment is missing")
+    allocations = (await db.execute(
+        select(AcademyReceiptAllocation).where(
+            AcademyReceiptAllocation.receipt_id == receipt_id,
+            AcademyReceiptAllocation.enrollment_id == uuid.UUID(str(enrollment_id)),
+            AcademyReceiptAllocation.state == "applied",
+        )
+    )).scalars().all()
+    if not allocations:
+        raise HTTPException(409, "Apply a verified receipt allocation to this learner first")
+    submitted = metadata.get("submitted_transfer") or {}
+    proof_reference = str(
+        submitted.get("external_reference")
+        or submitted.get("transaction_reference")
+        or ""
+    ).strip().upper()
+    if proof_reference and proof_reference != receipt.external_reference:
+        raise HTTPException(409, "Submitted proof references a different bank transaction")
+    payment.payment_metadata = {
+        **metadata,
+        "superseded_by_shared_receipt": {
+            "receipt_id": str(receipt.id),
+            "master_payment_reference": (
+                await db.execute(
+                    select(Payment.reference).where(Payment.id == receipt.payment_id)
+                )
+            ).scalar_one(),
+            "reviewed_by_auth_id": admin.user_id,
+            "review_note": body.review_note,
+            "reviewed_at": utc_now().isoformat(),
+        },
+    }
+    payment.status = PaymentStatus.FAILED
+    payment.admin_review_note = body.review_note
+    payment.entitlement_error = "Superseded by verified shared bank receipt allocation"
+    await db.commit()
+    return {"state": "reconciled", "payment_reference": payment.reference, "idempotent": False}
