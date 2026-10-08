@@ -14,7 +14,7 @@ from libs.db.session import get_async_db
 from libs.common.datetime_utils import utc_now
 from services.pools_service.models import Pool, PartnershipStatus
 from services.pools_service.models.access import PoolAccessOffer, PoolAccessBooking, PoolAccessAdmission
-from services.pools_service.schemas.access import OfferInput, OfferOut, BookingInput, BookingOut
+from services.pools_service.schemas.access import OfferInput, OfferOut, AdminOfferOut, BookingInput, BookingOut
 from services.pools_service.services.access_policy import quoted_amount
 
 public = APIRouter(tags=["pool-access"])
@@ -37,7 +37,7 @@ async def published_offers(db: AsyncSession = Depends(get_async_db)):
     return result.scalars().all()
 
 
-@admin.post("/offers", response_model=OfferOut, status_code=201)
+@admin.post("/offers", response_model=AdminOfferOut, status_code=201)
 async def create_offer(body: OfferInput, current_user: AuthUser = Depends(require_admin), db: AsyncSession = Depends(get_async_db)):
     pool = await db.get(Pool, body.pool_id)
     if not pool or not pool.is_active or pool.partnership_status != PartnershipStatus.ACTIVE_PARTNER:
@@ -49,7 +49,7 @@ async def create_offer(body: OfferInput, current_user: AuthUser = Depends(requir
     return offer
 
 
-@admin.post("/offers/{offer_id}/publish", response_model=OfferOut)
+@admin.post("/offers/{offer_id}/publish", response_model=AdminOfferOut)
 async def publish_offer(offer_id: uuid.UUID, current_user: AuthUser = Depends(require_admin), db: AsyncSession = Depends(get_async_db)):
     offer = await db.get(PoolAccessOffer, offer_id)
     if not offer:
