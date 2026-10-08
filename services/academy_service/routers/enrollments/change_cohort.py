@@ -66,11 +66,17 @@ async def list_academy_change_reviews(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Admin review queue. Financial settlement is not approved by this endpoint."""
-    changes = (await db.execute(
-        select(AcademyEnrollmentChange).where(
-            AcademyEnrollmentChange.state == "needs_review"
-        ).order_by(AcademyEnrollmentChange.created_at)
-    )).scalars().all()
+    changes = (
+        (
+            await db.execute(
+                select(AcademyEnrollmentChange)
+                .where(AcademyEnrollmentChange.state == "needs_review")
+                .order_by(AcademyEnrollmentChange.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
     return [
         {
             "id": str(change.id),
@@ -80,7 +86,8 @@ async def list_academy_change_reviews(
             "state": change.state,
             "snapshot": change.snapshot,
             "created_at": change.created_at.isoformat(),
-        } for change in changes
+        }
+        for change in changes
     ]
 
 
