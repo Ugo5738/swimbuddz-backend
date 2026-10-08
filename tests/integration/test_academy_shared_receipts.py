@@ -1,6 +1,6 @@
 """Shared bank receipts must never be recorded as two cash payments."""
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -33,7 +33,7 @@ async def test_shared_receipt_allocates_only_verified_total(db_session, monkeypa
             "json": lambda self: {"member_auth_id": "member", "currency_snapshot": "NGN"},
         })()),
     )
-    receipt_id = receipt["id"]
+    receipt_id = UUID(receipt["id"])
     first_allocation = service.AllocateReceiptRequest(
         member_auth_id="member", enrollment_id=uuid4(),
         amount_kobo=first, idempotency_key="first-member-installment",
