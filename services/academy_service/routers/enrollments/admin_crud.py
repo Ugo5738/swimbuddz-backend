@@ -13,7 +13,6 @@ from libs.db.session import get_async_db
 from services.academy_service.models import (
     AcademyJourney,
     Cohort,
-    CohortStatus,
     Enrollment,
     EnrollmentStatus,
     PaymentStatus,
