@@ -79,9 +79,9 @@ async def test_capacity_reservation_is_idempotent_and_no_free_ticket(pools_clien
     body = {
         "offer_id": oid,
         "idempotency_key": str(uuid4()),
-            "accept_access_rules": True,
-            "accept_cancellation_policy": True,
-            "acknowledge_uncoached_activity": True,
+        "accept_access_rules": True,
+        "accept_cancellation_policy": True,
+        "acknowledge_uncoached_activity": True,
         "guests": [{"name": "Ada Person"}, {"name": "Ben Person"}],
     }
     r = await pools_client.post("/pools/access/bookings", json=body)
@@ -371,9 +371,8 @@ async def test_partner_settlement_is_limited_to_verified_admissions(
     )
     assert over.status_code == 409, over.text
 
-async def test_booking_requires_explicit_facility_and_uncoached_consent(
-    pools_client
-):
+
+async def test_booking_requires_explicit_facility_and_uncoached_consent(pools_client):
     offer_id = await _published_offer(pools_client)
     result = await pools_client.post(
         "/pools/access/bookings",

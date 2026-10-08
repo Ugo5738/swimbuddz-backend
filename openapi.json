@@ -109767,6 +109767,21 @@
             "format": "uuid",
             "title": "Offer Id"
           },
+          "accept_access_rules": {
+            "type": "boolean",
+            "const": true,
+            "title": "Accept Access Rules"
+          },
+          "accept_cancellation_policy": {
+            "type": "boolean",
+            "const": true,
+            "title": "Accept Cancellation Policy"
+          },
+          "acknowledge_uncoached_activity": {
+            "type": "boolean",
+            "const": true,
+            "title": "Acknowledge Uncoached Activity"
+          },
           "guests": {
             "items": {
               "$ref": "#/components/schemas/GuestInput"
@@ -109786,6 +109801,9 @@
         "type": "object",
         "required": [
           "offer_id",
+          "accept_access_rules",
+          "accept_cancellation_policy",
+          "acknowledge_uncoached_activity",
           "guests",
           "idempotency_key"
         ],

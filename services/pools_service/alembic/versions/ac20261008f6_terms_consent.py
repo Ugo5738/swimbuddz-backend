@@ -3,6 +3,7 @@
 Revision ID: ac20261008f6
 Revises: ac20261008e5
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -16,13 +17,20 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "pool_access_bookings",
-        sa.Column("access_terms_snapshot", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column(
+            "access_terms_snapshot",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
     )
     op.add_column(
         "pool_access_bookings",
         sa.Column("terms_accepted_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.alter_column("pool_access_bookings", "access_terms_snapshot", server_default=None)
+    op.alter_column(
+        "pool_access_bookings", "access_terms_snapshot", server_default=None
+    )
 
 
 def downgrade() -> None:
