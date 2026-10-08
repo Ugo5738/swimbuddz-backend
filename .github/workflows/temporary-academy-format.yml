@@ -1,0 +1,30 @@
+name: Temporary Academy formatter
+on:
+  push:
+    branches:
+      - codex/academy-enrollment-management
+permissions:
+  contents: write
+jobs:
+  format:
+    if: "!contains(github.event.head_commit.message, '[skip academy format]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/academy-enrollment-management
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install ruff==0.4.10
+      - run: |
+          ruff format services/academy_service/models/__init__.py services/academy_service/models/journey.py services/academy_service/routers/enrollments/change_cohort.py services/payments_service/routers/internal.py
+          git diff --check
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add services/academy_service/models/__init__.py services/academy_service/models/journey.py services/academy_service/routers/enrollments/change_cohort.py services/payments_service/routers/internal.py
+            git commit -m "style(academy): apply Ruff formatting [skip academy format]"
+            git push origin HEAD:codex/academy-enrollment-management
+          fi
