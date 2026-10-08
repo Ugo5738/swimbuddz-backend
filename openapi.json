@@ -18023,6 +18023,55 @@
         }
       }
     },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Get Admin Enrollment",
+        "description": "Admin-scoped canonical enrollment details for transfer and billing review.",
+        "operationId": "get_admin_enrollment_academy_admin_enrollments__enrollment_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/enrollments/{enrollment_id}": {
       "get": {
         "tags": [
@@ -18284,6 +18333,135 @@
         "summary": "List Academy Change Reviews",
         "description": "Admin review queue. Financial settlement is not approved by this endpoint.",
         "operationId": "list_academy_change_reviews_academy_admin_academy_enrollment_changes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/admin/academy/enrollment-changes/{change_id}/reject": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Reject Enrollment Change",
+        "description": "Reject a request without altering the source enrollment or its money.",
+        "operationId": "reject_enrollment_change_academy_admin_academy_enrollment_changes__change_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "change_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Change Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/academy/enrollment-changes/{change_id}/approve-unpaid": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Approve Unpaid Enrollment Change",
+        "description": "Finalize a correction ONLY if no payment or attended progress can be lost.\n\nPayments-service must certify that every previous attempt is documented\nclosed-unpaid. Verified or proof-pending receipts are never moved by this\nendpoint; those need the separate finance allocation/credit process.",
+        "operationId": "approve_unpaid_enrollment_change_academy_admin_academy_enrollment_changes__change_id__approve_unpaid_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "change_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Change Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveUnpaidCohortChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/my-enrollment-change-requests": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "My Enrollment Change Requests",
+        "description": "Member-visible request status, scoped by the original enrollment owner.",
+        "operationId": "my_enrollment_change_requests_academy_my_enrollment_change_requests_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -84879,6 +85057,21 @@
         "title": "AdminDropoutActionRequest",
         "description": "Admin action on an enrollment that is in DROPOUT_PENDING state."
       },
+      "ApproveUnpaidCohortChange": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ApproveUnpaidCohortChange"
+      },
       "AssignmentRoleEnum": {
         "type": "string",
         "enum": [
@@ -90915,16 +91108,30 @@
             },
             "type": "array",
             "title": "Statuses"
+          },
+          "attempts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Attempts"
+          },
+          "all_unpaid_closed": {
+            "type": "boolean",
+            "title": "All Unpaid Closed"
           }
         },
         "type": "object",
         "required": [
           "has_payment_activity",
           "references",
-          "statuses"
+          "statuses",
+          "attempts",
+          "all_unpaid_closed"
         ],
         "title": "AcademyEnrollmentFinancialState",
-        "description": "Fail-closed transfer gate: any initiated payment needs reconciliation."
+        "description": "Payments-service-owned transfer safety view, never client assertions."
       },
       "AdminBookingOfflinePaymentRequest": {
         "properties": {

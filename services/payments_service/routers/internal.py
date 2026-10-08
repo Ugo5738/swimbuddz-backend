@@ -1047,11 +1047,13 @@ async def annotate_refund_obligation(
 
 
 class AcademyEnrollmentFinancialState(BaseModel):
-    """Fail-closed transfer gate: any initiated payment needs reconciliation."""
+    """Payments-service-owned transfer safety view, never client assertions."""
 
     has_payment_activity: bool
     references: list[str]
     statuses: list[str]
+    attempts: list[dict]
+    all_unpaid_closed: bool
 
 
 @router.get(
@@ -1072,10 +1074,32 @@ async def academy_enrollment_financial_state(
         )
     )
     payments = result.scalars().all()
+    attempts = [
+        {
+            "reference": p.reference,
+            "status": p.status.value,
+            "amount_kobo": round(p.amount * 100),
+            "closed_unpaid": bool(
+                (p.payment_metadata or {}).get("checkout_closed_unpaid")
+            ),
+            "proof_submitted": bool(p.proof_of_payment_media_id),
+            "entitlement_applied": bool(p.entitlement_applied_at),
+        }
+        for p in payments
+    ]
     return AcademyEnrollmentFinancialState(
         has_payment_activity=bool(payments),
         references=[p.reference for p in payments],
         statuses=[p.status.value for p in payments],
+        attempts=attempts,
+        all_unpaid_closed=all(
+            p.status == PaymentStatus.FAILED
+            and bool((p.payment_metadata or {}).get("checkout_closed_unpaid"))
+            and not p.proof_of_payment_media_id
+            and not p.entitlement_applied_at
+            and not (p.payment_metadata or {}).get("recorded_offline")
+            for p in payments
+        ),
     )
 
 
