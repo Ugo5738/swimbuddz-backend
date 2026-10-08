@@ -52,6 +52,7 @@ async def test_paid_or_unclosed_attempts_block_admin_approval(monkeypatch):
         status=EnrollmentStatus.PENDING_APPROVAL,
         payment_status=PaymentStatus.PENDING,
         paid_at=None,
+        payment_reference=None,
         progress_records=[],
         installments=[],
     )
