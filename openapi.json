@@ -8760,6 +8760,98 @@
         ]
       }
     },
+    "/api/v1/internal/members/academy-swim-clearance/{member_id}": {
+      "get": {
+        "tags": [
+          "internal",
+          "internal-academy-clearance"
+        ],
+        "summary": "Academy Clearance",
+        "operationId": "academy_clearance_internal_members_academy_swim_clearance__member_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/members/academy-swim-clearance/batch": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal-academy-clearance"
+        ],
+        "summary": "Academy Clearance Batch",
+        "operationId": "academy_clearance_batch_internal_members_academy_swim_clearance_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClearanceBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/internal/members/birthdays-today": {
       "get": {
         "tags": [
@@ -62236,6 +62328,25 @@
         ],
         "title": "ChallengeWinnerPublicInfo",
         "description": "Winner summary shown on the public landing page.\n\nOnly populated when format='competition' AND winner_submission_id is set.\nMember emails / auth_ids are NEVER included \u2014 only display names.\nproof_media is only populated when show_winner_media_publicly is true on\nthe challenge."
+      },
+      "ClearanceBatchRequest": {
+        "properties": {
+          "member_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Member Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_ids"
+        ],
+        "title": "ClearanceBatchRequest"
       },
       "ClubAccessCheck": {
         "properties": {
