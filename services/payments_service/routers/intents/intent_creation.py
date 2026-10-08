@@ -1732,7 +1732,7 @@ async def create_payment_intent(
         if payload.purpose == PaymentPurpose.ACADEMY_COHORT and payload.enrollment_id:
             redirect_path = f"/account/academy/enrollment-success?enrollment_id={payload.enrollment_id}"
         elif payload.purpose == PaymentPurpose.POOL_ACCESS:
-            redirect_path = "/account/pool-access"
+            redirect_path = "/pool-access/my-bookings"
 
         try:
             await protect_club_checkout(db, payment)
