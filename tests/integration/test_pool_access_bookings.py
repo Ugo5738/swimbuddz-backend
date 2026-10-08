@@ -228,3 +228,21 @@ async def test_checkout_claim_prevents_unverified_cancellation(pools_client, db_
         f"/pools/access/bookings/{booking_id}/cancel"
     )
     assert cancellation.status_code == 409
+
+async def test_member_cannot_request_refund_for_unpaid_visit(pools_client):
+    offer_id = await _published_offer(pools_client)
+    created = await pools_client.post(
+        "/pools/access/bookings",
+        json={
+            "offer_id": offer_id,
+            "idempotency_key": str(uuid4()),
+            "guests": [{"name": "Ada Person"}],
+        },
+    )
+    assert created.status_code == 201
+    booking_id = created.json()["id"]
+    response = await pools_client.post(
+        f"/pools/access/bookings/{booking_id}/request-cancellation",
+        json={"reason": "My schedule has changed"},
+    )
+    assert response.status_code == 409
