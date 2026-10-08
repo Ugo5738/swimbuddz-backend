@@ -40,6 +40,13 @@ class OfferOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     pool_id: uuid.UUID
+    pool_name: str = ""
+    location_area: str | None = None
+    pool_address: str | None = None
+    pool_length_m: float | None = None
+    depth_min_m: float | None = None
+    depth_max_m: float | None = None
+    has_lifeguard: bool | None = None
     title: str
     starts_at: datetime
     ends_at: datetime
