@@ -205,9 +205,7 @@ class PoolAccessCancellationRequest(Base):
             "status IN ('requested', 'under_review', 'resolved', 'rejected')",
             name="ck_pool_access_cancellation_status",
         ),
-        UniqueConstraint(
-            "booking_id", name="uq_pool_access_cancellation_booking"
-        ),
+        UniqueConstraint("booking_id", name="uq_pool_access_cancellation_booking"),
     )
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -219,9 +217,7 @@ class PoolAccessCancellationRequest(Base):
     )
     requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="requested"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="requested")
     admin_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False

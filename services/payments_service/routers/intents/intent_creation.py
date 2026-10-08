@@ -741,7 +741,9 @@ async def create_payment_intent(
             }
         )
     if payload.purpose == PaymentPurpose.POOL_ACCESS and payload.pool_access_booking_id:
-        payload = payload.model_copy(update={"idempotency_key": payload.pool_access_booking_id})
+        payload = payload.model_copy(
+            update={"idempotency_key": payload.pool_access_booking_id}
+        )
     payment_id = uuid.uuid4()
     payment_reference = Payment.generate_reference()
     session_booking_id: uuid.UUID | None = None
@@ -762,7 +764,12 @@ async def create_payment_intent(
         await lock_booking_payment(db, session_booking_id)
     previous = None
     if (
-        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING, PaymentPurpose.POOL_ACCESS}
+        payload.purpose
+        in {
+            *PRODUCT_PURPOSES,
+            PaymentPurpose.SESSION_BOOKING,
+            PaymentPurpose.POOL_ACCESS,
+        }
         and payload.idempotency_key
     ):
         from services.payments_service.services.product_intent_retry import (
@@ -1619,7 +1626,12 @@ async def create_payment_intent(
         ),
     )
     if (
-        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING, PaymentPurpose.POOL_ACCESS}
+        payload.purpose
+        in {
+            *PRODUCT_PURPOSES,
+            PaymentPurpose.SESSION_BOOKING,
+            PaymentPurpose.POOL_ACCESS,
+        }
         and payload.idempotency_key
     ):
         from services.payments_service.services.product_intent_retry import (
@@ -1748,9 +1760,10 @@ async def create_payment_intent(
                     payment, current_user.email, redirect_path
                 )
         except Exception:
-            if payload.purpose in {PaymentPurpose.SESSION_BOOKING, PaymentPurpose.POOL_ACCESS} or (
-                payload.purpose in PRODUCT_PURPOSES and payload.idempotency_key
-            ):
+            if payload.purpose in {
+                PaymentPurpose.SESSION_BOOKING,
+                PaymentPurpose.POOL_ACCESS,
+            } or (payload.purpose in PRODUCT_PURPOSES and payload.idempotency_key):
                 # Provider may have accepted the request. Retain the reference,
                 # code use and hold; a retry resumes this exact frozen payment.
                 await _set_pending_tier_payment_for_payment(payment)

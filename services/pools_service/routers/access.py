@@ -269,7 +269,8 @@ async def cancel_unpaid_hold(
         return {"status": "cancelled"}
     if booking.status != "pending_payment" or booking.checkout_reference:
         raise HTTPException(
-            409, "Checkout started or payment received; contact SwimBuddz for cancellation review"
+            409,
+            "Checkout started or payment received; contact SwimBuddz for cancellation review",
         )
     booking.status = "cancelled"
     await db.commit()
@@ -305,17 +306,23 @@ async def request_paid_cancellation(
     if booking is None:
         raise HTTPException(404, "Booking not found")
     if booking.status != "confirmed" or not booking.payment_reference:
-        raise HTTPException(409, "Only confirmed visits support paid cancellation review")
+        raise HTTPException(
+            409, "Only confirmed visits support paid cancellation review"
+        )
     existing_admission = (
         await db.execute(
-            select(PoolAccessAdmission.id).where(
+            select(PoolAccessAdmission.id)
+            .where(
                 PoolAccessAdmission.booking_id == booking.id,
                 PoolAccessAdmission.checked_in_at.is_not(None),
-            ).limit(1)
+            )
+            .limit(1)
         )
     ).scalar_one_or_none()
     if existing_admission:
-        raise HTTPException(409, "Visit already started; request a billing dispute review")
+        raise HTTPException(
+            409, "Visit already started; request a billing dispute review"
+        )
     prior = (
         await db.execute(
             select(PoolAccessCancellationRequest).where(

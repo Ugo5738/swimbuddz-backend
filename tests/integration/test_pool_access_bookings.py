@@ -177,6 +177,7 @@ async def test_paid_evidence_activates_exact_booking_only(
     assert len(tickets.json()) == 1
     assert tickets.json()[0]["ticket"].startswith("pa1.")
 
+
 async def test_unclaimed_hold_can_cancel_and_release_capacity(pools_client):
     oid = await _published_offer(pools_client, capacity=1)
     first = await pools_client.post(
@@ -203,7 +204,9 @@ async def test_unclaimed_hold_can_cancel_and_release_capacity(pools_client):
     assert replacement.status_code == 201, replacement.text
 
 
-async def test_checkout_claim_prevents_unverified_cancellation(pools_client, db_session):
+async def test_checkout_claim_prevents_unverified_cancellation(
+    pools_client, db_session
+):
     oid = await _published_offer(pools_client, capacity=1)
     reservation = await pools_client.post(
         "/pools/access/bookings",
@@ -228,6 +231,7 @@ async def test_checkout_claim_prevents_unverified_cancellation(pools_client, db_
         f"/pools/access/bookings/{booking_id}/cancel"
     )
     assert cancellation.status_code == 409
+
 
 async def test_member_cannot_request_refund_for_unpaid_visit(pools_client):
     offer_id = await _published_offer(pools_client)
