@@ -122,13 +122,42 @@ class AnnouncementCategoryConfigResponse(BaseModel):
 
 
 # ===== CONTENT SCHEMAS =====
+def _validated_youtube_url(value: Optional[str]) -> Optional[str]:
+    """Only canonical YouTube hosts/video IDs can be embedded in editorial posts."""
+    if not value:
+        return None
+    import re
+    from urllib.parse import urlparse, parse_qs
+
+    parsed = urlparse(value)
+    hosts = {
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "youtu.be",
+        "www.youtube-nocookie.com",
+    }
+    if parsed.scheme != "https" or parsed.hostname not in hosts:
+        raise ValueError("Use a secure YouTube watch, live, shorts or embed link")
+    segments = parsed.path.strip("/").split("/")
+    if parsed.hostname == "youtu.be":
+        video_id = segments[0]
+    elif segments[0] in {"live", "shorts", "embed"} and len(segments) > 1:
+        video_id = segments[1]
+    else:
+        video_id = parse_qs(parsed.query).get("v", [""])[0]
+    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
+        raise ValueError("YouTube link must identify a valid video")
+    return value
+
+
 class ContentPostBase(BaseModel):
     """Base schema for content posts."""
 
     title: str
     summary: Optional[str] = None
     body: str  # Markdown content
-    category: str  # swimming_tips/safety/breathing/technique/news/education/getting_started/community_culture/health_recovery
+    category: str  # swimming_tips/safety/education/beyond_the_pool/etc.
     featured_image_media_id: Optional[uuid.UUID] = None
     video_url: Optional[str] = Field(None, max_length=500)
     episode_number: Optional[int] = Field(None, ge=1)
@@ -136,6 +165,12 @@ class ContentPostBase(BaseModel):
     featured_image_prompt: Optional[str] = Field(None, max_length=1200)
     tier_access: Literal["community", "club", "academy"] = "community"
     email_on_publish: bool = False
+
+
+    @field_validator("video_url")
+    @classmethod
+    def validate_video_url(cls, value: Optional[str]) -> Optional[str]:
+        return _validated_youtube_url(value)
 
 
 class ContentPostCreate(ContentPostBase):
@@ -161,6 +196,9 @@ class ContentPostUpdate(BaseModel):
     summary: Optional[str] = None
     body: Optional[str] = None
     category: Optional[str] = None
+    video_url: Optional[str] = Field(None, max_length=500)
+    episode_number: Optional[int] = Field(None, ge=1)
+    guest_names: Optional[str] = Field(None, max_length=500)
     featured_image_media_id: Optional[uuid.UUID] = None
     featured_image_prompt: Optional[str] = Field(None, max_length=1200)
     video_url: Optional[str] = Field(None, max_length=500)
@@ -170,6 +208,12 @@ class ContentPostUpdate(BaseModel):
     is_published: Optional[bool] = None
     scheduled_for: Optional[datetime] = None
     email_on_publish: Optional[bool] = None
+
+
+    @field_validator("video_url")
+    @classmethod
+    def validate_video_url(cls, value: Optional[str]) -> Optional[str]:
+        return _validated_youtube_url(value)
 
 
 class ContentPostResponse(ContentPostBase):
