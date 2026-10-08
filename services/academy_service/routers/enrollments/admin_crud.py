@@ -206,6 +206,16 @@ async def list_enrollments(
     return enrollments
 
 
+@router.get("/admin/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
+async def get_admin_enrollment(
+    enrollment_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Admin-scoped canonical enrollment details for transfer and billing review."""
+    return await get_enrollment(enrollment_id, current_user, db)
+
+
 @router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
 async def get_enrollment(
     enrollment_id: uuid.UUID,
