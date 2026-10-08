@@ -1,6 +1,4 @@
 """Regression guards for public video episode metadata and attribution."""
-import uuid
-
 import pytest
 from pydantic import ValidationError
 
