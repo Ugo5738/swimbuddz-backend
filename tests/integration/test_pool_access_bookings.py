@@ -370,3 +370,17 @@ async def test_partner_settlement_is_limited_to_verified_admissions(
         },
     )
     assert over.status_code == 409, over.text
+
+async def test_booking_requires_explicit_facility_and_uncoached_consent(
+    pools_client
+):
+    offer_id = await _published_offer(pools_client)
+    result = await pools_client.post(
+        "/pools/access/bookings",
+        json={
+            "offer_id": offer_id,
+            "idempotency_key": str(uuid4()),
+            "guests": [{"name": "Ada Person"}],
+        },
+    )
+    assert result.status_code == 422
