@@ -19036,6 +19036,472 @@
         ]
       }
     },
+    "/api/v1/academy/enrollments/{enrollment_id}/evidence": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "List Milestone Evidence",
+        "operationId": "list_milestone_evidence_academy_enrollments__enrollment_id__evidence_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MilestoneEvidenceResponse"
+                  },
+                  "title": "Response List Milestone Evidence Academy Enrollments  Enrollment Id  Evidence Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Create Milestone Evidence",
+        "operationId": "create_milestone_evidence_academy_enrollments__enrollment_id__evidence_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MilestoneEvidenceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneEvidenceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/coach/evidence": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "List Coach Evidence",
+        "operationId": "list_coach_evidence_academy_coach_evidence_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MilestoneEvidenceResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Coach Evidence Academy Coach Evidence Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/admin/evidence": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "List Admin Evidence",
+        "operationId": "list_admin_evidence_academy_admin_evidence_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MilestoneEvidenceResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Admin Evidence Academy Admin Evidence Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/evidence/{evidence_id}/coach-review": {
+      "post": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Review Evidence",
+        "operationId": "review_evidence_academy_evidence__evidence_id__coach_review_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/evidence/{evidence_id}/showcase": {
+      "post": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Review Showcase",
+        "operationId": "review_showcase_academy_admin_evidence__evidence_id__showcase_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceShowcaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/enrollments/{enrollment_id}/evidence/{evidence_id}/publication-consent": {
+      "patch": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Update Publication Consent",
+        "description": "Owners can withdraw publication immediately; approval must be redone.",
+        "operationId": "update_publication_consent_academy_enrollments__enrollment_id__evidence__evidence_id__publication_consent_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          },
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicationConsentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneEvidenceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/public/showcase": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "List Public Showcase",
+        "operationId": "list_public_showcase_academy_public_showcase_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublicShowcaseItem"
+                  },
+                  "type": "array",
+                  "title": "Response List Public Showcase Academy Public Showcase Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/public/showcase/{evidence_id}/play": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Play Showcase Video",
+        "description": "Check current consent on every playback, including after withdrawal.",
+        "operationId": "play_showcase_video_academy_public_showcase__evidence_id__play_get",
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/evidence/{evidence_id}/play": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Play Evidence For Authorized Person",
+        "operationId": "play_evidence_for_authorized_person_academy_evidence__evidence_id__play_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/coach/me/dashboard": {
       "get": {
         "tags": [
@@ -26595,6 +27061,76 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/content/{post_id}/engagement": {
+      "post": {
+        "tags": [
+          "content-engagement"
+        ],
+        "summary": "Record Engagement",
+        "operationId": "record_engagement_content__post_id__engagement_post",
+        "parameters": [
+          {
+            "name": "post_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Post Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/content/admin/engagement": {
+      "get": {
+        "tags": [
+          "content-engagement"
+        ],
+        "summary": "Engagement Report",
+        "operationId": "engagement_report_content_admin_engagement_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/content/": {
@@ -50296,6 +50832,122 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MediaItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/media/alumni-evidence/{media_id}": {
+      "get": {
+        "tags": [
+          "media-internal"
+        ],
+        "summary": "Validate Alumni Evidence",
+        "description": "Check ownership and private video purpose without leaking media URLs.\n\nOnly backend service callers can use this route. Any mismatch is a 404,\nincluding media owned by another person or media intended for a gallery.",
+        "operationId": "validate_alumni_evidence_internal_media_alumni_evidence__media_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "media_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Id"
+            }
+          },
+          {
+            "name": "owner_auth_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Owner Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Validate Alumni Evidence Internal Media Alumni Evidence  Media Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/media/alumni-evidence/{media_id}/public-playback": {
+      "get": {
+        "tags": [
+          "media-internal"
+        ],
+        "summary": "Get Alumni Public Playback",
+        "description": "Return a short-lived private URL only to a trusted calling service.\n\nAuthorization to publish must be checked on each request by Academy. Public\nclients must never be able to call this internal service route directly.",
+        "operationId": "get_alumni_public_playback_internal_media_alumni_evidence__media_id__public_playback_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "media_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Get Alumni Public Playback Internal Media Alumni Evidence  Media Id  Public Playback Get"
                 }
               }
             }
@@ -86345,6 +86997,99 @@
         ],
         "title": "EvalRecommendation"
       },
+      "EvidenceReviewRequest": {
+        "properties": {
+          "coach_notes": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Coach Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "coach_notes"
+        ],
+        "title": "EvidenceReviewRequest"
+      },
+      "EvidenceReviewResponse": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evidence Id"
+          },
+          "coach_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Notes"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "approved_for_public": {
+            "type": "boolean",
+            "title": "Approved For Public"
+          },
+          "showcase_review_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Showcase Review Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "approved_for_public"
+        ],
+        "title": "EvidenceReviewResponse"
+      },
+      "EvidenceShowcaseRequest": {
+        "properties": {
+          "approve": {
+            "type": "boolean",
+            "title": "Approve"
+          },
+          "review_notes": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Review Notes"
+          },
+          "publication_consent_confirmed": {
+            "type": "boolean",
+            "title": "Publication Consent Confirmed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "approve",
+          "review_notes"
+        ],
+        "title": "EvidenceShowcaseRequest"
+      },
       "InstallmentStatus": {
         "type": "string",
         "enum": [
@@ -86586,6 +87331,202 @@
           "override"
         ],
         "title": "MilestoneEventType"
+      },
+      "MilestoneEvidenceCreate": {
+        "properties": {
+          "milestone_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Id"
+          },
+          "video_media_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Video Media Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cohort_archive",
+              "continued_progress"
+            ],
+            "title": "Kind"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "recorded_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded On"
+          },
+          "consent_to_share": {
+            "type": "boolean",
+            "title": "Consent To Share",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "milestone_id",
+          "video_media_id",
+          "kind"
+        ],
+        "title": "MilestoneEvidenceCreate"
+      },
+      "MilestoneEvidenceResponse": {
+        "properties": {
+          "milestone_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Id"
+          },
+          "video_media_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Video Media Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cohort_archive",
+              "continued_progress"
+            ],
+            "title": "Kind"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "recorded_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded On"
+          },
+          "consent_to_share": {
+            "type": "boolean",
+            "title": "Consent To Share",
+            "default": false
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "approved_for_public": {
+            "type": "boolean",
+            "title": "Approved For Public"
+          },
+          "public_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Display Name"
+          },
+          "publication_consent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Consent At"
+          },
+          "coach_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Notes"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "showcase_review_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Showcase Review Notes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "milestone_id",
+          "video_media_id",
+          "kind",
+          "id",
+          "enrollment_id",
+          "approved_for_public",
+          "created_at"
+        ],
+        "title": "MilestoneEvidenceResponse"
       },
       "MilestoneResponse": {
         "properties": {
@@ -87757,6 +88698,61 @@
           "achieved"
         ],
         "title": "ProgressStatus"
+      },
+      "PublicShowcaseItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Published At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "display_name",
+          "published_at"
+        ],
+        "title": "PublicShowcaseItem"
+      },
+      "PublicationConsentRequest": {
+        "properties": {
+          "consent": {
+            "type": "boolean",
+            "title": "Consent"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consent"
+        ],
+        "title": "PublicationConsentRequest"
       },
       "ReadinessCheckItem": {
         "properties": {
@@ -94016,6 +95012,42 @@
             ],
             "title": "Featured Image Media Id"
           },
+          "video_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Url"
+          },
+          "episode_number": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Number"
+          },
+          "guest_names": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Names"
+          },
           "featured_image_prompt": {
             "anyOf": [
               {
@@ -94106,6 +95138,42 @@
               }
             ],
             "title": "Featured Image Media Id"
+          },
+          "video_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Url"
+          },
+          "episode_number": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Number"
+          },
+          "guest_names": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Names"
           },
           "featured_image_prompt": {
             "anyOf": [
@@ -94415,6 +95483,42 @@
             ],
             "title": "Featured Image Prompt"
           },
+          "video_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Url"
+          },
+          "episode_number": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Number"
+          },
+          "guest_names": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Names"
+          },
           "tier_access": {
             "anyOf": [
               {
@@ -94567,6 +95671,39 @@
         ],
         "title": "EmailResponse",
         "description": "Response schema for email operations."
+      },
+      "EventInput": {
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "page_view",
+              "watch_click",
+              "assessment_click",
+              "academy_click",
+              "club_click",
+              "event_click",
+              "register_click"
+            ],
+            "title": "Event Type"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "website",
+              "beyond_the_pool",
+              "articles",
+              "stories"
+            ],
+            "title": "Source",
+            "default": "website"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_type"
+        ],
+        "title": "EventInput"
       },
       "MessageLogResponse": {
         "properties": {
