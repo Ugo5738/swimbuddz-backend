@@ -177,7 +177,7 @@ async def allocate_receipt(
     try:
         response = await internal_get(
             service_url=get_settings().ACADEMY_SERVICE_URL,
-            path=f"/internal/academy/enrollments/{body.enrollment_id}",
+            path=f"/internal/academy/enrollments/{body.enrollment_id}/allocation-identity",
             calling_service="payments",
         )
         response.raise_for_status()
