@@ -377,3 +377,44 @@ async def play_showcase_video(
         status_code=307,
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.get("/evidence/{evidence_id}/play")
+async def play_evidence_for_authorized_person(
+    evidence_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    evidence = await db.get(MilestoneEvidence, evidence_id)
+    if evidence is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    enrollment = await db.get(Enrollment, evidence.enrollment_id)
+    if enrollment is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    if not is_admin_or_service(current_user):
+        if enrollment.member_auth_id != str(current_user.user_id):
+            if not current_user.has_role("coach") or not enrollment.cohort_id:
+                raise HTTPException(status_code=403, detail="Video not accessible")
+            await require_coach_for_cohort(
+                current_user, str(enrollment.cohort_id), db
+            )
+    try:
+        result = await internal_get(
+            service_url=get_settings().MEDIA_SERVICE_URL,
+            path=(
+                "/internal/media/alumni-evidence/"
+                f"{evidence.video_media_id}/public-playback"
+            ),
+            calling_service="academy",
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=503, detail="Video temporarily unavailable"
+        ) from exc
+    if result.status_code != 200:
+        raise HTTPException(status_code=503, detail="Video temporarily unavailable")
+    return RedirectResponse(
+        result.json()["url"],
+        status_code=307,
+        headers={"Cache-Control": "no-store"},
+    )
