@@ -70,6 +70,53 @@ async def published_offers(
     ]
 
 
+@admin.get("/offers", response_model=list[AdminOfferOut])
+async def admin_list_offers(
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    result = await db.execute(
+        select(PoolAccessOffer).order_by(PoolAccessOffer.created_at.desc()).limit(200)
+    )
+    return result.scalars().all()
+
+
+@admin.get("/bookings")
+async def admin_list_access_bookings(
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    from services.pools_service.models.access import PoolAccessReconciliation
+
+    result = await db.execute(
+        select(PoolAccessBooking, PoolAccessOffer, PoolAccessReconciliation)
+        .join(PoolAccessOffer, PoolAccessBooking.offer_id == PoolAccessOffer.id)
+        .outerjoin(
+            PoolAccessReconciliation,
+            PoolAccessReconciliation.booking_id == PoolAccessBooking.id,
+        )
+        .order_by(PoolAccessBooking.created_at.desc())
+        .limit(200)
+    )
+    return [
+        {
+            "booking_id": str(booking.id),
+            "pool_id": str(offer.pool_id),
+            "offer_title": offer.title,
+            "buyer_email": booking.buyer_email,
+            "headcount": booking.headcount,
+            "status": booking.status,
+            "revenue_kobo": booking.selling_total_kobo if booking.status == "confirmed" else 0,
+            "currency": booking.currency,
+            "payment_reference": booking.payment_reference,
+            "verified_admissions": recon.verified_admissions if recon else None,
+            "partner_payable_kobo": recon.payable_kobo if recon else None,
+            "visit_end_at": offer.ends_at.isoformat(),
+        }
+        for booking, offer, recon in result.all()
+    ]
+
+
 @admin.post("/offers", response_model=AdminOfferOut, status_code=201)
 async def create_offer(
     body: OfferInput,
