@@ -740,6 +740,8 @@ async def create_payment_intent(
                 }
             }
         )
+    if payload.purpose == PaymentPurpose.POOL_ACCESS and payload.pool_access_booking_id:
+        payload = payload.model_copy(update={"idempotency_key": payload.pool_access_booking_id})
     payment_id = uuid.uuid4()
     payment_reference = Payment.generate_reference()
     session_booking_id: uuid.UUID | None = None
@@ -760,7 +762,7 @@ async def create_payment_intent(
         await lock_booking_payment(db, session_booking_id)
     previous = None
     if (
-        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING}
+        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING, PaymentPurpose.POOL_ACCESS}
         and payload.idempotency_key
     ):
         from services.payments_service.services.product_intent_retry import (
@@ -1617,7 +1619,7 @@ async def create_payment_intent(
         ),
     )
     if (
-        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING}
+        payload.purpose in {*PRODUCT_PURPOSES, PaymentPurpose.SESSION_BOOKING, PaymentPurpose.POOL_ACCESS}
         and payload.idempotency_key
     ):
         from services.payments_service.services.product_intent_retry import (
