@@ -439,3 +439,50 @@ async def link_superseded_academy_checkout_to_shared_receipt(
         "payment_reference": payment.reference,
         "idempotent": False,
     }
+
+
+class VoidReservedAllocation(BaseModel):
+    reason: str = Field(min_length=15, max_length=1000)
+
+
+@router.post("/{receipt_id}/allocations/{allocation_id}/void")
+async def void_unapplied_allocation(
+    receipt_id: uuid.UUID,
+    allocation_id: uuid.UUID,
+    body: VoidReservedAllocation,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return an unapplied mistaken allocation to the receipt pool.
+
+    An applied tuition credit is never voided here; it requires explicit
+    finance reversal so a member cannot silently lose money.
+    """
+    receipt = (await db.execute(
+        select(AcademyBankReceipt)
+        .where(AcademyBankReceipt.id == receipt_id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if not receipt:
+        raise HTTPException(404, "Bank receipt not found")
+    allocation = (await db.execute(
+        select(AcademyReceiptAllocation)
+        .where(
+            AcademyReceiptAllocation.id == allocation_id,
+            AcademyReceiptAllocation.receipt_id == receipt_id,
+        ).with_for_update()
+    )).scalar_one_or_none()
+    if not allocation:
+        raise HTTPException(404, "Beneficiary allocation not found")
+    if allocation.state == "void":
+        return await _receipt_summary(db, receipt)
+    if allocation.state != "reserved":
+        raise HTTPException(
+            409, "Applied tuition credits cannot be voided as unused funds"
+        )
+    allocation.state = "void"
+    allocation.voided_by_auth_id = admin.user_id
+    allocation.void_reason = body.reason
+    allocation.voided_at = utc_now()
+    await db.commit()
+    return await _receipt_summary(db, receipt)
