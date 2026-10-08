@@ -111,6 +111,7 @@ async def admin_list_access_bookings(
             else 0,
             "currency": booking.currency,
             "payment_reference": booking.payment_reference,
+            "reconciliation_id": str(recon.id) if recon else None,
             "verified_admissions": recon.verified_admissions if recon else None,
             "partner_payable_kobo": recon.payable_kobo if recon else None,
             "visit_end_at": offer.ends_at.isoformat(),
