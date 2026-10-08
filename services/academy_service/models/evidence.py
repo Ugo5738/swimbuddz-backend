@@ -46,12 +46,21 @@ class MilestoneEvidence(Base):
     consent_to_share: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
-    # Consent alone does not approve public use. No public approval API exists.
+    # Consent alone does not approve public use; admin approval is separate.
     approved_for_public: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    public_display_name: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    publication_consent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    showcase_approved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     coach_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     showcase_review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
