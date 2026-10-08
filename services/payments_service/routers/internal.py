@@ -1099,6 +1099,11 @@ async def academy_enrollment_financial_state(
             and not metadata.get("refund_processed")
             and not metadata.get("refunded")
         )
+        superseded_shared = (
+            item.status == PaymentStatus.FAILED
+            and bool(metadata.get("superseded_by_shared_receipt"))
+            and not item.entitlement_applied_at
+        )
         if clean_paid:
             paid.append(
                 max(
@@ -1110,7 +1115,7 @@ async def academy_enrollment_financial_state(
                     ),
                 )
             )
-        elif not closed_unpaid:
+        elif not (closed_unpaid or superseded_shared):
             blocked_references.append(item.reference)
     attempts = [
         {
