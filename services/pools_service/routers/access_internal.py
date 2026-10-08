@@ -1,6 +1,9 @@
 """Pool Access reservation quote and activation, service-to-service only."""
 
 import uuid
+import httpx
+from libs.auth.dependencies import _service_role_jwt
+from libs.common.config import get_settings
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -85,6 +88,25 @@ async def confirm(
         or isinstance(amount_kobo, bool)
     ):
         raise HTTPException(422, "Missing verified payment context")
+    # Service JWT proves the caller is internal, not that a payment occurred.
+    # Read persisted PAID evidence from payments_service before granting access.
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=30) as client:
+        evidence = await client.get(
+            f"{settings.PAYMENTS_SERVICE_URL}/internal/payments/pool-access/paid/{reference}",
+            headers={"Authorization": f"Bearer {_service_role_jwt('pools')}"},
+        )
+    if evidence.status_code >= 400:
+        raise HTTPException(409, "Verified payment evidence not found")
+    record = evidence.json()
+    if (
+        record.get("booking_id") != str(booking_id)
+        or record.get("member_auth_id") != member_auth_id
+        or record.get("amount_kobo") != amount_kobo
+        or record.get("currency") != "NGN"
+    ):
+        raise HTTPException(409, "Paid payment does not match this booking")
+
     booking = (
         await db.execute(
             select(PoolAccessBooking)
