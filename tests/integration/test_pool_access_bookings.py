@@ -3,6 +3,7 @@
 from datetime import timedelta
 from uuid import uuid4
 import pytest
+import httpx
 from libs.common.datetime_utils import utc_now
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
@@ -90,7 +91,10 @@ async def test_capacity_reservation_is_idempotent_and_no_free_ticket(pools_clien
     assert tickets.status_code == 409
 
 
-async def test_unpaid_booking_confirmation_requires_verified_payment(pools_client):
+async def test_unpaid_booking_confirmation_requires_verified_payment(pools_client, monkeypatch):
+    async def unavailable(*args, **kwargs):
+        raise httpx.ConnectError("payments service unavailable")
+    monkeypatch.setattr(httpx.AsyncClient, "get", unavailable)
     oid = await _published_offer(pools_client)
     booked = await pools_client.post(
         "/pools/access/bookings",
@@ -112,4 +116,5 @@ async def test_unpaid_booking_confirmation_requires_verified_payment(pools_clien
             "amount_kobo": 700000,
         },
     )
-    assert direct.status_code in (404, 409)
+    assert direct.status_code == 503
+    assert "temporarily unavailable" in direct.json()["detail"]
