@@ -7,7 +7,7 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import Date, DateTime, Float, Integer, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from libs.common.datetime_utils import utc_now
@@ -35,6 +35,7 @@ class ContentAcquisitionSnapshot(Base):
     paying_members: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     payment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     paid_amount_ngn: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    payments_by_purpose: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     source: Mapped[str] = mapped_column(
         String(32), nullable=False, default="members_registration"
     )
