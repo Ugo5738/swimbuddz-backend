@@ -1748,7 +1748,7 @@ async def create_payment_intent(
                     payment, current_user.email, redirect_path
                 )
         except Exception:
-            if payload.purpose == PaymentPurpose.SESSION_BOOKING or (
+            if payload.purpose in {PaymentPurpose.SESSION_BOOKING, PaymentPurpose.POOL_ACCESS} or (
                 payload.purpose in PRODUCT_PURPOSES and payload.idempotency_key
             ):
                 # Provider may have accepted the request. Retain the reference,
