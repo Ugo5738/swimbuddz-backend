@@ -1,16 +1,29 @@
 """Tuition credits are idempotent, never additional bank cash-in."""
+
 import uuid
 
 import pytest
 from sqlalchemy import select
 
-from services.academy_service.models import AcademyFinancialCredit, EnrollmentInstallment, PaymentStatus, EnrollmentStatus
-from tests.factories import MemberFactory, ProgramFactory, CohortFactory, EnrollmentFactory
+from services.academy_service.models import (
+    AcademyFinancialCredit,
+    EnrollmentInstallment,
+    PaymentStatus,
+    EnrollmentStatus,
+)
+from tests.factories import (
+    MemberFactory,
+    ProgramFactory,
+    CohortFactory,
+    EnrollmentFactory,
+)
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 
-async def test_receipt_credit_reduces_exact_outstanding_tuition(academy_client, db_session):
+async def test_receipt_credit_reduces_exact_outstanding_tuition(
+    academy_client, db_session
+):
     member = MemberFactory.create()
     program = ProgramFactory.create()
     db_session.add_all([member, program])
@@ -45,20 +58,39 @@ async def test_receipt_credit_reduces_exact_outstanding_tuition(academy_client, 
     second = await academy_client.post(url, json=payload)
     assert second.status_code == 200, second.text
     assert second.json()["idempotent"] is True
-    credits = (await db_session.execute(
-        select(AcademyFinancialCredit)
-        .where(AcademyFinancialCredit.enrollment_id == enrollment.id)
-    )).scalars().all()
+    credits = (
+        (
+            await db_session.execute(
+                select(AcademyFinancialCredit).where(
+                    AcademyFinancialCredit.enrollment_id == enrollment.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     assert len(credits) == 1
     assert credits[0].amount_kobo == 5_000_000
-    installments = (await db_session.execute(
-        select(EnrollmentInstallment)
-        .where(EnrollmentInstallment.enrollment_id == enrollment.id)
-    )).scalars().all()
-    assert sum(row.amount for row in installments if row.status.value != "paid") == 11_500_000
+    installments = (
+        (
+            await db_session.execute(
+                select(EnrollmentInstallment).where(
+                    EnrollmentInstallment.enrollment_id == enrollment.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert (
+        sum(row.amount for row in installments if row.status.value != "paid")
+        == 11_500_000
+    )
 
 
-async def test_credit_belonging_to_other_member_is_forbidden(academy_client, db_session):
+async def test_credit_belonging_to_other_member_is_forbidden(
+    academy_client, db_session
+):
     member = MemberFactory.create()
     program = ProgramFactory.create()
     db_session.add_all([member, program])
