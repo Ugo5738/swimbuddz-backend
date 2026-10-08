@@ -1,10 +1,11 @@
 """Published Pool Access inventory and unpaid-entry integration invariants."""
 
 from datetime import timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 import pytest
 import httpx
 from libs.common.datetime_utils import utc_now
+from services.pools_service.models.access import PoolAccessBooking
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -123,7 +124,7 @@ async def test_unpaid_booking_confirmation_requires_verified_payment(
     assert "temporarily unavailable" in direct.json()["detail"]
 
 
-async def test_paid_evidence_activates_exact_booking_only(pools_client, monkeypatch):
+async def test_paid_evidence_activates_exact_booking_only(pools_client, db_session, monkeypatch):
     oid = await _published_offer(pools_client)
     booked = await pools_client.post(
         "/pools/access/bookings",
@@ -135,10 +136,12 @@ async def test_paid_evidence_activates_exact_booking_only(pools_client, monkeypa
     )
     assert booked.status_code == 201, booked.text
     bid = booked.json()["id"]
+    buyer = await db_session.get(PoolAccessBooking, UUID(bid))
+    buyer_auth_id = buyer.buyer_auth_id
     ref = "PAY-" + uuid4().hex
     claim = await pools_client.post(
         f"/internal/pools/access/bookings/{bid}/claim-checkout",
-        json={"member_auth_id": "test-admin-id", "payment_reference": ref},
+        json={"member_auth_id": buyer_auth_id, "payment_reference": ref},
     )
     assert claim.status_code == 200, claim.text
 
@@ -148,7 +151,7 @@ async def test_paid_evidence_activates_exact_booking_only(pools_client, monkeypa
             json={
                 "reference": ref,
                 "booking_id": bid,
-                "member_auth_id": "test-admin-id",
+                "member_auth_id": buyer_auth_id,
                 "amount_kobo": 700000,
                 "currency": "NGN",
             },
@@ -159,7 +162,7 @@ async def test_paid_evidence_activates_exact_booking_only(pools_client, monkeypa
         confirm = await pools_client.post(
             f"/internal/pools/access/bookings/{bid}/confirm",
             json={
-                "member_auth_id": "test-admin-id",
+                "member_auth_id": buyer_auth_id,
                 "payment_reference": ref,
                 "amount_kobo": 700000,
             },
