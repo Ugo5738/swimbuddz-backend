@@ -1,0 +1,24 @@
+name: Format Pool Access Test
+on:
+  push:
+    branches: [codex/pool-access-platform]
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          pip install ruff==0.4.10
+          ruff format tests/integration/test_pool_access_bookings.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u
+          git diff --cached --quiet || (git commit -m "style: canonicalize Pool Access positive-path test" && git push)
