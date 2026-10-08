@@ -77,7 +77,9 @@ async def upload_transfer_receipt(
 ):
     check_transfer_token(reference, access_token)
     payment = await find_payment(db, reference, lock=True)
-    if (getattr(payment, "payment_metadata", None) or {}).get("superseded_by_shared_receipt"):
+    if (getattr(payment, "payment_metadata", None) or {}).get(
+        "superseded_by_shared_receipt"
+    ):
         raise HTTPException(
             409, "This checkout was reconciled to a shared bank receipt"
         )

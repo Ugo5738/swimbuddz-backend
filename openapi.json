@@ -24122,6 +24122,74 @@
         }
       }
     },
+    "/api/v1/payments/admin/academy-receipts/{receipt_id}/allocations/{allocation_id}/void": {
+      "post": {
+        "tags": [
+          "payments",
+          "academy-receipts"
+        ],
+        "summary": "Void Unapplied Allocation",
+        "description": "Return an unapplied mistaken allocation to the receipt pool.\n\nAn applied tuition credit is never voided here; it requires explicit\nfinance reversal so a member cannot silently lose money.",
+        "operationId": "void_unapplied_allocation_payments_admin_academy_receipts__receipt_id__allocations__allocation_id__void_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "receipt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Receipt Id"
+            }
+          },
+          {
+            "name": "allocation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Allocation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidReservedAllocation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payments/charges": {
       "get": {
         "tags": [
@@ -96228,6 +96296,21 @@
           "verification_note"
         ],
         "title": "VerifyReceiptRequest"
+      },
+      "VoidReservedAllocation": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 15,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "VoidReservedAllocation"
       },
       "_BankItem": {
         "properties": {

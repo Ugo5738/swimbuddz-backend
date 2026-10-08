@@ -236,7 +236,8 @@ async def allocate_receipt(
     ).scalar_one_or_none()
     if existing_beneficiary:
         raise HTTPException(
-            409, "An active allocation already exists for this learner and receipt. Review it before allocating again."
+            409,
+            "An active allocation already exists for this learner and receipt. Review it before allocating again.",
         )
 
     assigned = (
@@ -476,20 +477,25 @@ async def void_unapplied_allocation(
     An applied tuition credit is never voided here; it requires explicit
     finance reversal so a member cannot silently lose money.
     """
-    receipt = (await db.execute(
-        select(AcademyBankReceipt)
-        .where(AcademyBankReceipt.id == receipt_id)
-        .with_for_update()
-    )).scalar_one_or_none()
+    receipt = (
+        await db.execute(
+            select(AcademyBankReceipt)
+            .where(AcademyBankReceipt.id == receipt_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not receipt:
         raise HTTPException(404, "Bank receipt not found")
-    allocation = (await db.execute(
-        select(AcademyReceiptAllocation)
-        .where(
-            AcademyReceiptAllocation.id == allocation_id,
-            AcademyReceiptAllocation.receipt_id == receipt_id,
-        ).with_for_update()
-    )).scalar_one_or_none()
+    allocation = (
+        await db.execute(
+            select(AcademyReceiptAllocation)
+            .where(
+                AcademyReceiptAllocation.id == allocation_id,
+                AcademyReceiptAllocation.receipt_id == receipt_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not allocation:
         raise HTTPException(404, "Beneficiary allocation not found")
     if allocation.state == "void":
