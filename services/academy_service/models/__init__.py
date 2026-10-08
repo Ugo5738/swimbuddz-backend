@@ -7,6 +7,7 @@ from services.academy_service.models.cohort import (
     CohortTimelineShiftLog,
 )
 from services.academy_service.models.enrollment import Enrollment, EnrollmentInstallment
+from services.academy_service.models.journey import AcademyJourney, AcademyEnrollmentChange
 from services.academy_service.models.enums import (
     BillingType,
     CoachAssignmentRole,
