@@ -21,11 +21,11 @@ jobs:
       - name: Apply canonical Python format and regenerate OpenAPI
         run: |
           python -m pip install -e ".[dev]" -c constraints.txt
-          ruff format services/communications_service/schemas/main.py services/members_service/routers/internal/flywheel.py services/members_service/routers/internal/_schemas.py services/reporting_service/tasks/flywheel.py services/academy_service/routers/evidence.py services/reporting_service/models/__init__.py services/reporting_service/models/content_acquisition.py services/reporting_service/tasks/content_acquisition.py services/reporting_service/tasks/worker.py services/reporting_service/routers/admin_flywheel.py
+          ruff format .
           python scripts/api/generate-openapi.py > openapi.json
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add services/communications_service/schemas/main.py services/members_service/routers/internal/flywheel.py services/members_service/routers/internal/_schemas.py services/reporting_service/tasks/flywheel.py services/academy_service/routers/evidence.py services/reporting_service/models/__init__.py services/reporting_service/models/content_acquisition.py services/reporting_service/tasks/content_acquisition.py services/reporting_service/tasks/worker.py services/reporting_service/routers/admin_flywheel.py openapi.json
+          git add -u
           if ! git diff --cached --quiet; then
             git commit -m "chore(api): format and sync content attribution contracts"
             git push origin HEAD:codex/alumni-evidence-beyond-pool
