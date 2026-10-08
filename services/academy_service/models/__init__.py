@@ -6,6 +6,7 @@ from services.academy_service.models.cohort import (
     CohortResource,
     CohortTimelineShiftLog,
 )
+from services.academy_service.models.evidence import MilestoneEvidence
 from services.academy_service.models.enrollment import Enrollment, EnrollmentInstallment
 from services.academy_service.models.enums import (
     BillingType,
@@ -74,6 +75,7 @@ __all__ = [
     "LocationType",
     "MemberRef",
     "Milestone",
+    "MilestoneEvidence",
     "MilestoneEventType",
     "MilestoneReviewEvent",
     "MilestoneType",
