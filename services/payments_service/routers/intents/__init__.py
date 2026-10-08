@@ -67,7 +67,9 @@ from . import completion as _completion
 from . import intent_creation as _intent_creation
 from . import member_payments as _member_payments
 from . import pricing as _pricing
-from services.payments_service.routers.academy_receipts import router as academy_receipts_router
+from services.payments_service.routers.academy_receipts import (
+    router as academy_receipts_router,
+)
 from services.payments_service.routers.checkout_reconciliation import (
     router as reconciliation_router,
 )

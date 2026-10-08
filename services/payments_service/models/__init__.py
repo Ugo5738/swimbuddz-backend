@@ -1,6 +1,9 @@
 """Payments Service models package."""
 
-from services.payments_service.models.academy_receipts import AcademyBankReceipt, AcademyReceiptAllocation
+from services.payments_service.models.academy_receipts import (
+    AcademyBankReceipt,
+    AcademyReceiptAllocation,
+)
 from services.payments_service.models.core import (
     AdditionalChargePolicy,
     CoachPayout,

@@ -86,7 +86,10 @@ async def settle_offline(db, payment, payload, actor):
         )
     ).scalar_one()
     if (payment.payment_metadata or {}).get("superseded_by_shared_receipt"):
-        raise HTTPException(409, "Shared receipt already covers this checkout; do not settle the same cash twice")
+        raise HTTPException(
+            409,
+            "Shared receipt already covers this checkout; do not settle the same cash twice",
+        )
     if naira_to_kobo(payment.amount) != payload.amount_kobo or payload.amount_kobo <= 0:
         raise HTTPException(
             422, "The received allocation must equal the full frozen payment amount"

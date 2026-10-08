@@ -3,6 +3,7 @@
 Cash is never booked here; payments owns receipts. This router transfers only
 verified tuition value and leaves historical enrollments / attendance intact.
 """
+
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -63,34 +64,45 @@ async def preview_reviewed_transfer(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Show authoritative tuition credit, old payments, and destination price."""
-    change = (await db.execute(
-        select(AcademyEnrollmentChange).where(
-            AcademyEnrollmentChange.id == change_id,
+    change = (
+        await db.execute(
+            select(AcademyEnrollmentChange).where(
+                AcademyEnrollmentChange.id == change_id,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not change:
         raise HTTPException(404, "Cohort change not found")
-    source = (await db.execute(
-        select(Enrollment).where(Enrollment.id == change.from_enrollment_id)
-        .options(selectinload(Enrollment.progress_records))
-    )).scalar_one_or_none()
-    target = (await db.execute(
-        select(Cohort).where(Cohort.id == change.target_cohort_id)
-    )).scalar_one_or_none()
+    source = (
+        await db.execute(
+            select(Enrollment)
+            .where(Enrollment.id == change.from_enrollment_id)
+            .options(selectinload(Enrollment.progress_records))
+        )
+    ).scalar_one_or_none()
+    target = (
+        await db.execute(select(Cohort).where(Cohort.id == change.target_cohort_id))
+    ).scalar_one_or_none()
     if not source or not target or not source.program_id:
         raise HTTPException(409, "Enrollment and target must exist")
-    programme = (await db.execute(
-        select(Program).where(Program.id == source.program_id)
-    )).scalar_one_or_none()
+    programme = (
+        await db.execute(select(Program).where(Program.id == source.program_id))
+    ).scalar_one_or_none()
     if not programme:
         raise HTTPException(409, "Academy programme missing")
     financial = await financial_state(source.id)
-    credits = (await db.execute(
-        select(AcademyFinancialCredit).where(
-            AcademyFinancialCredit.enrollment_id == source.id,
-            AcademyFinancialCredit.state == "active",
+    credits = (
+        (
+            await db.execute(
+                select(AcademyFinancialCredit).where(
+                    AcademyFinancialCredit.enrollment_id == source.id,
+                    AcademyFinancialCredit.state == "active",
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
     receipt_credit = sum(credit.amount_kobo for credit in credits)
     verified_cash = int(financial.get("verified_paid_tuition_kobo") or 0)
     return {
@@ -100,7 +112,9 @@ async def preview_reviewed_transfer(
         "verified_paid_tuition_kobo": verified_cash,
         "verified_allocation_credit_kobo": receipt_credit,
         "verified_total_kobo": verified_cash + receipt_credit,
-        "destination_base_tuition_kobo": _resolve_enrollment_total_fee(programme, target),
+        "destination_base_tuition_kobo": _resolve_enrollment_total_fee(
+            programme, target
+        ),
         "recorded_progress_count": len(source.progress_records),
         "eligible": financial.get("paid_transfer_eligible", False),
         "blocked_payment_references": financial.get("blocked_references", []),
@@ -120,29 +134,37 @@ async def approve_reviewed_transfer(
     All original payment references remain on the source enrollment. The
     destination gets a single internally credited obligation, not new cash.
     """
-    change = (await db.execute(
-        select(AcademyEnrollmentChange)
-        .where(AcademyEnrollmentChange.id == change_id).with_for_update()
-    )).scalar_one_or_none()
+    change = (
+        await db.execute(
+            select(AcademyEnrollmentChange)
+            .where(AcademyEnrollmentChange.id == change_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not change:
         raise HTTPException(404, "Change request not found")
     if change.state == "completed" and change.to_enrollment_id:
         return {
-            "state": "completed", "enrollment_id": str(change.to_enrollment_id),
+            "state": "completed",
+            "enrollment_id": str(change.to_enrollment_id),
             "idempotent": True,
         }
     if change.state != "needs_review":
         raise HTTPException(409, "This request is no longer awaiting review")
 
-    source = (await db.execute(
-        select(Enrollment).where(Enrollment.id == change.from_enrollment_id)
-        .options(
-            selectinload(Enrollment.installments),
-            selectinload(Enrollment.progress_records),
-            selectinload(Enrollment.cohort).selectinload(Cohort.program),
-            selectinload(Enrollment.program),
-        ).with_for_update()
-    )).scalar_one_or_none()
+    source = (
+        await db.execute(
+            select(Enrollment)
+            .where(Enrollment.id == change.from_enrollment_id)
+            .options(
+                selectinload(Enrollment.installments),
+                selectinload(Enrollment.progress_records),
+                selectinload(Enrollment.cohort).selectinload(Cohort.program),
+                selectinload(Enrollment.program),
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not source or source.status not in {
         EnrollmentStatus.PENDING_APPROVAL,
         EnrollmentStatus.ENROLLED,
@@ -166,22 +188,31 @@ async def approve_reviewed_transfer(
             source.payment_reference,
             *(item.payment_reference for item in source.installments),
         ]
-        if reference and not reference.startswith("academy-receipt-allocation:")
+        if reference
+        and not reference.startswith("academy-receipt-allocation:")
         and not reference.startswith("cohort-change:")
     }
     if not original_references.issubset(set(financial.get("references") or [])):
         raise HTTPException(
-            409, "Recorded historical payment references could not be verified by Payments",
+            409,
+            "Recorded historical payment references could not be verified by Payments",
         )
-    active_credits = (await db.execute(
-        select(AcademyFinancialCredit).where(
-            AcademyFinancialCredit.enrollment_id == source.id,
-            AcademyFinancialCredit.state == "active",
-        ).with_for_update()
-    )).scalars().all()
-    verified_total = (
-        int(financial.get("verified_paid_tuition_kobo") or 0)
-        + sum(item.amount_kobo for item in active_credits)
+    active_credits = (
+        (
+            await db.execute(
+                select(AcademyFinancialCredit)
+                .where(
+                    AcademyFinancialCredit.enrollment_id == source.id,
+                    AcademyFinancialCredit.state == "active",
+                )
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    verified_total = int(financial.get("verified_paid_tuition_kobo") or 0) + sum(
+        item.amount_kobo for item in active_credits
     )
     if (
         payload.transferable_credit_kobo + payload.consumed_services_kobo
@@ -193,14 +224,18 @@ async def approve_reviewed_transfer(
         )
     if source.progress_records and not payload.confirmed_attendance_review:
         raise HTTPException(
-            409, "Confirm the attendance and milestone review before transferring progress",
+            409,
+            "Confirm the attendance and milestone review before transferring progress",
         )
 
-    target = (await db.execute(
-        select(Cohort).where(Cohort.id == change.target_cohort_id).with_for_update()
-    )).scalar_one_or_none()
+    target = (
+        await db.execute(
+            select(Cohort).where(Cohort.id == change.target_cohort_id).with_for_update()
+        )
+    ).scalar_one_or_none()
     if (
-        not target or target.program_id != source.program_id
+        not target
+        or target.program_id != source.program_id
         or target.status not in {CohortStatus.OPEN, CohortStatus.ACTIVE}
     ):
         raise HTTPException(409, "The destination cohort is not available")
@@ -209,33 +244,42 @@ async def approve_reviewed_transfer(
         week = max(1, ((now - target.start_date).days // 7) + 1)
         if not target.allow_mid_entry or week > target.mid_entry_cutoff_week:
             raise HTTPException(409, "The destination mid-entry cutoff has passed")
-    programme = (await db.execute(
-        select(Program).where(Program.id == source.program_id)
-    )).scalar_one_or_none()
+    programme = (
+        await db.execute(select(Program).where(Program.id == source.program_id))
+    ).scalar_one_or_none()
     if not programme or not programme.is_published:
         raise HTTPException(409, "Academy programme is unavailable")
 
-    other = (await db.execute(
-        select(Enrollment.id).where(
-            Enrollment.member_id == source.member_id,
-            Enrollment.cohort_id == target.id,
-            Enrollment.status.in_([
-                EnrollmentStatus.PENDING_APPROVAL,
-                EnrollmentStatus.ENROLLED,
-                EnrollmentStatus.WAITLIST,
-            ]),
+    other = (
+        await db.execute(
+            select(Enrollment.id).where(
+                Enrollment.member_id == source.member_id,
+                Enrollment.cohort_id == target.id,
+                Enrollment.status.in_(
+                    [
+                        EnrollmentStatus.PENDING_APPROVAL,
+                        EnrollmentStatus.ENROLLED,
+                        EnrollmentStatus.WAITLIST,
+                    ]
+                ),
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if other:
         raise HTTPException(409, "Learner already has an active destination placement")
-    count = (await db.execute(
-        select(func.count(Enrollment.id)).where(
-            Enrollment.cohort_id == target.id,
-            Enrollment.status.in_([
-                EnrollmentStatus.PENDING_APPROVAL, EnrollmentStatus.ENROLLED,
-            ]),
+    count = (
+        await db.execute(
+            select(func.count(Enrollment.id)).where(
+                Enrollment.cohort_id == target.id,
+                Enrollment.status.in_(
+                    [
+                        EnrollmentStatus.PENDING_APPROVAL,
+                        EnrollmentStatus.ENROLLED,
+                    ]
+                ),
+            )
         )
-    )).scalar_one()
+    ).scalar_one()
     if target.capacity is not None and count >= target.capacity:
         raise HTTPException(409, "The destination cohort is full")
 
@@ -245,7 +289,8 @@ async def approve_reviewed_transfer(
         raise HTTPException(409, "Approved discount exceeds cohort tuition")
     if payload.transferable_credit_kobo > new_fee_kobo:
         raise HTTPException(
-            409, "Credit exceeds new tuition; record and settle the refundable surplus before this transfer",
+            409,
+            "Credit exceeds new tuition; record and settle the refundable surplus before this transfer",
         )
 
     # Historical source enrollments and their source receipts remain retained.
@@ -291,7 +336,8 @@ async def approve_reviewed_transfer(
             db, new_enrollment, use_installments=True
         )
         payable = [
-            item for item in installments
+            item
+            for item in installments
             if item.status not in {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
         ]
         _, overshoot = apply_member_payment_across_installments(
@@ -301,30 +347,36 @@ async def approve_reviewed_transfer(
             payment_reference=new_credit.source_reference,
         )
         if overshoot:
-            raise HTTPException(409, "Transfer credit cannot be applied to current tuition obligations")
+            raise HTTPException(
+                409, "Transfer credit cannot be applied to current tuition obligations"
+            )
         await _sync_installment_state_for_enrollment(db, new_enrollment, now_dt=now)
 
     # Achievement claims / video references survive without being deleted
     # from the original cohort. Attendance sessions remain attached to the
     # cohort where they actually happened.
     for progress in source.progress_records:
-        if not (progress.achieved_at or progress.reviewed_at or progress.evidence_media_id):
+        if not (
+            progress.achieved_at or progress.reviewed_at or progress.evidence_media_id
+        ):
             continue
-        db.add(StudentProgress(
-            enrollment_id=new_enrollment.id,
-            milestone_id=progress.milestone_id,
-            status=progress.status,
-            achieved_at=progress.achieved_at,
-            evidence_media_id=progress.evidence_media_id,
-            score=progress.score,
-            reviewed_by_coach_id=progress.reviewed_by_coach_id,
-            reviewed_at=progress.reviewed_at,
-            student_notes=progress.student_notes,
-            coach_notes=(
-                f"Transferred from enrollment {source.id}. "
-                + (progress.coach_notes or "")
-            ),
-        ))
+        db.add(
+            StudentProgress(
+                enrollment_id=new_enrollment.id,
+                milestone_id=progress.milestone_id,
+                status=progress.status,
+                achieved_at=progress.achieved_at,
+                evidence_media_id=progress.evidence_media_id,
+                score=progress.score,
+                reviewed_by_coach_id=progress.reviewed_by_coach_id,
+                reviewed_at=progress.reviewed_at,
+                student_notes=progress.student_notes,
+                coach_notes=(
+                    f"Transferred from enrollment {source.id}. "
+                    + (progress.coach_notes or "")
+                ),
+            )
+        )
 
     change.state = "completed"
     change.to_enrollment_id = new_enrollment.id

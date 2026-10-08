@@ -5,7 +5,12 @@ from pydantic import BaseModel as _BaseModel
 from pydantic import Field as _Field
 from sqlalchemy import func, or_
 
-from services.academy_service.models import StudentProgress, AcademyFinancialCredit, InstallmentStatus, PaymentStatus
+from services.academy_service.models import (
+    StudentProgress,
+    AcademyFinancialCredit,
+    InstallmentStatus,
+    PaymentStatus,
+)
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
@@ -112,34 +117,49 @@ async def apply_verified_academy_credit(
         EnrollmentStatus.ENROLLED,
     }:
         raise HTTPException(409, "This enrollment is not eligible for tuition credits")
-    prior = (await db.execute(
-        select(AcademyFinancialCredit)
-        .where(AcademyFinancialCredit.source_reference == payload.source_reference)
-    )).scalar_one_or_none()
+    prior = (
+        await db.execute(
+            select(AcademyFinancialCredit).where(
+                AcademyFinancialCredit.source_reference == payload.source_reference
+            )
+        )
+    ).scalar_one_or_none()
     if prior:
-        if (prior.enrollment_id != enrollment_id
+        if (
+            prior.enrollment_id != enrollment_id
             or prior.amount_kobo != payload.amount_kobo
-            or prior.source_kind != payload.source_kind):
-            raise HTTPException(409, "Credit reference was already used for another enrollment")
+            or prior.source_kind != payload.source_kind
+        ):
+            raise HTTPException(
+                409, "Credit reference was already used for another enrollment"
+            )
         return {
-            "state": prior.state, "credit_id": str(prior.id),
-            "amount_kobo": prior.amount_kobo, "idempotent": True,
+            "state": prior.state,
+            "credit_id": str(prior.id),
+            "amount_kobo": prior.amount_kobo,
+            "idempotent": True,
         }
 
-    active_credits = (await db.execute(
-        select(AcademyFinancialCredit)
-        .where(
-            AcademyFinancialCredit.enrollment_id == enrollment_id,
-            AcademyFinancialCredit.state == "active",
+    active_credits = (
+        (
+            await db.execute(
+                select(AcademyFinancialCredit).where(
+                    AcademyFinancialCredit.enrollment_id == enrollment_id,
+                    AcademyFinancialCredit.state == "active",
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
     total_credited = sum(item.amount_kobo for item in active_credits)
     if (
         enrollment.price_snapshot_amount is None
         or total_credited + payload.amount_kobo > enrollment.price_snapshot_amount
     ):
         raise HTTPException(
-            409, "Verified credits exceed the frozen Academy tuition; resolve any surplus as an explicit refund",
+            409,
+            "Verified credits exceed the frozen Academy tuition; resolve any surplus as an explicit refund",
         )
     installments = await _sync_installment_state_for_enrollment(
         db, enrollment, use_installments=True
@@ -147,7 +167,8 @@ async def apply_verified_academy_credit(
     # An existing payment can have fully paid installments; do not alter
     # their original references or overwrite the credit owner's history.
     payable = [
-        item for item in installments
+        item
+        for item in installments
         if item.status not in {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
     ]
     remainder = sum(item.amount for item in payable)
@@ -175,8 +196,10 @@ async def apply_verified_academy_credit(
     await _sync_installment_state_for_enrollment(db, enrollment, now_dt=now)
     await db.commit()
     return {
-        "state": "active", "credit_id": str(credit.id),
-        "amount_kobo": credit.amount_kobo, "idempotent": False,
+        "state": "active",
+        "credit_id": str(credit.id),
+        "amount_kobo": credit.amount_kobo,
+        "idempotent": False,
     }
 
 
@@ -187,9 +210,9 @@ async def academy_allocation_identity(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Private payments-service ownership projection; no user-controlled member ID."""
-    enrollment = (await db.execute(
-        select(Enrollment).where(Enrollment.id == enrollment_id)
-    )).scalar_one_or_none()
+    enrollment = (
+        await db.execute(select(Enrollment).where(Enrollment.id == enrollment_id))
+    ).scalar_one_or_none()
     if not enrollment:
         raise HTTPException(404, "Academy enrollment not found")
     return {

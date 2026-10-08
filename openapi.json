@@ -18562,6 +18562,110 @@
         }
       }
     },
+    "/api/v1/academy/admin/academy/enrollment-changes/{change_id}/finance-preview": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Preview Reviewed Transfer",
+        "description": "Show authoritative tuition credit, old payments, and destination price.",
+        "operationId": "preview_reviewed_transfer_academy_admin_academy_enrollment_changes__change_id__finance_preview_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "change_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Change Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/academy/enrollment-changes/{change_id}/approve-reviewed": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Approve Reviewed Transfer",
+        "description": "Make one Academy-side atomic transfer of verified prepaid tuition.\n\nAll original payment references remain on the source enrollment. The\ndestination gets a single internally credited obligation, not new cash.",
+        "operationId": "approve_reviewed_transfer_academy_admin_academy_enrollment_changes__change_id__approve_reviewed_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "change_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Change Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveReviewedTransfer"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/my-enrollments": {
       "get": {
         "tags": [
@@ -20927,6 +21031,110 @@
                   },
                   "title": "Response List Cohort Ids For Coach Internal Academy Coaches  Coach Member Id  Cohort Ids Get"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/academy/enrollments/{enrollment_id}/verified-credit": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Apply Verified Academy Credit",
+        "description": "Idempotent service-owned tuition application; does NOT record bank income.\n\nEvery source reference is globally unique; the payments service owns the\ncorresponding cash receipt and authorizes allocation before calling here.",
+        "operationId": "apply_verified_academy_credit_internal_academy_enrollments__enrollment_id__verified_credit_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyVerifiedAcademyCredit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/academy/enrollments/{enrollment_id}/allocation-identity": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Academy Allocation Identity",
+        "description": "Private payments-service ownership projection; no user-controlled member ID.",
+        "operationId": "academy_allocation_identity_internal_academy_enrollments__enrollment_id__allocation_identity_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -23623,6 +23831,271 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CloseUnpaidCheckout"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/academy-receipts": {
+      "post": {
+        "tags": [
+          "payments",
+          "academy-receipts"
+        ],
+        "summary": "Verify Bank Receipt",
+        "operationId": "verify_bank_receipt_payments_admin_academy_receipts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyReceiptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/payments/admin/academy-receipts/{receipt_id}": {
+      "get": {
+        "tags": [
+          "payments",
+          "academy-receipts"
+        ],
+        "summary": "Get Verified Receipt",
+        "operationId": "get_verified_receipt_payments_admin_academy_receipts__receipt_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "receipt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Receipt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/academy-receipts/{receipt_id}/allocations": {
+      "post": {
+        "tags": [
+          "payments",
+          "academy-receipts"
+        ],
+        "summary": "Allocate Receipt",
+        "operationId": "allocate_receipt_payments_admin_academy_receipts__receipt_id__allocations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "receipt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Receipt Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllocateReceiptRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/academy-receipts/{receipt_id}/allocations/{allocation_id}/apply": {
+      "post": {
+        "tags": [
+          "payments",
+          "academy-receipts"
+        ],
+        "summary": "Apply Receipt Allocation",
+        "description": "Deliver verified credit to its true enrollment, with retry-safe acknowledgement.\n\nPayments records cash once at receipt verification. The Academy service\napplies tuition credit and owns installments; no synthetic second payment.",
+        "operationId": "apply_receipt_allocation_payments_admin_academy_receipts__receipt_id__allocations__allocation_id__apply_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "receipt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Receipt Id"
+            }
+          },
+          {
+            "name": "allocation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Allocation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/academy-receipts/{receipt_id}/reconcile-attempt": {
+      "post": {
+        "tags": [
+          "payments",
+          "academy-receipts"
+        ],
+        "summary": "Link Superseded Academy Checkout To Shared Receipt",
+        "description": "Retire an individual proof/checkout after its verified shared allocation.\n\nA proof is never treated as unpaid. Instead, we preserve it on the old\nattempt and link its claim to the one bank receipt already recorded.",
+        "operationId": "link_superseded_academy_checkout_to_shared_receipt_payments_admin_academy_receipts__receipt_id__reconcile_attempt_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "receipt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Receipt Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconcileLegacyAttempt"
               }
             }
           }
@@ -85057,6 +85530,95 @@
         "title": "AdminDropoutActionRequest",
         "description": "Admin action on an enrollment that is in DROPOUT_PENDING state."
       },
+      "ApplyVerifiedAcademyCredit": {
+        "properties": {
+          "source_reference": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 8,
+            "title": "Source Reference"
+          },
+          "source_kind": {
+            "type": "string",
+            "pattern": "^(receipt_allocation|paid_transfer)$",
+            "title": "Source Kind"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "amount_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Kobo"
+          },
+          "actor_auth_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Actor Auth Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_reference",
+          "source_kind",
+          "member_auth_id",
+          "amount_kobo",
+          "actor_auth_id"
+        ],
+        "title": "ApplyVerifiedAcademyCredit"
+      },
+      "ApproveReviewedTransfer": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Reason"
+          },
+          "transferable_credit_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Transferable Credit Kobo"
+          },
+          "consumed_services_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Consumed Services Kobo"
+          },
+          "discount_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Discount Kobo",
+            "default": 0
+          },
+          "discount_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Reason"
+          },
+          "confirmed_attendance_review": {
+            "type": "boolean",
+            "title": "Confirmed Attendance Review",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason",
+          "transferable_credit_kobo",
+          "consumed_services_kobo"
+        ],
+        "title": "ApproveReviewedTransfer"
+      },
       "ApproveUnpaidCohortChange": {
         "properties": {
           "reason": {
@@ -91120,6 +91682,21 @@
           "all_unpaid_closed": {
             "type": "boolean",
             "title": "All Unpaid Closed"
+          },
+          "paid_transfer_eligible": {
+            "type": "boolean",
+            "title": "Paid Transfer Eligible"
+          },
+          "verified_paid_tuition_kobo": {
+            "type": "integer",
+            "title": "Verified Paid Tuition Kobo"
+          },
+          "blocked_references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocked References"
           }
         },
         "type": "object",
@@ -91128,7 +91705,10 @@
           "references",
           "statuses",
           "attempts",
-          "all_unpaid_closed"
+          "all_unpaid_closed",
+          "paid_transfer_eligible",
+          "verified_paid_tuition_kobo",
+          "blocked_references"
         ],
         "title": "AcademyEnrollmentFinancialState",
         "description": "Payments-service-owned transfer safety view, never client assertions."
@@ -91341,6 +91921,33 @@
         "type": "object",
         "title": "AdminReviewRequest",
         "description": "Admin review action for a manual payment."
+      },
+      "AllocateReceiptRequest": {
+        "properties": {
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "amount_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Kobo"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 8,
+            "title": "Idempotency Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enrollment_id",
+          "amount_kobo",
+          "idempotency_key"
+        ],
+        "title": "AllocateReceiptRequest"
       },
       "AnnotateRefundRequest": {
         "properties": {
@@ -94955,6 +95562,28 @@
         "title": "PricingConfigResponse",
         "description": "Public pricing configuration for frontend display."
       },
+      "ReconcileLegacyAttempt": {
+        "properties": {
+          "payment_reference": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 3,
+            "title": "Payment Reference"
+          },
+          "review_note": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Review Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "payment_reference",
+          "review_note"
+        ],
+        "title": "ReconcileLegacyAttempt"
+      },
       "RecurringPayoutConfigCreate": {
         "properties": {
           "coach_member_id": {
@@ -95571,6 +96200,34 @@
           "fulfilled"
         ],
         "title": "TransferSummary"
+      },
+      "VerifyReceiptRequest": {
+        "properties": {
+          "external_reference": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 5,
+            "title": "External Reference"
+          },
+          "amount_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Kobo"
+          },
+          "verification_note": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Verification Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "external_reference",
+          "amount_kobo",
+          "verification_note"
+        ],
+        "title": "VerifyReceiptRequest"
       },
       "_BankItem": {
         "properties": {

@@ -57,7 +57,9 @@ async def complete_payment(
         )
 
     if (payment.payment_metadata or {}).get("superseded_by_shared_receipt"):
-        raise HTTPException(409, "Shared receipt already covers this checkout; do not complete it twice")
+        raise HTTPException(
+            409, "Shared receipt already covers this checkout; do not complete it twice"
+        )
     if payment.status == PaymentStatus.PAID:
         return payment
 

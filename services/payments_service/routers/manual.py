@@ -54,7 +54,10 @@ async def submit_proof_of_payment(
         raise HTTPException(status_code=404, detail="Payment not found")
 
     if (payment.payment_metadata or {}).get("superseded_by_shared_receipt"):
-        raise HTTPException(409, "This checkout was reconciled to a shared bank receipt and cannot accept another proof")
+        raise HTTPException(
+            409,
+            "This checkout was reconciled to a shared bank receipt and cannot accept another proof",
+        )
     if payment.payment_method != "manual_transfer":
         raise HTTPException(
             status_code=400, detail="Proof upload is only for manual transfer payments"

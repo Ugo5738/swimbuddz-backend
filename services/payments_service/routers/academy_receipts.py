@@ -1,4 +1,5 @@
 """Verified bank receipt split ledger. Allocations are NOT additional income."""
+
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -38,11 +39,17 @@ class AllocateReceiptRequest(BaseModel):
 
 
 async def _receipt_summary(db: AsyncSession, receipt: AcademyBankReceipt) -> dict:
-    allocations = (await db.execute(
-        select(AcademyReceiptAllocation)
-        .where(AcademyReceiptAllocation.receipt_id == receipt.id)
-        .order_by(AcademyReceiptAllocation.created_at)
-    )).scalars().all()
+    allocations = (
+        (
+            await db.execute(
+                select(AcademyReceiptAllocation)
+                .where(AcademyReceiptAllocation.receipt_id == receipt.id)
+                .order_by(AcademyReceiptAllocation.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
     assigned = sum(a.amount_kobo for a in allocations if a.state != "void")
     return {
         "id": str(receipt.id),
@@ -53,9 +60,14 @@ async def _receipt_summary(db: AsyncSession, receipt: AcademyBankReceipt) -> dic
         "allocated_kobo": assigned,
         "unallocated_kobo": receipt.amount_kobo - assigned,
         "allocations": [
-            {"id": str(a.id), "enrollment_id": str(a.enrollment_id),
-             "member_auth_id": a.member_auth_id, "amount_kobo": a.amount_kobo,
-             "state": a.state, "idempotency_key": a.idempotency_key}
+            {
+                "id": str(a.id),
+                "enrollment_id": str(a.enrollment_id),
+                "member_auth_id": a.member_auth_id,
+                "amount_kobo": a.amount_kobo,
+                "state": a.state,
+                "idempotency_key": a.idempotency_key,
+            }
             for a in allocations
         ],
     }
@@ -73,24 +85,33 @@ async def verify_bank_receipt(
     # Existing paid Payment rows may already represent the same cash; never
     # silently create a second receipt with the same bank reference.
     reference = body.external_reference.strip().upper()
-    existing = (await db.execute(
-        select(AcademyBankReceipt)
-        .where(AcademyBankReceipt.external_reference == reference)
-        .with_for_update()
-    )).scalar_one_or_none()
+    existing = (
+        await db.execute(
+            select(AcademyBankReceipt)
+            .where(AcademyBankReceipt.external_reference == reference)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if existing:
         if existing.amount_kobo != body.amount_kobo:
-            raise HTTPException(409, "A different amount is already verified under this bank reference")
+            raise HTTPException(
+                409, "A different amount is already verified under this bank reference"
+            )
         return await _receipt_summary(db, existing)
-    payment = (await db.execute(
-        select(Payment.id).where(
-            Payment.status == PaymentStatus.PAID,
-            func.upper(Payment.provider_reference) == reference,
-        ).limit(1)
-    )).scalar_one_or_none()
+    payment = (
+        await db.execute(
+            select(Payment.id)
+            .where(
+                Payment.status == PaymentStatus.PAID,
+                func.upper(Payment.provider_reference) == reference,
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
     if payment:
         raise HTTPException(
-            409, "An existing payment already settled this bank reference. Reconcile that payment rather than record a second receipt"
+            409,
+            "An existing payment already settled this bank reference. Reconcile that payment rather than record a second receipt",
         )
     now = utc_now()
     canonical = Payment(
@@ -136,9 +157,11 @@ async def get_verified_receipt(
     admin: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    receipt = (await db.execute(
-        select(AcademyBankReceipt).where(AcademyBankReceipt.id == receipt_id)
-    )).scalar_one_or_none()
+    receipt = (
+        await db.execute(
+            select(AcademyBankReceipt).where(AcademyBankReceipt.id == receipt_id)
+        )
+    ).scalar_one_or_none()
     if not receipt:
         raise HTTPException(404, "Verified receipt not found")
     return await _receipt_summary(db, receipt)
@@ -151,25 +174,31 @@ async def allocate_receipt(
     admin: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    receipt = (await db.execute(
-        select(AcademyBankReceipt)
-        .where(AcademyBankReceipt.id == receipt_id)
-        .with_for_update()
-    )).scalar_one_or_none()
+    receipt = (
+        await db.execute(
+            select(AcademyBankReceipt)
+            .where(AcademyBankReceipt.id == receipt_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not receipt:
         raise HTTPException(404, "Verified receipt not found")
-    prior = (await db.execute(
-        select(AcademyReceiptAllocation).where(
-            AcademyReceiptAllocation.receipt_id == receipt_id,
-            AcademyReceiptAllocation.idempotency_key == body.idempotency_key,
+    prior = (
+        await db.execute(
+            select(AcademyReceiptAllocation).where(
+                AcademyReceiptAllocation.receipt_id == receipt_id,
+                AcademyReceiptAllocation.idempotency_key == body.idempotency_key,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if prior:
         if (
             prior.amount_kobo != body.amount_kobo
             or prior.enrollment_id != body.enrollment_id
         ):
-            raise HTTPException(409, "Idempotency key belongs to a different allocation")
+            raise HTTPException(
+                409, "Idempotency key belongs to a different allocation"
+            )
         return await _receipt_summary(db, receipt)
 
     # Verify actual Academy enrollment ownership from the source service.
@@ -183,30 +212,39 @@ async def allocate_receipt(
         response.raise_for_status()
         enrollment = response.json()
     except Exception as exc:
-        raise HTTPException(503, "Academy enrollment ownership cannot be verified") from exc
+        raise HTTPException(
+            503, "Academy enrollment ownership cannot be verified"
+        ) from exc
     beneficiary_auth_id = str(enrollment.get("member_auth_id") or "")
     if not beneficiary_auth_id:
         raise HTTPException(409, "Academy enrollment has no verified member identity")
     if str(enrollment.get("currency_snapshot") or "NGN").upper() != receipt.currency:
         raise HTTPException(409, "Currency mismatch")
 
-    assigned = (await db.execute(
-        select(func.coalesce(func.sum(AcademyReceiptAllocation.amount_kobo), 0))
-        .where(AcademyReceiptAllocation.receipt_id == receipt_id,
-               AcademyReceiptAllocation.state != "void")
-    )).scalar_one()
+    assigned = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(AcademyReceiptAllocation.amount_kobo), 0)
+            ).where(
+                AcademyReceiptAllocation.receipt_id == receipt_id,
+                AcademyReceiptAllocation.state != "void",
+            )
+        )
+    ).scalar_one()
     if assigned + body.amount_kobo > receipt.amount_kobo:
         raise HTTPException(409, "Allocations exceed the verified bank receipt")
 
-    db.add(AcademyReceiptAllocation(
-        receipt_id=receipt_id,
-        member_auth_id=beneficiary_auth_id,
-        enrollment_id=body.enrollment_id,
-        amount_kobo=body.amount_kobo,
-        idempotency_key=body.idempotency_key,
-        state="reserved",
-        created_by_auth_id=admin.user_id,
-    ))
+    db.add(
+        AcademyReceiptAllocation(
+            receipt_id=receipt_id,
+            member_auth_id=beneficiary_auth_id,
+            enrollment_id=body.enrollment_id,
+            amount_kobo=body.amount_kobo,
+            idempotency_key=body.idempotency_key,
+            state="reserved",
+            created_by_auth_id=admin.user_id,
+        )
+    )
     await db.flush()
     await db.commit()
     return await _receipt_summary(db, receipt)
@@ -224,16 +262,24 @@ async def apply_receipt_allocation(
     Payments records cash once at receipt verification. The Academy service
     applies tuition credit and owns installments; no synthetic second payment.
     """
-    allocation = (await db.execute(
-        select(AcademyReceiptAllocation).where(
-            AcademyReceiptAllocation.id == allocation_id,
-            AcademyReceiptAllocation.receipt_id == receipt_id,
-        ).with_for_update()
-    )).scalar_one_or_none()
+    allocation = (
+        await db.execute(
+            select(AcademyReceiptAllocation)
+            .where(
+                AcademyReceiptAllocation.id == allocation_id,
+                AcademyReceiptAllocation.receipt_id == receipt_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not allocation:
         raise HTTPException(404, "Receipt allocation not found")
     if allocation.state == "applied":
-        return {"state": "applied", "allocation_id": str(allocation.id), "idempotent": True}
+        return {
+            "state": "applied",
+            "allocation_id": str(allocation.id),
+            "idempotent": True,
+        }
     if allocation.state != "reserved":
         raise HTTPException(409, "Allocation is not eligible for application")
     source_reference = f"academy-receipt-allocation:{allocation.id}"
@@ -253,14 +299,17 @@ async def apply_receipt_allocation(
         response.raise_for_status()
     except Exception as exc:
         raise HTTPException(
-            503, "Academy credit could not be confirmed. Do not re-record the bank receipt; retry this allocation"
+            503,
+            "Academy credit could not be confirmed. Do not re-record the bank receipt; retry this allocation",
         ) from exc
     allocation.state = "applied"
     allocation.applied_at = utc_now()
     await db.commit()
     return {
-        "state": "applied", "allocation_id": str(allocation.id),
-        "enrollment_id": str(allocation.enrollment_id), "idempotent": False,
+        "state": "applied",
+        "allocation_id": str(allocation.id),
+        "enrollment_id": str(allocation.enrollment_id),
+        "idempotent": False,
     }
 
 
@@ -281,54 +330,92 @@ async def link_superseded_academy_checkout_to_shared_receipt(
     A proof is never treated as unpaid. Instead, we preserve it on the old
     attempt and link its claim to the one bank receipt already recorded.
     """
-    receipt = (await db.execute(
-        select(AcademyBankReceipt).where(
-            AcademyBankReceipt.id == receipt_id,
-        ).with_for_update()
-    )).scalar_one_or_none()
+    receipt = (
+        await db.execute(
+            select(AcademyBankReceipt)
+            .where(
+                AcademyBankReceipt.id == receipt_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not receipt:
         raise HTTPException(404, "Shared bank receipt not found")
-    payment = (await db.execute(
-        select(Payment).where(
-            Payment.reference == body.payment_reference,
-        ).with_for_update()
-    )).scalar_one_or_none()
+    payment = (
+        await db.execute(
+            select(Payment)
+            .where(
+                Payment.reference == body.payment_reference,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not payment or payment.purpose != PaymentPurpose.ACADEMY_COHORT:
         raise HTTPException(404, "Academy payment attempt not found")
     if payment.id == receipt.payment_id:
-        raise HTTPException(409, "Cannot reconcile the canonical shared receipt against itself")
+        raise HTTPException(
+            409, "Cannot reconcile the canonical shared receipt against itself"
+        )
     metadata = payment.payment_metadata or {}
     already_linked = metadata.get("superseded_by_shared_receipt") or {}
     if already_linked:
         if str(already_linked.get("receipt_id")) == str(receipt_id):
-            return {"state": "reconciled", "payment_reference": payment.reference, "idempotent": True}
-        raise HTTPException(409, "This checkout already belongs to another verified receipt")
-    if payment.status not in {
-        PaymentStatus.PENDING,
-        PaymentStatus.PENDING_REVIEW,
-        PaymentStatus.FAILED,
-    } or payment.entitlement_applied_at:
-        raise HTTPException(409, "Paid or fulfilled checkouts must be reconciled as paid funds, not superseded")
+            return {
+                "state": "reconciled",
+                "payment_reference": payment.reference,
+                "idempotent": True,
+            }
+        raise HTTPException(
+            409, "This checkout already belongs to another verified receipt"
+        )
+    if (
+        payment.status
+        not in {
+            PaymentStatus.PENDING,
+            PaymentStatus.PENDING_REVIEW,
+            PaymentStatus.FAILED,
+        }
+        or payment.entitlement_applied_at
+    ):
+        raise HTTPException(
+            409,
+            "Paid or fulfilled checkouts must be reconciled as paid funds, not superseded",
+        )
     enrollment_id = metadata.get("enrollment_id")
     if not enrollment_id:
         raise HTTPException(409, "Original Academy enrollment is missing")
-    allocations = (await db.execute(
-        select(AcademyReceiptAllocation).where(
-            AcademyReceiptAllocation.receipt_id == receipt_id,
-            AcademyReceiptAllocation.enrollment_id == uuid.UUID(str(enrollment_id)),
-            AcademyReceiptAllocation.state == "applied",
+    allocations = (
+        (
+            await db.execute(
+                select(AcademyReceiptAllocation).where(
+                    AcademyReceiptAllocation.receipt_id == receipt_id,
+                    AcademyReceiptAllocation.enrollment_id
+                    == uuid.UUID(str(enrollment_id)),
+                    AcademyReceiptAllocation.state == "applied",
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
     if not allocations:
-        raise HTTPException(409, "Apply a verified receipt allocation to this learner first")
+        raise HTTPException(
+            409, "Apply a verified receipt allocation to this learner first"
+        )
     submitted = metadata.get("submitted_transfer") or {}
-    proof_reference = str(
-        submitted.get("external_reference")
-        or submitted.get("transaction_reference")
-        or ""
-    ).strip().upper()
+    proof_reference = (
+        str(
+            submitted.get("external_reference")
+            or submitted.get("transaction_reference")
+            or ""
+        )
+        .strip()
+        .upper()
+    )
     if proof_reference and proof_reference != receipt.external_reference:
-        raise HTTPException(409, "Submitted proof references a different bank transaction")
+        raise HTTPException(
+            409, "Submitted proof references a different bank transaction"
+        )
     payment.payment_metadata = {
         **metadata,
         "superseded_by_shared_receipt": {
@@ -347,4 +434,8 @@ async def link_superseded_academy_checkout_to_shared_receipt(
     payment.admin_review_note = body.review_note
     payment.entitlement_error = "Superseded by verified shared bank receipt allocation"
     await db.commit()
-    return {"state": "reconciled", "payment_reference": payment.reference, "idempotent": False}
+    return {
+        "state": "reconciled",
+        "payment_reference": payment.reference,
+        "idempotent": False,
+    }
