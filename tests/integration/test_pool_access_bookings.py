@@ -97,7 +97,6 @@ async def test_unpaid_booking_confirmation_requires_verified_payment(
     async def unavailable(*args, **kwargs):
         raise httpx.ConnectError("payments service unavailable")
 
-    monkeypatch.setattr(httpx.AsyncClient, "get", unavailable)
     oid = await _published_offer(pools_client)
     booked = await pools_client.post(
         "/pools/access/bookings",
@@ -111,6 +110,7 @@ async def test_unpaid_booking_confirmation_requires_verified_payment(
     bid = booked.json()["id"]
     my = await pools_client.get("/pools/access/bookings/me")
     assert my.status_code == 200 and any(x["id"] == bid for x in my.json())
+    monkeypatch.setattr(httpx.AsyncClient, "get", unavailable)
     direct = await pools_client.post(
         f"/internal/pools/access/bookings/{bid}/confirm",
         json={
