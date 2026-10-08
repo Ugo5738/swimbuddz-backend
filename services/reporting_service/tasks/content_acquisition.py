@@ -94,9 +94,7 @@ async def refresh_content_acquisition(days: int = 90) -> int:
             bucket["payment_count"] += int(item["payment_count"])
             bucket["paid_amount_ngn"] += float(item["amount_ngn"])
             purpose = item["purpose"]
-            bucket["by_purpose"][purpose]["payment_count"] += int(
-                item["payment_count"]
-            )
+            bucket["by_purpose"][purpose]["payment_count"] += int(item["payment_count"])
             bucket["by_purpose"][purpose]["amount_ngn"] += float(item["amount_ngn"])
 
     async with AsyncSessionLocal() as db:
