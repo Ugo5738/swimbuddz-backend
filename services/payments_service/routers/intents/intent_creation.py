@@ -1032,6 +1032,29 @@ async def create_payment_intent(
                 detail="Store Bubbles must be selected through store checkout",
             )
 
+    # Independent Pool Access: server-owned price and reservation context.
+    elif payload.purpose == PaymentPurpose.POOL_ACCESS:
+        if not payload.pool_access_booking_id:
+            raise HTTPException(400, "pool_access_booking_id is required")
+        if payload.payment_method != "paystack" or payload.discount_code or payload.bubbles_to_apply:
+            raise HTTPException(422, "Pool Access currently supports online payment without adjustments")
+        if not _paystack_enabled():
+            raise HTTPException(503, "Online payments are currently unavailable")
+        headers = {"Authorization": f"Bearer {_service_role_jwt('payments')}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                f"{settings.POOLS_SERVICE_URL}/internal/pools/access/bookings/{payload.pool_access_booking_id}/quote",
+                params={"member_auth_id": current_user.user_id}, headers=headers,
+            )
+        if response.status_code >= 400:
+            raise HTTPException(409, "Pool Access booking no longer available")
+        quote = response.json()
+        if payload.currency != quote["currency"]:
+            raise HTTPException(409, "Booking currency mismatch")
+        amount = kobo_to_naira(int(quote["total_kobo"]))
+        payment_metadata = {"pool_access_booking_id": str(payload.pool_access_booking_id),
+                            "reservation_expires_at": quote["hold_expires_at"]}
+
     # Session fee payment (pool fee + ride share)
     elif payload.purpose == PaymentPurpose.SESSION_FEE:
         if not payload.session_id:
