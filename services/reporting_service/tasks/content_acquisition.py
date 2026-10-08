@@ -4,7 +4,8 @@ No calls from Academy, Communications, Payments or Events; no shared tables.
 """
 
 from collections import Counter
-from datetime import date, timedelta
+from datetime import timedelta
+from uuid import uuid4
 from uuid import UUID
 
 from sqlalchemy.dialects.postgresql import insert
@@ -43,7 +44,7 @@ async def refresh_content_acquisition(days: int = 90) -> int:
     async with AsyncSessionLocal() as db:
         for content_id, count in counter.items():
             statement = insert(ContentAcquisitionSnapshot).values(
-                id=__import__("uuid").uuid4(),
+                id=uuid4(),
                 content_id=content_id,
                 period_start=start,
                 period_end=end,
