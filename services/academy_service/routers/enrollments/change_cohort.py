@@ -350,7 +350,9 @@ async def my_academy_journeys(
             await db.execute(
                 select(Enrollment)
                 .where(Enrollment.member_auth_id == current_user.user_id)
-                .options(selectinload(Enrollment.cohort), selectinload(Enrollment.program))
+                .options(
+                    selectinload(Enrollment.cohort), selectinload(Enrollment.program)
+                )
                 .order_by(Enrollment.created_at)
             )
         )
