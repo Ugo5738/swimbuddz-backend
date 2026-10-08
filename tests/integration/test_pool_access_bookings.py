@@ -176,3 +176,55 @@ async def test_paid_evidence_activates_exact_booking_only(
     assert tickets.status_code == 200, tickets.text
     assert len(tickets.json()) == 1
     assert tickets.json()[0]["ticket"].startswith("pa1.")
+
+async def test_unclaimed_hold_can_cancel_and_release_capacity(pools_client):
+    oid = await _published_offer(pools_client, capacity=1)
+    first = await pools_client.post(
+        "/pools/access/bookings",
+        json={
+            "offer_id": oid,
+            "idempotency_key": str(uuid4()),
+            "guests": [{"name": "Ada Person"}],
+        },
+    )
+    assert first.status_code == 201, first.text
+    booking_id = first.json()["id"]
+    cancelled = await pools_client.post(f"/pools/access/bookings/{booking_id}/cancel")
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "cancelled"
+    replacement = await pools_client.post(
+        "/pools/access/bookings",
+        json={
+            "offer_id": oid,
+            "idempotency_key": str(uuid4()),
+            "guests": [{"name": "Ben Person"}],
+        },
+    )
+    assert replacement.status_code == 201, replacement.text
+
+
+async def test_checkout_claim_prevents_unverified_cancellation(pools_client, db_session):
+    oid = await _published_offer(pools_client, capacity=1)
+    reservation = await pools_client.post(
+        "/pools/access/bookings",
+        json={
+            "offer_id": oid,
+            "idempotency_key": str(uuid4()),
+            "guests": [{"name": "Ada Person"}],
+        },
+    )
+    assert reservation.status_code == 201, reservation.text
+    booking_id = reservation.json()["id"]
+    buyer = await db_session.get(PoolAccessBooking, UUID(booking_id))
+    claim = await pools_client.post(
+        f"/internal/pools/access/bookings/{booking_id}/claim-checkout",
+        json={
+            "member_auth_id": buyer.buyer_auth_id,
+            "payment_reference": "PAY-" + uuid4().hex,
+        },
+    )
+    assert claim.status_code == 200, claim.text
+    cancellation = await pools_client.post(
+        f"/pools/access/bookings/{booking_id}/cancel"
+    )
+    assert cancellation.status_code == 409
