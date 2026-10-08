@@ -19456,6 +19456,53 @@
         }
       }
     },
+    "/api/v1/academy/evidence/{evidence_id}/playback-url": {
+      "get": {
+        "tags": [
+          "academy-milestone-evidence"
+        ],
+        "summary": "Evidence Playback Url",
+        "description": "Resolve a private clip URL after checking owner/assigned-coach/admin access.\n\nBrowsers use this JSON endpoint with a bearer token, rather than opening a\nprotected redirect from a bare <video> tag without authorization headers.",
+        "operationId": "evidence_playback_url_academy_evidence__evidence_id__playback_url_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/evidence/{evidence_id}/play": {
       "get": {
         "tags": [
@@ -30949,6 +30996,31 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/admin/reports/flywheel/content-acquisition": {
+      "get": {
+        "tags": [
+          "admin-flywheel"
+        ],
+        "summary": "Content Acquisition",
+        "description": "Reporting-owned confirmed registration counts, not attributed payments.",
+        "operationId": "content_acquisition_admin_reports_flywheel_content_acquisition_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/admin/reports/flywheel/wallet": {
@@ -68559,6 +68631,17 @@
               }
             ],
             "title": "Acquisition Source"
+          },
+          "content_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Source"
           }
         },
         "type": "object",
@@ -95459,30 +95542,6 @@
             ],
             "title": "Category"
           },
-          "featured_image_media_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Featured Image Media Id"
-          },
-          "featured_image_prompt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 1200
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Featured Image Prompt"
-          },
           "video_url": {
             "anyOf": [
               {
@@ -95518,6 +95577,30 @@
               }
             ],
             "title": "Guest Names"
+          },
+          "featured_image_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured Image Media Id"
+          },
+          "featured_image_prompt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Featured Image Prompt"
           },
           "tier_access": {
             "anyOf": [

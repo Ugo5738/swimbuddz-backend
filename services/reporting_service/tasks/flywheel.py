@@ -231,7 +231,11 @@ async def _compute_one_funnel(
         )
         if crossed:
             converted_count += 1
-            acquisition = member.get("content_source") or member.get("acquisition_source") or "unknown"
+            acquisition = (
+                member.get("content_source")
+                or member.get("acquisition_source")
+                or "unknown"
+            )
             breakdown[acquisition] += 1
 
     rate = (converted_count / source_count) if source_count > 0 else 0.0

@@ -166,7 +166,6 @@ class ContentPostBase(BaseModel):
     tier_access: Literal["community", "club", "academy"] = "community"
     email_on_publish: bool = False
 
-
     @field_validator("video_url")
     @classmethod
     def validate_video_url(cls, value: Optional[str]) -> Optional[str]:
@@ -205,7 +204,6 @@ class ContentPostUpdate(BaseModel):
     is_published: Optional[bool] = None
     scheduled_for: Optional[datetime] = None
     email_on_publish: Optional[bool] = None
-
 
     @field_validator("video_url")
     @classmethod

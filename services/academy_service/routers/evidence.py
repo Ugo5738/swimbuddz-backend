@@ -385,7 +385,6 @@ async def play_showcase_video(
     )
 
 
-
 @router.get("/evidence/{evidence_id}/playback-url")
 async def evidence_playback_url(
     evidence_id: uuid.UUID,
@@ -407,9 +406,7 @@ async def evidence_playback_url(
         if enrollment.member_auth_id != str(current_user.user_id):
             if not current_user.has_role("coach") or not enrollment.cohort_id:
                 raise HTTPException(status_code=403, detail="Video not accessible")
-            await require_coach_for_cohort(
-                current_user, str(enrollment.cohort_id), db
-            )
+            await require_coach_for_cohort(current_user, str(enrollment.cohort_id), db)
     try:
         response = await internal_get(
             service_url=get_settings().MEDIA_SERVICE_URL,
