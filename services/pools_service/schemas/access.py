@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class OfferInput(BaseModel):
