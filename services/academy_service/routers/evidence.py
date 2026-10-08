@@ -9,6 +9,7 @@ from typing import Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -303,3 +304,35 @@ async def list_public_showcase(db: AsyncSession = Depends(get_async_db)):
         )
         for evidence, name in rows
     ]
+
+
+@router.get("/public/showcase/{evidence_id}/play")
+async def play_showcase_video(
+    evidence_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Check current consent on every playback, including after withdrawal."""
+    evidence = await db.get(MilestoneEvidence, evidence_id)
+    if not evidence or not (
+        evidence.approved_for_public
+        and evidence.publication_consent_at
+        and evidence.showcase_approved_at
+    ):
+        raise HTTPException(status_code=404, detail="Story not available")
+    try:
+        response = await internal_get(
+            service_url=get_settings().MEDIA_SERVICE_URL,
+            path=f"/internal/media/alumni-evidence/{evidence.video_media_id}/public-playback",
+            calling_service="academy",
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=503, detail="Video temporarily unavailable"
+        ) from exc
+    if response.status_code != 200:
+        raise HTTPException(status_code=503, detail="Video temporarily unavailable")
+    return RedirectResponse(
+        response.json()["url"],
+        status_code=307,
+        headers={"Cache-Control": "no-store"},
+    )
