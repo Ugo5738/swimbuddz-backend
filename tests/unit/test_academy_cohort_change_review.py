@@ -60,10 +60,12 @@ async def test_paid_or_unclosed_attempts_block_admin_approval(monkeypatch):
         state="needs_review",
         from_enrollment_id=enrollment.id,
     )
-    responses = iter([
-        SimpleNamespace(scalar_one_or_none=lambda: change),
-        SimpleNamespace(scalar_one_or_none=lambda: enrollment),
-    ])
+    responses = iter(
+        [
+            SimpleNamespace(scalar_one_or_none=lambda: change),
+            SimpleNamespace(scalar_one_or_none=lambda: enrollment),
+        ]
+    )
     db = SimpleNamespace(
         execute=AsyncMock(side_effect=lambda *_: next(responses)),
         commit=AsyncMock(),
@@ -71,11 +73,13 @@ async def test_paid_or_unclosed_attempts_block_admin_approval(monkeypatch):
     monkeypatch.setattr(
         change_cohort,
         "financial_state",
-        AsyncMock(return_value={
-            "has_payment_activity": True,
-            "all_unpaid_closed": False,
-            "references": ["PAY-UNRECONCILED"],
-        }),
+        AsyncMock(
+            return_value={
+                "has_payment_activity": True,
+                "all_unpaid_closed": False,
+                "references": ["PAY-UNRECONCILED"],
+            }
+        ),
     )
     with pytest.raises(HTTPException) as exc:
         await change_cohort.approve_unpaid_enrollment_change(

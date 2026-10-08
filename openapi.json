@@ -18023,6 +18023,55 @@
         }
       }
     },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Get Admin Enrollment",
+        "description": "Admin-scoped canonical enrollment details for transfer and billing review.",
+        "operationId": "get_admin_enrollment_academy_admin_enrollments__enrollment_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/enrollments/{enrollment_id}": {
       "get": {
         "tags": [
