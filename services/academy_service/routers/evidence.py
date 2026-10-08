@@ -45,6 +45,9 @@ class MilestoneEvidenceResponse(MilestoneEvidenceCreate):
     id: uuid.UUID
     enrollment_id: uuid.UUID
     approved_for_public: bool
+    coach_notes: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    showcase_review_notes: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -151,6 +154,7 @@ class EvidenceReviewRequest(BaseModel):
 class EvidenceShowcaseRequest(BaseModel):
     approve: bool
     review_notes: str = Field(..., min_length=2, max_length=2000)
+    publication_consent_confirmed: bool = False
 
 
 class EvidenceReviewResponse(BaseModel):
@@ -211,8 +215,13 @@ async def review_showcase(
     evidence = await db.get(MilestoneEvidence, evidence_id)
     if evidence is None:
         raise HTTPException(status_code=404, detail="Evidence not found")
-    if payload.approve and not evidence.consent_to_share:
-        raise HTTPException(status_code=409, detail="Swimmer consent is required")
+    if payload.approve and not (
+        evidence.consent_to_share and payload.publication_consent_confirmed
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Explicit publication consent must be verified before approving",
+        )
     evidence.approved_for_public = payload.approve
     evidence.showcase_review_notes = payload.review_notes
     await db.commit()
