@@ -36,6 +36,9 @@ def upgrade():
         sa.Column("created_by_auth_id", sa.String(160), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("applied_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("voided_by_auth_id", sa.String(160), nullable=True),
+        sa.Column("void_reason", sa.Text(), nullable=True),
+        sa.Column("voided_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint("amount_kobo > 0", name="ck_academy_receipt_allocation_positive"),
         sa.UniqueConstraint("receipt_id", "idempotency_key", name="uq_academy_receipt_allocation_idempotency"))
     op.create_index("ix_academy_receipt_allocations_receipt_id", "academy_receipt_allocations", ["receipt_id"])
