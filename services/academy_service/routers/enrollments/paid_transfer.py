@@ -56,6 +56,58 @@ class ApproveReviewedTransfer(BaseModel):
         return self
 
 
+@router.get("/admin/academy/enrollment-changes/{change_id}/finance-preview")
+async def preview_reviewed_transfer(
+    change_id: uuid.UUID,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Show authoritative tuition credit, old payments, and destination price."""
+    change = (await db.execute(
+        select(AcademyEnrollmentChange).where(
+            AcademyEnrollmentChange.id == change_id,
+        )
+    )).scalar_one_or_none()
+    if not change:
+        raise HTTPException(404, "Cohort change not found")
+    source = (await db.execute(
+        select(Enrollment).where(Enrollment.id == change.from_enrollment_id)
+        .options(selectinload(Enrollment.progress_records))
+    )).scalar_one_or_none()
+    target = (await db.execute(
+        select(Cohort).where(Cohort.id == change.target_cohort_id)
+    )).scalar_one_or_none()
+    if not source or not target or not source.program_id:
+        raise HTTPException(409, "Enrollment and target must exist")
+    programme = (await db.execute(
+        select(Program).where(Program.id == source.program_id)
+    )).scalar_one_or_none()
+    if not programme:
+        raise HTTPException(409, "Academy programme missing")
+    financial = await financial_state(source.id)
+    credits = (await db.execute(
+        select(AcademyFinancialCredit).where(
+            AcademyFinancialCredit.enrollment_id == source.id,
+            AcademyFinancialCredit.state == "active",
+        )
+    )).scalars().all()
+    receipt_credit = sum(credit.amount_kobo for credit in credits)
+    verified_cash = int(financial.get("verified_paid_tuition_kobo") or 0)
+    return {
+        "change_id": str(change.id),
+        "source_enrollment_id": str(source.id),
+        "member_auth_id": source.member_auth_id,
+        "verified_paid_tuition_kobo": verified_cash,
+        "verified_allocation_credit_kobo": receipt_credit,
+        "verified_total_kobo": verified_cash + receipt_credit,
+        "destination_base_tuition_kobo": _resolve_enrollment_total_fee(programme, target),
+        "recorded_progress_count": len(source.progress_records),
+        "eligible": financial.get("paid_transfer_eligible", False),
+        "blocked_payment_references": financial.get("blocked_references", []),
+        "attempts": financial.get("attempts", []),
+    }
+
+
 @router.post("/admin/academy/enrollment-changes/{change_id}/approve-reviewed")
 async def approve_reviewed_transfer(
     change_id: uuid.UUID,
