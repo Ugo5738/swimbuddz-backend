@@ -1014,6 +1014,7 @@ async def annotate_refund_obligation(
 
 class AcademyEnrollmentFinancialState(BaseModel):
     """Fail-closed transfer gate: any initiated payment needs reconciliation."""
+
     has_payment_activity: bool
     references: list[str]
     statuses: list[str]

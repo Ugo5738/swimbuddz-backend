@@ -1,4 +1,5 @@
 """Academy cohort corrections with durable journey identity and financial gates."""
+
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -12,24 +13,35 @@ from libs.common.service_client import internal_get
 from libs.db.session import get_async_db
 from libs.common.datetime_utils import utc_now
 from services.academy_service.models import (
-    AcademyJourney, AcademyEnrollmentChange, Cohort, Program, Enrollment,
-    EnrollmentStatus, CohortStatus, PaymentStatus, InstallmentStatus
+    AcademyJourney,
+    AcademyEnrollmentChange,
+    Cohort,
+    Program,
+    Enrollment,
+    EnrollmentStatus,
+    CohortStatus,
+    PaymentStatus,
+    InstallmentStatus,
 )
 from services.academy_service.routers._shared import (
-    _resolve_enrollment_total_fee, _resolve_enrollment_membership_policy,
-    _sync_installment_state_for_enrollment
+    _resolve_enrollment_total_fee,
+    _resolve_enrollment_membership_policy,
+    _sync_installment_state_for_enrollment,
 )
 
 router = APIRouter()
 
+
 class ChangeCohortRequest(BaseModel):
     target_cohort_id: uuid.UUID
+
 
 class ChangeCohortResult(BaseModel):
     state: str
     enrollment_id: uuid.UUID | None = None
     change_id: uuid.UUID
     message: str
+
 
 async def financial_state(enrollment_id: uuid.UUID) -> dict:
     """Failure to inspect payments must never permit an automatic switch."""
@@ -47,33 +59,50 @@ async def financial_state(enrollment_id: uuid.UUID) -> dict:
             detail="Payment reconciliation is temporarily unavailable. No enrollment was changed.",
         ) from exc
 
+
 @router.get("/my-academy-journeys")
 async def my_academy_journeys(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Group a member's cohort attempts by programme without collapsing history."""
-    rows = (await db.execute(
-        select(Enrollment)
-        .where(Enrollment.member_auth_id == current_user.user_id)
-        .options(selectinload(Enrollment.cohort))
-        .order_by(Enrollment.created_at)
-    )).scalars().all()
+    rows = (
+        (
+            await db.execute(
+                select(Enrollment)
+                .where(Enrollment.member_auth_id == current_user.user_id)
+                .options(selectinload(Enrollment.cohort))
+                .order_by(Enrollment.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
     grouped: dict[str, dict] = {}
     for e in rows:
         key = str(e.program_id)
-        item = grouped.setdefault(key, {
-            "program_id": key, "enrollments": [],
-        })
-        item["enrollments"].append({
-            "id": str(e.id), "cohort_id": str(e.cohort_id) if e.cohort_id else None,
-            "cohort_name": e.cohort.name if e.cohort else None,
-            "status": e.status.value,
-            "payment_status": e.payment_status.value,
-        })
+        item = grouped.setdefault(
+            key,
+            {
+                "program_id": key,
+                "enrollments": [],
+            },
+        )
+        item["enrollments"].append(
+            {
+                "id": str(e.id),
+                "cohort_id": str(e.cohort_id) if e.cohort_id else None,
+                "cohort_name": e.cohort.name if e.cohort else None,
+                "status": e.status.value,
+                "payment_status": e.payment_status.value,
+            }
+        )
     return list(grouped.values())
 
-@router.post("/my-enrollments/{enrollment_id}/change-cohort", response_model=ChangeCohortResult)
+
+@router.post(
+    "/my-enrollments/{enrollment_id}/change-cohort", response_model=ChangeCohortResult
+)
 async def change_my_cohort(
     enrollment_id: uuid.UUID,
     payload: ChangeCohortRequest,
@@ -82,23 +111,40 @@ async def change_my_cohort(
 ):
     # Lock the original and destination cohort to prevent simultaneous switches
     # from claiming the same last seat.
-    enrollment = (await db.execute(
-        select(Enrollment).where(
-            Enrollment.id == enrollment_id,
-            Enrollment.member_auth_id == current_user.user_id,
-        ).options(selectinload(Enrollment.installments), selectinload(Enrollment.progress_records)).with_for_update()
-    )).scalar_one_or_none()
+    enrollment = (
+        await db.execute(
+            select(Enrollment)
+            .where(
+                Enrollment.id == enrollment_id,
+                Enrollment.member_auth_id == current_user.user_id,
+            )
+            .options(
+                selectinload(Enrollment.installments),
+                selectinload(Enrollment.progress_records),
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not enrollment:
         raise HTTPException(404, "Enrollment not found")
     if not enrollment.cohort_id or not enrollment.program_id:
         raise HTTPException(409, "Only cohort-based enrollments may be changed")
     if enrollment.cohort_id == payload.target_cohort_id:
         raise HTTPException(409, "Already enrolled in the selected cohort")
-    if enrollment.status not in {EnrollmentStatus.PENDING_APPROVAL, EnrollmentStatus.WAITLIST}:
-        raise HTTPException(409, "Active or completed cohort changes require admin review")
-    target = (await db.execute(
-        select(Cohort).where(Cohort.id == payload.target_cohort_id).with_for_update()
-    )).scalar_one_or_none()
+    if enrollment.status not in {
+        EnrollmentStatus.PENDING_APPROVAL,
+        EnrollmentStatus.WAITLIST,
+    }:
+        raise HTTPException(
+            409, "Active or completed cohort changes require admin review"
+        )
+    target = (
+        await db.execute(
+            select(Cohort)
+            .where(Cohort.id == payload.target_cohort_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not target or target.program_id != enrollment.program_id:
         raise HTTPException(400, "Select a cohort from the same Academy programme")
     now = utc_now()
@@ -108,19 +154,25 @@ async def change_my_cohort(
         week = max(1, ((now - target.start_date).days // 7) + 1)
         if not target.allow_mid_entry or week > target.mid_entry_cutoff_week:
             raise HTTPException(409, "This cohort's mid-entry window has closed")
-    program = (await db.execute(
-        select(Program).where(Program.id == target.program_id)
-    )).scalar_one()
+    program = (
+        await db.execute(select(Program).where(Program.id == target.program_id))
+    ).scalar_one()
     if not program.is_published:
         raise HTTPException(409, "Programme is not published")
-    journey = (await db.execute(
-        select(AcademyJourney).where(
-            AcademyJourney.member_id == enrollment.member_id,
-            AcademyJourney.program_id == enrollment.program_id,
-        ).with_for_update()
-    )).scalar_one_or_none()
+    journey = (
+        await db.execute(
+            select(AcademyJourney)
+            .where(
+                AcademyJourney.member_id == enrollment.member_id,
+                AcademyJourney.program_id == enrollment.program_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not journey:
-        journey = AcademyJourney(member_id=enrollment.member_id, program_id=enrollment.program_id)
+        journey = AcademyJourney(
+            member_id=enrollment.member_id, program_id=enrollment.program_id
+        )
         db.add(journey)
         await db.flush()
     # Inspect BOTH service-owned payment rows and academy-side settlement
@@ -130,7 +182,10 @@ async def change_my_cohort(
         enrollment.payment_status != PaymentStatus.PENDING
         or enrollment.paid_at is not None
         or bool(enrollment.payment_reference)
-        or any(i.status != InstallmentStatus.PENDING or i.payment_reference for i in enrollment.installments)
+        or any(
+            i.status != InstallmentStatus.PENDING or i.payment_reference
+            for i in enrollment.installments
+        )
     )
     snapshot = {
         "old_cohort_id": str(enrollment.cohort_id),
@@ -139,40 +194,60 @@ async def change_my_cohort(
         "target_base_price_kobo": _resolve_enrollment_total_fee(program, target),
         "payment_references": financial.get("references", []),
         "payment_statuses": financial.get("statuses", []),
-        "requires_financial_review": bool(local_money or financial.get("has_payment_activity")),
+        "requires_financial_review": bool(
+            local_money or financial.get("has_payment_activity")
+        ),
     }
     # A financial hold is recorded, not silently overridden or automatically
     # reallocated. Reviewers handle shared-transfer evidence separately.
     if snapshot["requires_financial_review"] or enrollment.progress_records:
         change = AcademyEnrollmentChange(
-            journey_id=journey.id, from_enrollment_id=enrollment.id,
-            target_cohort_id=target.id, actor_auth_id=current_user.user_id,
-            state="needs_review", snapshot=snapshot,
+            journey_id=journey.id,
+            from_enrollment_id=enrollment.id,
+            target_cohort_id=target.id,
+            actor_auth_id=current_user.user_id,
+            state="needs_review",
+            snapshot=snapshot,
         )
         db.add(change)
         await db.commit()
         return ChangeCohortResult(
-            state="needs_review", change_id=change.id,
+            state="needs_review",
+            change_id=change.id,
             message="Your cohort change has been recorded for review. Existing payment or progress records were preserved.",
         )
-    count = (await db.execute(
-        select(func.count(Enrollment.id)).where(
-            Enrollment.cohort_id == target.id,
-            Enrollment.status.in_([EnrollmentStatus.PENDING_APPROVAL, EnrollmentStatus.ENROLLED]),
+    count = (
+        await db.execute(
+            select(func.count(Enrollment.id)).where(
+                Enrollment.cohort_id == target.id,
+                Enrollment.status.in_(
+                    [EnrollmentStatus.PENDING_APPROVAL, EnrollmentStatus.ENROLLED]
+                ),
+            )
         )
-    )).scalar_one()
+    ).scalar_one()
     if target.capacity is not None and count >= target.capacity:
         raise HTTPException(409, "The selected cohort is full")
-    other = (await db.execute(
-        select(Enrollment.id).where(
-            Enrollment.member_id == enrollment.member_id,
-            Enrollment.program_id == enrollment.program_id,
-            Enrollment.cohort_id == target.id,
-            Enrollment.status.in_([EnrollmentStatus.PENDING_APPROVAL, EnrollmentStatus.ENROLLED, EnrollmentStatus.WAITLIST])
+    other = (
+        await db.execute(
+            select(Enrollment.id).where(
+                Enrollment.member_id == enrollment.member_id,
+                Enrollment.program_id == enrollment.program_id,
+                Enrollment.cohort_id == target.id,
+                Enrollment.status.in_(
+                    [
+                        EnrollmentStatus.PENDING_APPROVAL,
+                        EnrollmentStatus.ENROLLED,
+                        EnrollmentStatus.WAITLIST,
+                    ]
+                ),
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if other:
-        raise HTTPException(409, "You already have an enrollment in the destination cohort")
+        raise HTTPException(
+            409, "You already have an enrollment in the destination cohort"
+        )
     enrollment.status = EnrollmentStatus.DROPPED
     enrollment.dropped_at = now
     replacement = Enrollment(
@@ -185,20 +260,28 @@ async def change_my_cohort(
         payment_status=PaymentStatus.PENDING,
         price_snapshot_amount=_resolve_enrollment_total_fee(program, target),
         currency_snapshot=program.currency or "NGN",
-        membership_policy_snapshot=_resolve_enrollment_membership_policy(program, target),
+        membership_policy_snapshot=_resolve_enrollment_membership_policy(
+            program, target
+        ),
         uses_installments=False,
     )
     db.add(replacement)
     await db.flush()
     await _sync_installment_state_for_enrollment(db, replacement)
     change = AcademyEnrollmentChange(
-        journey_id=journey.id, from_enrollment_id=enrollment.id,
-        to_enrollment_id=replacement.id, target_cohort_id=target.id,
-        actor_auth_id=current_user.user_id, state="completed", snapshot=snapshot,
+        journey_id=journey.id,
+        from_enrollment_id=enrollment.id,
+        to_enrollment_id=replacement.id,
+        target_cohort_id=target.id,
+        actor_auth_id=current_user.user_id,
+        state="completed",
+        snapshot=snapshot,
     )
     db.add(change)
     await db.commit()
     return ChangeCohortResult(
-        state="completed", enrollment_id=replacement.id, change_id=change.id,
+        state="completed",
+        enrollment_id=replacement.id,
+        change_id=change.id,
         message="Cohort changed. Please review the new price and payment options before paying.",
     )
