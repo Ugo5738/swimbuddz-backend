@@ -8,6 +8,7 @@ from datetime import timedelta
 from uuid import uuid4
 from uuid import UUID
 
+from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert
 
 from libs.common.datetime_utils import utc_now
@@ -42,6 +43,14 @@ async def refresh_content_acquisition(days: int = 90) -> int:
         counter[content_id] += 1
 
     async with AsyncSessionLocal() as db:
+        # Recompute the entire period so corrected/deleted registrations cannot
+        # leave stale positive counts behind.
+        await db.execute(
+            delete(ContentAcquisitionSnapshot).where(
+                ContentAcquisitionSnapshot.period_start == start,
+                ContentAcquisitionSnapshot.period_end == end,
+            )
+        )
         for content_id, count in counter.items():
             statement = insert(ContentAcquisitionSnapshot).values(
                 id=uuid4(),
