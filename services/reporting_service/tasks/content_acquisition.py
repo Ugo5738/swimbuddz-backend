@@ -3,7 +3,10 @@
 No calls from Academy, Communications, Payments or Events; no shared tables.
 """
 
-from collections import Counter
+from collections import Counter, defaultdict
+from datetime import datetime, time, timezone
+
+from libs.common.service_client.core import internal_post
 from datetime import timedelta
 from uuid import uuid4
 from uuid import UUID
@@ -32,6 +35,7 @@ async def refresh_content_acquisition(days: int = 90) -> int:
         get_settings().MEMBERS_SERVICE_URL, "community", start, end, strict=True
     )
     counter: Counter[UUID] = Counter()
+    auth_origins: dict[str, UUID] = {}
     for member in members:
         origin = member.get("content_source") or ""
         if not origin.startswith("content:"):
@@ -41,6 +45,39 @@ async def refresh_content_acquisition(days: int = 90) -> int:
         except ValueError:
             continue
         counter[content_id] += 1
+        if member.get("member_auth_id"):
+            auth_origins[str(member["member_auth_id"])] = content_id
+
+    # Only Reporting aggregates the independent Members and Payments contracts.
+    # The Payments service never knows about content or member acquisition.
+    totals: dict[UUID, dict] = defaultdict(
+        lambda: {"paying_members": set(), "payment_count": 0, "paid_amount_ngn": 0.0}
+    )
+    from libs.common.config import get_settings as settings_factory
+
+    auth_ids = list(auth_origins)
+    for start_index in range(0, len(auth_ids), 500):
+        batch = auth_ids[start_index : start_index + 500]
+        response = await internal_post(
+            service_url=settings_factory().PAYMENTS_SERVICE_URL,
+            path="/internal/payments/reports/attributed-payments",
+            calling_service="reporting",
+            json={
+                "member_auth_ids": batch,
+                "date_from": datetime.combine(start, time.min, tzinfo=timezone.utc).isoformat(),
+                "date_to": datetime.combine(end, time.max, tzinfo=timezone.utc).isoformat(),
+            },
+        )
+        response.raise_for_status()
+        for item in response.json().get("items", []):
+            auth_id = item["member_auth_id"]
+            content_id = auth_origins.get(auth_id)
+            if content_id is None:
+                continue
+            bucket = totals[content_id]
+            bucket["paying_members"].add(auth_id)
+            bucket["payment_count"] += int(item["payment_count"])
+            bucket["paid_amount_ngn"] += float(item["amount_ngn"])
 
     async with AsyncSessionLocal() as db:
         # Recompute the entire period so corrected/deleted registrations cannot
@@ -58,6 +95,9 @@ async def refresh_content_acquisition(days: int = 90) -> int:
                 period_start=start,
                 period_end=end,
                 registrations=count,
+                paying_members=len(totals[content_id]["paying_members"]),
+                payment_count=totals[content_id]["payment_count"],
+                paid_amount_ngn=totals[content_id]["paid_amount_ngn"],
                 computed_at=utc_now(),
                 source="members_registration",
             )
@@ -65,6 +105,9 @@ async def refresh_content_acquisition(days: int = 90) -> int:
                 constraint="uq_content_acquisition_period",
                 set_={
                     "registrations": count,
+                    "paying_members": len(totals[content_id]["paying_members"]),
+                    "payment_count": totals[content_id]["payment_count"],
+                    "paid_amount_ngn": totals[content_id]["paid_amount_ngn"],
                     "computed_at": utc_now(),
                 },
             )
