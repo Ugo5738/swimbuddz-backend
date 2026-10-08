@@ -150,6 +150,7 @@ class CoachReadinessData(BaseModel):
 
 class JoinedTierMember(BaseModel):
     id: str
+    member_auth_id: str | None = None
     source_joined_at: str
     acquisition_source: str | None = None
     content_source: str | None = None
