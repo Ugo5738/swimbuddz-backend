@@ -23,7 +23,6 @@ from services.academy_service.models import (
     CohortStatus,
     Enrollment,
     EnrollmentStatus,
-    EnrollmentInstallment,
     InstallmentStatus,
     PaymentStatus,
     Program,
