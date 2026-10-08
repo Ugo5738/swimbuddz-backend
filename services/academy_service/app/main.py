@@ -13,6 +13,7 @@ from services.academy_service.routers.coach_dashboard import (
 from services.academy_service.routers.cohorts import router as cohorts_router
 from services.academy_service.routers.curriculum import router as curriculum_router
 from services.academy_service.routers.enrollments import router as enrollments_router
+from services.academy_service.routers.evidence import router as evidence_router
 from services.academy_service.routers.extensions import router as extensions_router
 from services.academy_service.routers.internal import router as internal_router
 from services.academy_service.routers.programs import router as programs_router
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(cohorts_router, prefix="/academy")
     app.include_router(enrollments_router, prefix="/academy")
     app.include_router(progress_router, prefix="/academy")
+    app.include_router(evidence_router, prefix="/academy")
     app.include_router(coach_dashboard_router, prefix="/academy")
     app.include_router(scoring_router, prefix="/academy")
     app.include_router(reports_router, prefix="/academy")

@@ -91,6 +91,38 @@ async def resume_product_payment(db, payment, payload):
             409,
             "This payment is closed. Check Billing before starting another payment.",
         )
+    from services.payments_service.models import PaymentPurpose
+
+    if (
+        payment.purpose == PaymentPurpose.POOL_ACCESS
+        and payment.status == PaymentStatus.PENDING
+    ):
+        import httpx
+        from libs.auth.dependencies import _service_role_jwt
+        from libs.common.config import get_settings
+
+        booking_id = meta.get("pool_access_booking_id")
+        if not booking_id:
+            raise HTTPException(409, "Pool Access payment has no reservation")
+        settings = get_settings()
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(
+                    f"{settings.POOLS_SERVICE_URL}/internal/pools/access/bookings/{booking_id}/quote",
+                    params={"member_auth_id": payment.member_auth_id},
+                    headers={
+                        "Authorization": f"Bearer {_service_role_jwt('payments')}"
+                    },
+                )
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                503, "Booking verification temporarily unavailable"
+            ) from exc
+        if response.status_code >= 400:
+            raise HTTPException(
+                409,
+                "Pool Access hold expired or is unavailable; payment requires review",
+            )
     checkout_url = (meta.get("paystack") or {}).get("authorization_url")
     from services.payments_service.services.club_checkout_capacity import (
         protect_club_checkout,
@@ -128,6 +160,8 @@ async def resume_product_payment(db, payment, payload):
         )
         from services.payments_service.models import PaymentPurpose
 
+        if payment.purpose == PaymentPurpose.POOL_ACCESS:
+            redirect = "/pool-access/my-bookings"
         if payment.purpose == PaymentPurpose.SESSION_BOOKING:
             from services.payments_service.services.booking_payment_attempts import (
                 initialize_booking_checkout,

@@ -30,6 +30,7 @@ from . import birthdays as _birthdays
 from . import coach as _coach
 from . import flywheel as _flywheel
 from . import lookups as _lookups
+from . import swim_clearance as _swim_clearance
 from . import membership as _membership
 from . import quarter_reports as _quarter_reports
 
@@ -38,6 +39,7 @@ router = APIRouter(prefix="/internal/members", tags=["internal"])
 # Order matters — static paths first so FastAPI doesn't capture literal
 # segments as UUIDs against the /{member_id} catch-all in membership.py.
 router.include_router(_lookups.router)
+router.include_router(_swim_clearance.router)
 router.include_router(_birthdays.router)
 router.include_router(_flywheel.router)
 router.include_router(_coach.router)

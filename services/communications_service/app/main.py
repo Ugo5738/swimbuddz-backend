@@ -11,6 +11,9 @@ from services.communications_service.routers.announcements import (
     router as communications_router,
 )
 from services.communications_service.routers.content import content_router
+from services.communications_service.routers.engagement import (
+    router as engagement_router,
+)
 from services.communications_service.routers.email import router as email_router
 from services.communications_service.routers.digest import router as digest_router
 from services.communications_service.routers.internal import router as internal_router
@@ -38,6 +41,7 @@ def create_app() -> FastAPI:
 
     # Include communications routers
     app.include_router(communications_router)
+    app.include_router(engagement_router)
     app.include_router(content_router)
     app.include_router(category_router)
     app.include_router(admin_router)

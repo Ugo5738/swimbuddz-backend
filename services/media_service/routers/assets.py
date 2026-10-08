@@ -78,7 +78,9 @@ async def resolve_media_urls(
     # anonymous bulk resolver used for public profile/product media.
     query = select(MediaItem.id, MediaItem.file_url).where(
         MediaItem.id.in_(valid_ids),
-        func.coalesce(MediaItem.metadata_info["purpose"].astext, "") != "payment_proof",
+        func.coalesce(MediaItem.metadata_info["purpose"].astext, "").notin_(
+            ("payment_proof", "milestone_evidence", "milestone_video")
+        ),
         MediaItem.file_url.not_like("%/payment-proofs/%"),
     )
     result = await db.execute(query)

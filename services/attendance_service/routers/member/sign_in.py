@@ -31,6 +31,7 @@ from ._milestones import _check_attendance_milestones
 from ._shared import (
     get_current_member,
     require_admin_or_coach_for_session,
+    require_academy_safety_clearance,
     validate_session_access,
 )
 
@@ -75,6 +76,9 @@ async def sign_in_to_session(
         str(current_member.id),
         confirmed_booking=linked_booking_id is not None,
     )
+
+    if attendance_in.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE):
+        await require_academy_safety_clearance(session_data, [current_member.id])
 
     # Check for existing attendance
     query = select(AttendanceRecord).where(
@@ -195,6 +199,9 @@ async def public_sign_in_to_session(
     member = result.scalar_one_or_none()
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    if attendance_in.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE):
+        await require_academy_safety_clearance(session_data, [attendance_in.member_id])
 
     # Link this attendance row to a CONFIRMED SessionBooking when one exists
     # (admin walk-in or pre-book), mirroring the authenticated sign-in flow.

@@ -1,6 +1,20 @@
 """FastAPI application for the Pools Service."""
 
 from fastapi import FastAPI
+from services.pools_service.routers.access_partner import (
+    router as pool_access_partner_router,
+    admin as pool_access_partner_admin_router,
+)
+from services.pools_service.routers.access_redemption import (
+    router as pool_access_redemption_router,
+)
+from services.pools_service.routers.access_internal import (
+    router as pool_access_internal_router,
+)
+from services.pools_service.routers.access import (
+    public as access_public_router,
+    admin as access_admin_router,
+)
 
 from libs.common.health import register_health_check
 from services.pools_service.routers import (
@@ -31,6 +45,15 @@ def create_app() -> FastAPI:
     # Registered before admin routes so the gateway can proxy /pools/submissions
     # without colliding with /pools/{pool_id}.
     app.include_router(submissions_router, prefix="/pools/submissions")
+
+    app.include_router(pool_access_partner_router, prefix="/pools/access/partner")
+    app.include_router(
+        pool_access_partner_admin_router, prefix="/admin/pools/access/partner"
+    )
+    app.include_router(pool_access_internal_router, prefix="/internal/pools/access")
+    app.include_router(pool_access_redemption_router, prefix="/pools/access")
+    app.include_router(access_public_router, prefix="/pools/access")
+    app.include_router(access_admin_router, prefix="/admin/pools/access")
 
     # Public routes (active partner pools only)
     app.include_router(public_router, prefix="/pools")
