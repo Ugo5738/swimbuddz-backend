@@ -22,7 +22,10 @@ from services.attendance_service.schemas import (
     CoachAttendanceMarkResponse,
 )
 
-from ._shared import require_admin_or_coach_for_session, require_academy_safety_clearance
+from ._shared import (
+    require_admin_or_coach_for_session,
+    require_academy_safety_clearance,
+)
 
 router = APIRouter()
 

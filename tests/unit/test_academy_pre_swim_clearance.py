@@ -1,4 +1,5 @@
 """Safety readiness is required for Academy attendance, not for checkout."""
+
 from types import SimpleNamespace
 
 import httpx

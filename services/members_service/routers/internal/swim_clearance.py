@@ -1,4 +1,5 @@
 """Safety-only Academy clearance. Never disclose emergency/medical details."""
+
 import uuid
 
 from fastapi import APIRouter, Depends
@@ -55,8 +56,10 @@ async def academy_clearance_batch(
     db: AsyncSession = Depends(get_async_db),
 ):
     members = (
-        await db.execute(select(Member).where(Member.id.in_(body.member_ids)))
-    ).scalars().all()
+        (await db.execute(select(Member).where(Member.id.in_(body.member_ids))))
+        .scalars()
+        .all()
+    )
     mapping = {member.id: member for member in members}
     return {
         str(member_id): {

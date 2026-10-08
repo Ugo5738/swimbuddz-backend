@@ -185,7 +185,6 @@ async def validate_session_access(
     return decision
 
 
-
 async def require_academy_safety_clearance(
     session_data: dict,
     member_ids: list[uuid.UUID],
@@ -210,7 +209,11 @@ async def require_academy_safety_clearance(
             detail="Cannot verify Academy pre-swim safety setup right now",
         )
     results = response.json()
-    missing = [member_id for member_id in set(member_ids) if not results.get(str(member_id), {}).get("ready")]
+    missing = [
+        member_id
+        for member_id in set(member_ids)
+        if not results.get(str(member_id), {}).get("ready")
+    ]
     if missing:
         raise HTTPException(
             status_code=409,
