@@ -29,7 +29,24 @@ class OfferInput(BaseModel):
         return self
 
 
-class OfferOut(OfferInput):
+class OfferOut(BaseModel):
+    """Public catalog representation: NEVER expose negotiated partner costs."""
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    pool_id: uuid.UUID
+    title: str
+    starts_at: datetime
+    ends_at: datetime
+    capacity: int
+    selling_price_kobo: int
+    currency: str
+    status: str
+    amenities: list[str]
+    access_rules: str
+    cancellation_policy: str
+
+
+class AdminOfferOut(OfferInput):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     status: str
