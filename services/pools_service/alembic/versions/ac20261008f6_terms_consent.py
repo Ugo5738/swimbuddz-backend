@@ -20,10 +20,9 @@ def upgrade() -> None:
     )
     op.add_column(
         "pool_access_bookings",
-        sa.Column("terms_accepted_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("terms_accepted_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.alter_column("pool_access_bookings", "access_terms_snapshot", server_default=None)
-    op.alter_column("pool_access_bookings", "terms_accepted_at", server_default=None)
 
 
 def downgrade() -> None:
