@@ -36,6 +36,28 @@ async def find_product_retry(db, payload, member_auth_id):
             select(Payment).where(Payment.reference == reference).with_for_update()
         )
     ).scalar_one_or_none()
+    visited = set()
+    while payment and (payment.payment_metadata or {}).get(
+        "booking_attempt_superseded"
+    ):
+        if payment.reference in visited or payment.member_auth_id != member_auth_id:
+            raise HTTPException(409, "This payment chain needs Admin reconciliation")
+        visited.add(payment.reference)
+        replacement = payment.payment_metadata["booking_attempt_superseded"].get(
+            "replacement_reference"
+        )
+        payment = (
+            await db.execute(
+                select(Payment)
+                .where(Payment.reference == replacement)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if payment is None:
+            raise HTTPException(
+                409, "The replacement payment needs Admin reconciliation"
+            )
+        reference = payment.reference
     if payment and (
         payment.member_auth_id != member_auth_id
         or (payment.payment_metadata or {}).get("request_fingerprint")

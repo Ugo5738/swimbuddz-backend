@@ -17,6 +17,7 @@ from services.payments_service.routers.intents import intent_creation, _paystack
 from services.payments_service.routers.intents._entitlement import _dispatcher
 from services.payments_service.schemas import CreatePaymentIntentRequest
 from services.payments_service.services.booking_payment_attempts import booking_payments
+from services.payments_service.services import booking_checkout_retry
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -264,3 +265,221 @@ async def test_late_legacy_receipt_recorded_without_duplicate_entitlement(
     ] == str(rows[0].id)
     assert rows[1].payment_metadata["fulfillment"]["status"] == "dead_letter"
     apply.assert_awaited_once()
+
+
+@pytest.fixture
+def payment_effects(monkeypatch):
+    apply = AsyncMock()
+    monkeypatch.setattr(_dispatcher, "_apply_entitlement", apply)
+    for name in (
+        "_clear_pending_tier_payment_for_payment",
+        "_send_membership_activation_email",
+        "_try_qualify_referral",
+        "_emit_membership_reward_events",
+        "_dispatch_payment_notification",
+    ):
+        monkeypatch.setattr(_dispatcher, name, AsyncMock())
+    monkeypatch.setattr(
+        "services.payments_service.services.ledger_emit.emit_payment_to_ledger",
+        AsyncMock(),
+    )
+    return apply
+
+
+async def failed_attempt(
+    db_session, checkout, monkeypatch, *, provider_status="abandoned"
+):
+    booking_id, user, payload, _, _ = checkout
+    payment = Payment(
+        reference=f"abandoned-{uuid4()}",
+        member_auth_id=user.user_id,
+        purpose=PaymentPurpose.SESSION_BOOKING,
+        session_booking_id=booking_id,
+        amount=5200,
+        currency="NGN",
+        status=PaymentStatus.FAILED,
+        provider="paystack",
+        provider_reference="legacy-provider-reference",
+        payment_metadata={
+            "booking_id": str(booking_id),
+            "original_note": "Preserve me",
+        },
+    )
+    db_session.add(payment)
+    await db_session.commit()
+    verify = AsyncMock(
+        return_value={
+            "id": 123,
+            "reference": payment.reference,
+            "status": provider_status,
+            "amount": 520000,
+            "currency": "NGN",
+            "paid_at": None,
+        }
+    )
+    monkeypatch.setattr(booking_checkout_retry, "_verify_paystack_transaction", verify)
+    monkeypatch.setattr(
+        "services.payments_service.routers.intents._helpers._release_bubbles_hold",
+        AsyncMock(),
+    )
+    return payment, verify
+
+
+async def test_abandoned_checkout_can_be_replaced_with_bubbles_and_retried_once(
+    db_session, checkout, monkeypatch, payment_effects
+):
+    booking_id, user, payload, initialize, _ = checkout
+    old, verify = await failed_attempt(db_session, checkout, monkeypatch)
+    payload = payload.model_copy(update={"bubbles_to_apply": 52})
+    first = await intent_creation.create_payment_intent(payload, user, db_session)
+    repeated = await intent_creation.create_payment_intent(payload, user, db_session)
+    rows = await booking_payments(db_session, booking_id)
+    assert len(rows) == 2
+    assert first.reference == repeated.reference != old.reference
+    assert first.status == PaymentStatus.PAID and first.amount == 0
+    assert old.status == PaymentStatus.FAILED and old.amount == 5200
+    assert old.payment_metadata["original_note"] == "Preserve me"
+    assert (
+        old.payment_metadata["booking_attempt_superseded"]["replacement_reference"]
+        == first.reference
+    )
+    assert "checkout_closed_unpaid" not in old.payment_metadata
+    verify.assert_awaited_once_with(old.reference, _max_retries=1)
+    initialize.assert_not_awaited()
+    intent_creation.create_wallet_hold.assert_awaited_once()
+    payment_effects.assert_awaited_once()
+
+
+@pytest.mark.parametrize("before_replacement_paid", [False, True])
+async def test_late_superseded_receipt_never_fulfills_or_captures_bubbles(
+    db_session, checkout, monkeypatch, payment_effects, before_replacement_paid
+):
+    booking_id, user, payload, _, _ = checkout
+    old, _ = await failed_attempt(db_session, checkout, monkeypatch)
+    replacement = await intent_creation.create_payment_intent(payload, user, db_session)
+    new = next(
+        row
+        for row in await booking_payments(db_session, booking_id)
+        if row.id != old.id
+    )
+    if not before_replacement_paid:
+        await _dispatcher._mark_paid_and_apply(
+            db_session, new, "paystack", new.reference, utc_now()
+        )
+    await _dispatcher._mark_paid_and_apply(
+        db_session, old, "paystack", old.reference, utc_now()
+    )
+    assert old.status == PaymentStatus.PAID
+    assert old.entitlement_applied_at is None
+    assert (
+        old.payment_metadata["checkout_reconciliation"]["reason"]
+        == "receipt_after_checkout_replacement"
+    )
+    assert (
+        old.payment_metadata["checkout_reconciliation"]["replacement_reference"]
+        == replacement.reference
+    )
+    await _dispatcher._apply_entitlement_with_tracking(old)
+    if before_replacement_paid:
+        payment_effects.assert_not_awaited()
+        await _dispatcher._mark_paid_and_apply(
+            db_session, new, "paystack", new.reference, utc_now()
+        )
+    assert new.entitlement_applied_at is not None
+    payment_effects.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "provider_status",
+    ["success", "pending", "ongoing", "processing", "queued", "reversed", "unknown"],
+)
+async def test_non_unpaid_provider_state_blocks_replacement(
+    db_session, checkout, monkeypatch, provider_status
+):
+    booking_id, user, payload, initialize, _ = checkout
+    old, _ = await failed_attempt(
+        db_session, checkout, monkeypatch, provider_status=provider_status
+    )
+    with pytest.raises(HTTPException, match="reconciliation"):
+        await intent_creation.create_payment_intent(
+            payload.model_copy(update={"bubbles_to_apply": 52}), user, db_session
+        )
+    assert len(await booking_payments(db_session, booking_id)) == 1
+    assert "booking_attempt_superseded" not in old.payment_metadata
+    intent_creation.create_wallet_hold.assert_not_awaited()
+    initialize.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"amount": 1},
+        {"currency": "USD"},
+        {"reference": "different"},
+        {"paid_at": "2026-10-03T10:00:00Z"},
+    ],
+)
+async def test_mismatched_verification_cannot_unlock_booking(
+    db_session, checkout, monkeypatch, changed
+):
+    _, user, payload, _, _ = checkout
+    old, verify = await failed_attempt(db_session, checkout, monkeypatch)
+    verify.return_value.update(changed)
+    with pytest.raises(HTTPException, match="reconciliation"):
+        await intent_creation.create_payment_intent(payload, user, db_session)
+    assert "booking_attempt_superseded" not in old.payment_metadata
+
+
+async def test_provider_unavailable_keeps_old_attempt_untouched(
+    db_session, checkout, monkeypatch
+):
+    _, user, payload, _, _ = checkout
+    old, verify = await failed_attempt(db_session, checkout, monkeypatch)
+    verify.side_effect = TimeoutError("Provider unavailable")
+    with pytest.raises(HTTPException) as error:
+        await intent_creation.create_payment_intent(payload, user, db_session)
+    assert error.value.status_code == 503
+    assert "booking_attempt_superseded" not in old.payment_metadata
+
+
+async def test_same_browser_key_follows_replacement_after_response_loss(
+    db_session, checkout, monkeypatch
+):
+    booking_id, user, payload, initialize, _ = checkout
+    first = await intent_creation.create_payment_intent(payload, user, db_session)
+    old = (await booking_payments(db_session, booking_id))[0]
+    old.status = PaymentStatus.FAILED
+    await db_session.commit()
+    verify = AsyncMock(
+        return_value={
+            "reference": old.reference,
+            "status": "failed",
+            "amount": 520000,
+            "currency": "NGN",
+        }
+    )
+    monkeypatch.setattr(booking_checkout_retry, "_verify_paystack_transaction", verify)
+    second = await intent_creation.create_payment_intent(payload, user, db_session)
+    repeated = await intent_creation.create_payment_intent(payload, user, db_session)
+    assert second.reference == repeated.reference != first.reference
+    assert len(await booking_payments(db_session, booking_id)) == 2
+    assert initialize.await_count == 2
+    verify.assert_awaited_once()
+
+
+async def test_replacement_failure_rolls_back_supersession(
+    db_session, checkout, monkeypatch
+):
+    booking_id, user, payload, _, _ = checkout
+    old, _ = await failed_attempt(db_session, checkout, monkeypatch)
+    intent_creation.create_wallet_hold.side_effect = HTTPException(
+        409, "Insufficient Bubbles"
+    )
+    with pytest.raises(HTTPException):
+        await intent_creation.create_payment_intent(
+            payload.model_copy(update={"bubbles_to_apply": 52}), user, db_session
+        )
+    await db_session.rollback()
+    await db_session.refresh(old)
+    assert "booking_attempt_superseded" not in old.payment_metadata
+    assert len(await booking_payments(db_session, booking_id)) == 1

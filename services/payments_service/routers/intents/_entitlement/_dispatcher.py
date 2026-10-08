@@ -260,6 +260,17 @@ async def _mark_paid_and_apply(
                 "reason": "receipt_after_documented_provider_closure",
             },
         }
+    if (payment.payment_metadata or {}).get("booking_attempt_superseded"):
+        payment.entitlement_error = "Payment received for a replaced checkout; Admin reconciliation/refund required"
+        payment.payment_metadata = {
+            **payment.payment_metadata,
+            "checkout_reconciliation": {
+                "reason": "receipt_after_checkout_replacement",
+                "replacement_reference": payment.payment_metadata[
+                    "booking_attempt_superseded"
+                ]["replacement_reference"],
+            },
+        }
     if provider_payload:
         payment.payment_metadata = {
             **(payment.payment_metadata or {}),
