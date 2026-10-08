@@ -31,6 +31,25 @@ class ScanInput(BaseModel):
     ticket: str
 
 
+@admin.get("/{pool_id}/operators")
+async def list_reception_operators(
+    pool_id: uuid.UUID,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    rows = (
+        await db.execute(
+            select(PoolAccessPartnerOperator)
+            .where(PoolAccessPartnerOperator.pool_id == pool_id)
+            .order_by(PoolAccessPartnerOperator.created_at.desc())
+        )
+    ).scalars().all()
+    return [
+        {"auth_id": row.auth_id, "active": row.is_active, "pool_id": str(row.pool_id)}
+        for row in rows
+    ]
+
+
 @admin.post("/{pool_id}/operators", status_code=201)
 async def authorize_reception(
     pool_id: uuid.UUID,
