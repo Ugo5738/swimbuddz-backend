@@ -222,3 +222,40 @@ class PoolAccessCancellationRequest(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
+
+
+class PoolAccessPartnerSettlement(Base):
+    """Verified external settlement applied to an admission-based liability.
+
+    Recording does not initiate a bank transfer. Idempotent bank references
+    and locked reconciliation entries prevent double recognition.
+    """
+
+    __tablename__ = "pool_access_partner_settlements"
+    __table_args__ = (
+        CheckConstraint(
+            "amount_kobo > 0",
+            name="ck_pool_access_partner_settlement_amount",
+        ),
+        UniqueConstraint(
+            "bank_reference",
+            name="uq_pool_access_partner_settlement_bank_ref",
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    reconciliation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("pool_access_reconciliations.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    amount_kobo: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    bank_reference: Mapped[str] = mapped_column(String(160), nullable=False)
+    evidence_note: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
