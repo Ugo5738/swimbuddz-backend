@@ -18,6 +18,10 @@ class AcademyFinancialCredit(Base):
     source_enrollment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("enrollments.id"), nullable=True)
     source_reference: Mapped[str] = mapped_column(String(200), nullable=False)
     source_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    state: Mapped[str] = mapped_column(String(24), default="active", nullable=False)
+    origin_credit_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("academy_financial_credits.id"), nullable=True,
+    )
     amount_kobo: Mapped[int] = mapped_column(BigInteger, nullable=False)
     actor_auth_id: Mapped[str] = mapped_column(String(160), nullable=False)
     created_at = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
