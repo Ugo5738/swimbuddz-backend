@@ -39,6 +39,35 @@ async def quote(
     }
 
 
+@router.post("/bookings/{booking_id}/claim-checkout")
+async def claim_checkout(
+    booking_id: uuid.UUID,
+    payload: dict,
+    _user=Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    reference = str(payload.get("payment_reference") or "")
+    auth_id = str(payload.get("member_auth_id") or "")
+    if not reference.startswith("PAY-") or not auth_id:
+        raise HTTPException(422, "Invalid payment reference")
+    booking = (
+        await db.execute(
+            select(PoolAccessBooking)
+            .where(PoolAccessBooking.id == booking_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if not booking or booking.buyer_auth_id != auth_id:
+        raise HTTPException(404, "Booking not found")
+    if booking.status != "pending_payment" or booking.hold_expires_at <= utc_now():
+        raise HTTPException(409, "Booking hold is not active")
+    if booking.checkout_reference and booking.checkout_reference != reference:
+        raise HTTPException(409, "This booking already has a pending checkout")
+    booking.checkout_reference = reference
+    await db.commit()
+    return {"reference": reference, "status": "claimed"}
+
+
 @router.post("/bookings/{booking_id}/confirm")
 async def confirm(
     booking_id: uuid.UUID,
@@ -71,6 +100,8 @@ async def confirm(
         return {"status": "confirmed", "booking_id": str(booking.id)}
     if booking.status != "pending_payment":
         raise HTTPException(409, "Booking unavailable")
+    if booking.checkout_reference != reference:
+        raise HTTPException(409, "Unexpected payment reference")
     if booking.selling_total_kobo != amount_kobo or booking.currency != "NGN":
         raise HTTPException(409, "Payment amount or currency mismatch")
     if booking.hold_expires_at <= utc_now():
