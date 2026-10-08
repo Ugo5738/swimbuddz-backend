@@ -9,6 +9,8 @@ from typing import Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from libs.auth.dependencies import require_admin, require_coach
+from libs.auth.dependencies import is_admin_or_service
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -140,3 +142,84 @@ async def create_milestone_evidence(
     await db.commit()
     await db.refresh(record)
     return record
+
+
+class EvidenceReviewRequest(BaseModel):
+    coach_notes: str = Field(..., min_length=2, max_length=2000)
+
+
+class EvidenceShowcaseRequest(BaseModel):
+    approve: bool
+    review_notes: str = Field(..., min_length=2, max_length=2000)
+
+
+class EvidenceReviewResponse(BaseModel):
+    evidence_id: uuid.UUID
+    coach_notes: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    approved_for_public: bool
+    showcase_review_notes: Optional[str] = None
+
+
+@router.get("/admin/evidence", response_model=list[MilestoneEvidenceResponse])
+async def list_admin_evidence(
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    rows = await db.execute(
+        select(MilestoneEvidence).order_by(MilestoneEvidence.created_at.desc()).limit(200)
+    )
+    return list(rows.scalars().all())
+
+
+@router.post("/evidence/{evidence_id}/coach-review", response_model=EvidenceReviewResponse)
+async def review_evidence(
+    evidence_id: uuid.UUID,
+    payload: EvidenceReviewRequest,
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    evidence = await db.get(MilestoneEvidence, evidence_id)
+    if evidence is None:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+    enrollment = await db.get(Enrollment, evidence.enrollment_id)
+    if not is_admin_or_service(current_user):
+        from services.academy_service.routers._shared import require_coach_for_cohort
+
+        if enrollment is None or enrollment.cohort_id is None:
+            raise HTTPException(status_code=403, detail="Coach access required")
+        await require_coach_for_cohort(current_user, str(enrollment.cohort_id), db)
+    evidence.coach_notes = payload.coach_notes
+    evidence.reviewed_at = datetime.now().astimezone()
+    await db.commit()
+    return EvidenceReviewResponse(
+        evidence_id=evidence.id,
+        coach_notes=evidence.coach_notes,
+        reviewed_at=evidence.reviewed_at,
+        approved_for_public=evidence.approved_for_public,
+        showcase_review_notes=evidence.showcase_review_notes,
+    )
+
+
+@router.post("/admin/evidence/{evidence_id}/showcase", response_model=EvidenceReviewResponse)
+async def review_showcase(
+    evidence_id: uuid.UUID,
+    payload: EvidenceShowcaseRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    evidence = await db.get(MilestoneEvidence, evidence_id)
+    if evidence is None:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+    if payload.approve and not evidence.consent_to_share:
+        raise HTTPException(status_code=409, detail="Swimmer consent is required")
+    evidence.approved_for_public = payload.approve
+    evidence.showcase_review_notes = payload.review_notes
+    await db.commit()
+    return EvidenceReviewResponse(
+        evidence_id=evidence.id,
+        coach_notes=evidence.coach_notes,
+        reviewed_at=evidence.reviewed_at,
+        approved_for_public=evidence.approved_for_public,
+        showcase_review_notes=evidence.showcase_review_notes,
+    )
