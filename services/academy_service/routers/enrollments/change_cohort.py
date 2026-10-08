@@ -221,6 +221,19 @@ async def approve_unpaid_enrollment_change(
             "Enrollment has recorded settlement or progress requiring financial review",
         )
     financial = await financial_state(enrollment.id)
+    local_references = {
+        reference
+        for reference in [
+            enrollment.payment_reference,
+            *(item.payment_reference for item in enrollment.installments),
+        ]
+        if reference
+    }
+    if not local_references.issubset(set(financial.get("references") or [])):
+        raise HTTPException(
+            409,
+            "A recorded payment reference cannot be verified by Payments; reconcile it before approving",
+        )
     if not financial.get("all_unpaid_closed", False):
         raise HTTPException(
             409,
