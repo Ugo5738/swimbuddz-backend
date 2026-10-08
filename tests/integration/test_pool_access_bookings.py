@@ -121,3 +121,54 @@ async def test_unpaid_booking_confirmation_requires_verified_payment(
     )
     assert direct.status_code == 503
     assert "temporarily unavailable" in direct.json()["detail"]
+
+
+async def test_paid_evidence_activates_exact_booking_only(pools_client, monkeypatch):
+    oid = await _published_offer(pools_client)
+    booked = await pools_client.post(
+        "/pools/access/bookings",
+        json={
+            "offer_id": oid,
+            "idempotency_key": str(uuid4()),
+            "guests": [{"name": "Ada Person"}],
+        },
+    )
+    assert booked.status_code == 201, booked.text
+    bid = booked.json()["id"]
+    ref = "PAY-" + uuid4().hex
+    claim = await pools_client.post(
+        f"/internal/pools/access/bookings/{bid}/claim-checkout",
+        json={"member_auth_id": "test-admin-id", "payment_reference": ref},
+    )
+    assert claim.status_code == 200, claim.text
+
+    async def paid_evidence(*args, **kwargs):
+        return httpx.Response(
+            200,
+            json={
+                "reference": ref,
+                "booking_id": bid,
+                "member_auth_id": "test-admin-id",
+                "amount_kobo": 700000,
+                "currency": "NGN",
+            },
+        )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(httpx.AsyncClient, "get", paid_evidence)
+        confirm = await pools_client.post(
+            f"/internal/pools/access/bookings/{bid}/confirm",
+            json={
+                "member_auth_id": "test-admin-id",
+                "payment_reference": ref,
+                "amount_kobo": 700000,
+            },
+        )
+    assert confirm.status_code == 200, confirm.text
+
+    monkeypatch.setenv("POOL_ACCESS_QR_SECRET", "secure-fixture-" * 4)
+    tickets = await pools_client.get(f"/pools/access/bookings/{bid}/tickets")
+    assert tickets.status_code == 200, tickets.text
+    assert len(tickets.json()) == 1
+    assert tickets.json()[0]["ticket"].startswith("pa1.")
+
