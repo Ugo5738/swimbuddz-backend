@@ -59,6 +59,30 @@ async def authorize_reception(
     return {"id": str(existing.id), "pool_id": str(pool_id), "active": True}
 
 
+@admin.delete("/{pool_id}/operators/{auth_id}", status_code=204)
+async def revoke_reception(
+    pool_id: uuid.UUID,
+    auth_id: str,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    operator = (
+        await db.execute(
+            select(PoolAccessPartnerOperator)
+            .where(
+                PoolAccessPartnerOperator.pool_id == pool_id,
+                PoolAccessPartnerOperator.auth_id == auth_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if not operator:
+        raise HTTPException(404, "Operator not found")
+    operator.is_active = False
+    await db.commit()
+    return None
+
+
 @router.get("/assigned-pools")
 async def assigned_pools(
     user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_async_db)
