@@ -36,6 +36,8 @@ async def my_tickets(
         raise HTTPException(404, "Booking not found")
     if booking.status != "confirmed":
         raise HTTPException(409, "Tickets require confirmed payment")
+    if not booking.terms_accepted_at or not (booking.access_terms_snapshot or {}).get("no_coaching_included"):
+        raise HTTPException(409, "Facility safety acceptance is missing")
     offer = await db.get(PoolAccessOffer, booking.offer_id)
     if offer.ends_at <= utc_now():
         raise HTTPException(409, "Admission window has ended")
