@@ -6,7 +6,7 @@ Only stores aggregate counts; source records remain owned by Members.
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import Date, DateTime, Float, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -32,6 +32,9 @@ class ContentAcquisitionSnapshot(Base):
     period_start: Mapped[date] = mapped_column(Date, nullable=False)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
     registrations: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    paying_members: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    payment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    paid_amount_ngn: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     source: Mapped[str] = mapped_column(
         String(32), nullable=False, default="members_registration"
     )
