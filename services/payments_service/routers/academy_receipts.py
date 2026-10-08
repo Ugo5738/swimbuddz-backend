@@ -192,6 +192,10 @@ async def allocate_receipt(
         )
     ).scalar_one_or_none()
     if prior:
+        if prior.state == "void":
+            raise HTTPException(
+                409, "This reservation was voided. Start a new reviewed allocation."
+            )
         if (
             prior.amount_kobo != body.amount_kobo
             or prior.enrollment_id != body.enrollment_id
@@ -220,6 +224,20 @@ async def allocate_receipt(
         raise HTTPException(409, "Academy enrollment has no verified member identity")
     if str(enrollment.get("currency_snapshot") or "NGN").upper() != receipt.currency:
         raise HTTPException(409, "Currency mismatch")
+
+    existing_beneficiary = (
+        await db.execute(
+            select(AcademyReceiptAllocation).where(
+                AcademyReceiptAllocation.receipt_id == receipt_id,
+                AcademyReceiptAllocation.enrollment_id == body.enrollment_id,
+                AcademyReceiptAllocation.state != "void",
+            )
+        )
+    ).scalar_one_or_none()
+    if existing_beneficiary:
+        raise HTTPException(
+            409, "An active allocation already exists for this learner and receipt. Review it before allocating again."
+        )
 
     assigned = (
         await db.execute(
