@@ -1,8 +1,9 @@
 """Serialize payment creation and settlement by booking, including legacy rows.
 
 A checkout key is only a retry key. The booking is the commercial identity.
-Provider-exposed failed payments are deliberately not considered safe to replace:
-changing our local status cannot revoke a previously issued hosted checkout.
+Provider-exposed failures require fresh verification before replacement. Local
+supersession preserves late receipts for reconciliation; it cannot revoke a
+previously issued hosted checkout.
 """
 
 import uuid
@@ -61,9 +62,10 @@ def provider_exposed(payment: Payment) -> bool:
 
 
 def blocks_new_attempt(payment: Payment) -> bool:
-    if (payment.payment_metadata or {}).get(
-        "checkout_closed_unpaid"
-    ) and payment.status == PaymentStatus.FAILED:
+    meta = payment.payment_metadata or {}
+    if payment.status == PaymentStatus.FAILED and (
+        meta.get("checkout_closed_unpaid") or meta.get("booking_attempt_superseded")
+    ):
         return False
     return payment.status in {
         PaymentStatus.PENDING,
@@ -73,7 +75,9 @@ def blocks_new_attempt(payment: Payment) -> bool:
     } or provider_exposed(payment)
 
 
-async def existing_booking_attempt(db, booking_id, member_auth_id, payload, retry=None):
+async def existing_booking_attempt(
+    db, booking_id, member_auth_id, payload, retry=None, replacement_reference=None
+):
     rows = await booking_payments(db, booking_id)
     relevant = [row for row in rows if blocks_new_attempt(row)]
     if any(row.member_auth_id != member_auth_id for row in relevant):
@@ -102,6 +106,15 @@ async def existing_booking_attempt(db, booking_id, member_auth_id, payload, retr
         return None
     payment = relevant[0]
     if payment.status not in {PaymentStatus.PENDING, PaymentStatus.PENDING_REVIEW}:
+        if replacement_reference:
+            from services.payments_service.services.booking_checkout_retry import (
+                supersede_unpaid_booking_checkout,
+            )
+
+            if await supersede_unpaid_booking_checkout(
+                db, payment, replacement_reference
+            ):
+                return None
         raise HTTPException(
             409,
             "An earlier provider payment needs reconciliation before another attempt can start",

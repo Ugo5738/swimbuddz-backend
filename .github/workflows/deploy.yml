@@ -135,6 +135,10 @@ jobs:
             tests/integration/test_attendance_walkin.py
 
           pytest -v \
+            tests/integration/test_booking_payment_attempts.py \
+            tests/integration/test_checkout_reconciliation.py
+
+          pytest -v \
             tests/integration/test_store_cart.py::test_mixed_checkout_creates_hold_at_payment_initialization
 
           pytest -v \

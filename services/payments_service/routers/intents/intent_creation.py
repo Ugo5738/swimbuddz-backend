@@ -778,8 +778,18 @@ async def create_payment_intent(
             resume_product_payment,
         )
 
+        if previous and previous.status == PaymentStatus.FAILED:
+            # A failed provider attempt keeps its original reference forever.
+            # Derive a stable replacement so retrying the same browser key
+            # after a lost response still follows one payment chain.
+            payment_reference = f"PAY-{uuid.uuid5(uuid.NAMESPACE_URL, f'booking-retry:{previous.reference}').hex}"
         existing = await existing_booking_attempt(
-            db, session_booking_id, current_user.user_id, payload, retry=previous
+            db,
+            session_booking_id,
+            current_user.user_id,
+            payload,
+            retry=previous,
+            replacement_reference=payment_reference,
         )
         if existing:
             if existing.status != PaymentStatus.PAID:
@@ -787,7 +797,9 @@ async def create_payment_intent(
                     booking_id=session_booking_id, member_auth_id=current_user.user_id
                 )
             return await resume_product_payment(db, existing, payload)
-        if previous:
+        if previous and not (previous.payment_metadata or {}).get(
+            "booking_attempt_superseded"
+        ):
             return await resume_product_payment(db, previous, payload)
     bundle_reservation_active = False
     club_reservation_active = False
