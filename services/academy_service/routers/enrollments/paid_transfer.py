@@ -323,6 +323,7 @@ async def approve_reviewed_transfer(
         new_credit = AcademyFinancialCredit(
             enrollment_id=new_enrollment.id,
             source_enrollment_id=source.id,
+            origin_credit_id=(active_credits[0].id if len(active_credits) == 1 else None),
             source_reference=f"cohort-change:{change.id}",
             source_kind="paid_transfer",
             amount_kobo=payload.transferable_credit_kobo,
@@ -388,6 +389,10 @@ async def approve_reviewed_transfer(
         "consumed_services_kobo": payload.consumed_services_kobo,
         "transferable_credit_kobo": payload.transferable_credit_kobo,
         "old_verified_tuition_kobo": verified_total,
+        "credit_source_provenance": [
+            {"id": str(credit.id), "reference": credit.source_reference, "amount_kobo": credit.amount_kobo}
+            for credit in active_credits
+        ],
         "original_tuition_kobo": source.price_snapshot_amount,
         "new_base_fee_kobo": base_fee_kobo,
         "new_discount_kobo": payload.discount_kobo,
