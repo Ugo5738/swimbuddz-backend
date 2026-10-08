@@ -106,7 +106,9 @@ async def admin_list_access_bookings(
             "buyer_email": booking.buyer_email,
             "headcount": booking.headcount,
             "status": booking.status,
-            "revenue_kobo": booking.selling_total_kobo if booking.status == "confirmed" else 0,
+            "revenue_kobo": booking.selling_total_kobo
+            if booking.status == "confirmed"
+            else 0,
             "currency": booking.currency,
             "payment_reference": booking.payment_reference,
             "verified_admissions": recon.verified_admissions if recon else None,
