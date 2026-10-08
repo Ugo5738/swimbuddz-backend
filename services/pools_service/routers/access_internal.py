@@ -98,7 +98,9 @@ async def confirm(
                 headers={"Authorization": f"Bearer {_service_role_jwt('pools')}"},
             )
     except httpx.RequestError as exc:
-        raise HTTPException(503, "Payment verification is temporarily unavailable") from exc
+        raise HTTPException(
+            503, "Payment verification is temporarily unavailable"
+        ) from exc
     if evidence.status_code >= 400:
         raise HTTPException(409, "Verified payment evidence not found")
     record = evidence.json()

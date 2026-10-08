@@ -91,9 +91,12 @@ async def test_capacity_reservation_is_idempotent_and_no_free_ticket(pools_clien
     assert tickets.status_code == 409
 
 
-async def test_unpaid_booking_confirmation_requires_verified_payment(pools_client, monkeypatch):
+async def test_unpaid_booking_confirmation_requires_verified_payment(
+    pools_client, monkeypatch
+):
     async def unavailable(*args, **kwargs):
         raise httpx.ConnectError("payments service unavailable")
+
     monkeypatch.setattr(httpx.AsyncClient, "get", unavailable)
     oid = await _published_offer(pools_client)
     booked = await pools_client.post(
