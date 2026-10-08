@@ -180,6 +180,27 @@ async def apply_verified_academy_credit(
     }
 
 
+@router.get("/enrollments/{enrollment_id}/allocation-identity")
+async def academy_allocation_identity(
+    enrollment_id: uuid.UUID,
+    _: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Private payments-service ownership projection; no user-controlled member ID."""
+    enrollment = (await db.execute(
+        select(Enrollment).where(Enrollment.id == enrollment_id)
+    )).scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(404, "Academy enrollment not found")
+    return {
+        "enrollment_id": str(enrollment.id),
+        "member_auth_id": enrollment.member_auth_id,
+        "currency_snapshot": enrollment.currency_snapshot or "NGN",
+        "status": enrollment.status.value,
+        "price_snapshot_amount": enrollment.price_snapshot_amount,
+    }
+
+
 @router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
 async def get_enrollment_internal(
     enrollment_id: uuid.UUID,
