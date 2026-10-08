@@ -1,4 +1,5 @@
 """Pure, auditable Pool Access pricing and redemption policy."""
+
 import hashlib
 import hmac
 import os

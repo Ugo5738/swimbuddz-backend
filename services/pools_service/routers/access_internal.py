@@ -1,4 +1,5 @@
 """Pool Access reservation quote and activation, service-to-service only."""
+
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,8 +15,12 @@ router = APIRouter(tags=["internal-pool-access"])
 
 
 @router.get("/bookings/{booking_id}/quote")
-async def quote(booking_id: uuid.UUID, member_auth_id: str,
-                _user=Depends(require_service_role), db: AsyncSession=Depends(get_async_db)):
+async def quote(
+    booking_id: uuid.UUID,
+    member_auth_id: str,
+    _user=Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
     booking = await db.get(PoolAccessBooking, booking_id)
     if not booking or booking.buyer_auth_id != member_auth_id:
         raise HTTPException(404, "Booking not found")
@@ -26,20 +31,38 @@ async def quote(booking_id: uuid.UUID, member_auth_id: str,
         raise HTTPException(409, "Visit no longer available")
     if booking.currency != "NGN":
         raise HTTPException(422, "Only NGN checkout is currently supported")
-    return {"booking_id": str(booking.id), "total_kobo": booking.selling_total_kobo,
-            "currency": booking.currency, "hold_expires_at": booking.hold_expires_at.isoformat()}
+    return {
+        "booking_id": str(booking.id),
+        "total_kobo": booking.selling_total_kobo,
+        "currency": booking.currency,
+        "hold_expires_at": booking.hold_expires_at.isoformat(),
+    }
 
 
 @router.post("/bookings/{booking_id}/confirm")
-async def confirm(booking_id: uuid.UUID, payload: dict,
-                  _user=Depends(require_service_role), db: AsyncSession=Depends(get_async_db)):
+async def confirm(
+    booking_id: uuid.UUID,
+    payload: dict,
+    _user=Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
     reference = str(payload.get("payment_reference") or "")
     member_auth_id = str(payload.get("member_auth_id") or "")
     amount_kobo = payload.get("amount_kobo")
-    if not reference.startswith("PAY-") or not member_auth_id or not isinstance(amount_kobo, int) or isinstance(amount_kobo, bool):
+    if (
+        not reference.startswith("PAY-")
+        or not member_auth_id
+        or not isinstance(amount_kobo, int)
+        or isinstance(amount_kobo, bool)
+    ):
         raise HTTPException(422, "Missing verified payment context")
-    booking = (await db.execute(select(PoolAccessBooking).where(
-        PoolAccessBooking.id == booking_id).with_for_update())).scalar_one_or_none()
+    booking = (
+        await db.execute(
+            select(PoolAccessBooking)
+            .where(PoolAccessBooking.id == booking_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not booking or booking.buyer_auth_id != member_auth_id:
         raise HTTPException(404, "Booking not found")
     if booking.status == "confirmed":

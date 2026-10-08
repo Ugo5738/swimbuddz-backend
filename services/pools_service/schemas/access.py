@@ -1,4 +1,5 @@
 """API payloads for self-directed Pool Access, distinct from scheduled sessions."""
+
 import uuid
 from datetime import datetime
 from typing import Literal
@@ -24,13 +25,18 @@ class OfferInput(BaseModel):
 
     @model_validator(mode="after")
     def valid_window(self):
-        if not self.starts_at.tzinfo or not self.ends_at.tzinfo or self.starts_at >= self.ends_at:
+        if (
+            not self.starts_at.tzinfo
+            or not self.ends_at.tzinfo
+            or self.starts_at >= self.ends_at
+        ):
             raise ValueError("Use timezone-aware start/end dates in increasing order")
         return self
 
 
 class OfferOut(BaseModel):
     """Public catalog representation: NEVER expose negotiated partner costs."""
+
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     pool_id: uuid.UUID
@@ -75,6 +81,7 @@ class BookingOut(BaseModel):
 
 class ExternalPaymentEvidence(BaseModel):
     """An admin may request verification, never supply an arbitrary paid flag."""
+
     reference: str = Field(min_length=6, max_length=160)
 
 
