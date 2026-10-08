@@ -91,3 +91,25 @@ async def test_paid_or_unclosed_attempts_block_admin_approval(monkeypatch):
         )
     assert exc.value.status_code == 409
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_general_admin_update_cannot_bypass_cohort_transfer_review():
+    from services.academy_service.routers.enrollments.admin_crud import (
+        update_enrollment,
+    )
+    from services.academy_service.schemas import EnrollmentUpdate
+
+    source_cohort_id = uuid4()
+    source = SimpleNamespace(id=uuid4(), cohort_id=source_cohort_id)
+    result = SimpleNamespace(scalar_one_or_none=lambda: source)
+    db = SimpleNamespace(execute=AsyncMock(return_value=result), commit=AsyncMock())
+    with pytest.raises(HTTPException) as exc:
+        await update_enrollment(
+            source.id,
+            EnrollmentUpdate(cohort_id=uuid4()),
+            SimpleNamespace(user_id="admin"),
+            db,
+        )
+    assert exc.value.status_code == 409
+    db.commit.assert_not_awaited()
