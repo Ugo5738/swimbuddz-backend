@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
-from services.media_service.models import MediaVault
+from services.media_service.models import MediaItem, MediaType, MediaVault
 from services.media_service.schemas import (
     InternalDirectUploadCreateRequest,
     InternalDirectUploadCreateResponse,
@@ -82,6 +82,39 @@ def _bucket_type(raw: str) -> BucketType:
         return BucketType(raw)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid bucket_type") from exc
+
+
+
+
+@router.get("/alumni-evidence/{media_id}")
+async def validate_alumni_evidence(
+    media_id: uuid.UUID,
+    owner_auth_id: uuid.UUID,
+    _current_user: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict[str, bool]:
+    """Check ownership and private video purpose without leaking media URLs.
+
+    Only backend service callers can use this route. Any mismatch is a 404,
+    including media owned by another person or media intended for a gallery.
+    """
+    item = await db.scalar(select(MediaItem).where(MediaItem.id == media_id))
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    purpose = (item.metadata_info or {}).get("purpose")
+    media_type = (
+        item.media_type.value
+        if isinstance(item.media_type, MediaType)
+        else item.media_type
+    )
+    if (
+        item.uploaded_by != owner_auth_id
+        or media_type != "VIDEO"
+        or purpose != "milestone_evidence"
+        or item.vault_id is not None
+    ):
+        raise HTTPException(status_code=404, detail="Video not found")
+    return {"valid": True}
 
 
 @router.post("/vaults/sync-volunteer-grants")
