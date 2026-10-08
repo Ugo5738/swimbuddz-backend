@@ -152,8 +152,6 @@ async def content_acquisition(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Reporting-owned confirmed registration counts, not attributed payments."""
-    from sqlalchemy import func
-
     latest_period = (
         await db.execute(
             select(
