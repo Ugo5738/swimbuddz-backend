@@ -22,6 +22,19 @@ from services.reporting_service.models.content_acquisition import (
 from services.reporting_service.tasks.flywheel import _fetch_members_who_joined_tier
 
 
+def _empty_purpose_totals() -> dict:
+    return {"payment_count": 0, "amount_ngn": 0.0}
+
+
+def _empty_content_totals() -> dict:
+    return {
+        "paying_members": set(),
+        "payment_count": 0,
+        "paid_amount_ngn": 0.0,
+        "by_purpose": defaultdict(_empty_purpose_totals),
+    }
+
+
 async def refresh_content_acquisition(days: int = 90) -> int:
     """Upsert aggregate first-party registrations for a bounded rolling window."""
     if not 1 <= days <= 366:
@@ -50,9 +63,7 @@ async def refresh_content_acquisition(days: int = 90) -> int:
 
     # Only Reporting aggregates the independent Members and Payments contracts.
     # The Payments service never knows about content or member acquisition.
-    totals: dict[UUID, dict] = defaultdict(
-        lambda: {"paying_members": set(), "payment_count": 0, "paid_amount_ngn": 0.0, "by_purpose": defaultdict(lambda: {"payment_count": 0, "amount_ngn": 0.0})}
-    )
+    totals: dict[UUID, dict] = defaultdict(_empty_content_totals)
     from libs.common.config import get_settings as settings_factory
 
     auth_ids = list(auth_origins)
@@ -83,7 +94,9 @@ async def refresh_content_acquisition(days: int = 90) -> int:
             bucket["payment_count"] += int(item["payment_count"])
             bucket["paid_amount_ngn"] += float(item["amount_ngn"])
             purpose = item["purpose"]
-            bucket["by_purpose"][purpose]["payment_count"] += int(item["payment_count"])
+            bucket["by_purpose"][purpose]["payment_count"] += int(
+                item["payment_count"]
+            )
             bucket["by_purpose"][purpose]["amount_ngn"] += float(item["amount_ngn"])
 
     async with AsyncSessionLocal() as db:
