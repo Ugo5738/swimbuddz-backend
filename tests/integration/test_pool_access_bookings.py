@@ -79,6 +79,9 @@ async def test_capacity_reservation_is_idempotent_and_no_free_ticket(pools_clien
     body = {
         "offer_id": oid,
         "idempotency_key": str(uuid4()),
+            "accept_access_rules": True,
+            "accept_cancellation_policy": True,
+            "acknowledge_uncoached_activity": True,
         "guests": [{"name": "Ada Person"}, {"name": "Ben Person"}],
     }
     r = await pools_client.post("/pools/access/bookings", json=body)
@@ -108,6 +111,9 @@ async def test_unpaid_booking_confirmation_requires_verified_payment(
         json={
             "offer_id": oid,
             "idempotency_key": str(uuid4()),
+            "accept_access_rules": True,
+            "accept_cancellation_policy": True,
+            "acknowledge_uncoached_activity": True,
             "guests": [{"name": "Ada Person"}],
         },
     )
@@ -137,6 +143,9 @@ async def test_paid_evidence_activates_exact_booking_only(
         json={
             "offer_id": oid,
             "idempotency_key": str(uuid4()),
+            "accept_access_rules": True,
+            "accept_cancellation_policy": True,
+            "acknowledge_uncoached_activity": True,
             "guests": [{"name": "Ada Person"}],
         },
     )
@@ -189,6 +198,9 @@ async def test_unclaimed_hold_can_cancel_and_release_capacity(pools_client):
         json={
             "offer_id": oid,
             "idempotency_key": str(uuid4()),
+            "accept_access_rules": True,
+            "accept_cancellation_policy": True,
+            "acknowledge_uncoached_activity": True,
             "guests": [{"name": "Ada Person"}],
         },
     )
@@ -202,6 +214,9 @@ async def test_unclaimed_hold_can_cancel_and_release_capacity(pools_client):
         json={
             "offer_id": oid,
             "idempotency_key": str(uuid4()),
+            "accept_access_rules": True,
+            "accept_cancellation_policy": True,
+            "acknowledge_uncoached_activity": True,
             "guests": [{"name": "Ben Person"}],
         },
     )
@@ -217,6 +232,9 @@ async def test_checkout_claim_prevents_unverified_cancellation(
         json={
             "offer_id": oid,
             "idempotency_key": str(uuid4()),
+            "accept_access_rules": True,
+            "accept_cancellation_policy": True,
+            "acknowledge_uncoached_activity": True,
             "guests": [{"name": "Ada Person"}],
         },
     )
@@ -244,6 +262,9 @@ async def test_member_cannot_request_refund_for_unpaid_visit(pools_client):
         json={
             "offer_id": offer_id,
             "idempotency_key": str(uuid4()),
+            "accept_access_rules": True,
+            "accept_cancellation_policy": True,
+            "acknowledge_uncoached_activity": True,
             "guests": [{"name": "Ada Person"}],
         },
     )
@@ -265,6 +286,9 @@ async def test_partner_settlement_is_limited_to_verified_admissions(
         json={
             "offer_id": offer_id,
             "idempotency_key": str(uuid4()),
+            "accept_access_rules": True,
+            "accept_cancellation_policy": True,
+            "acknowledge_uncoached_activity": True,
             "guests": [{"name": "Ada Person"}],
         },
     )
