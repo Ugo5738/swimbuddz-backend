@@ -39,8 +39,8 @@ def create_app() -> FastAPI:
 
     # Include communications routers
     app.include_router(communications_router)
-    app.include_router(content_router)
     app.include_router(engagement_router)
+    app.include_router(content_router)
     app.include_router(category_router)
     app.include_router(admin_router)
     app.include_router(messaging_router)
