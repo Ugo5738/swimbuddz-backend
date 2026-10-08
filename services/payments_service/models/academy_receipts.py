@@ -78,3 +78,6 @@ class AcademyReceiptAllocation(Base):
     created_by_auth_id: Mapped[str] = mapped_column(String(160), nullable=False)
     created_at = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     applied_at = mapped_column(DateTime(timezone=True), nullable=True)
+    voided_by_auth_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    voided_at = mapped_column(DateTime(timezone=True), nullable=True)
