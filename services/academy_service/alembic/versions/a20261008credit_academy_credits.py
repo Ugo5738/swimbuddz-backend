@@ -19,6 +19,8 @@ def upgrade():
         sa.Column("source_enrollment_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("enrollments.id"), nullable=True),
         sa.Column("source_reference", sa.String(200), nullable=False),
         sa.Column("source_kind", sa.String(32), nullable=False),
+        sa.Column("state", sa.String(24), nullable=False),
+        sa.Column("origin_credit_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("academy_financial_credits.id"), nullable=True),
         sa.Column("amount_kobo", sa.BigInteger(), nullable=False),
         sa.Column("actor_auth_id", sa.String(160), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
