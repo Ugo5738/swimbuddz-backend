@@ -124,7 +124,9 @@ async def test_unpaid_booking_confirmation_requires_verified_payment(
     assert "temporarily unavailable" in direct.json()["detail"]
 
 
-async def test_paid_evidence_activates_exact_booking_only(pools_client, db_session, monkeypatch):
+async def test_paid_evidence_activates_exact_booking_only(
+    pools_client, db_session, monkeypatch
+):
     oid = await _published_offer(pools_client)
     booked = await pools_client.post(
         "/pools/access/bookings",
