@@ -13,6 +13,8 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 async def test_shared_receipt_allocates_only_verified_total(db_session, monkeypatch):
     admin = AuthUser(user_id="admin")
+    emit = AsyncMock()
+    monkeypatch.setattr(service, "emit_payment_to_ledger", emit)
     total = 100000 * 100
     first = 50000 * 100
     external_reference = f"BANK-{uuid4()}"
@@ -25,6 +27,7 @@ async def test_shared_receipt_allocates_only_verified_total(db_session, monkeypa
         admin, db_session,
     )
     assert receipt["unallocated_kobo"] == total
+    emit.assert_awaited_once()
     monkeypatch.setattr(
         service,
         "internal_get",
