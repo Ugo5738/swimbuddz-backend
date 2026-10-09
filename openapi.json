@@ -24002,6 +24002,99 @@
         ]
       }
     },
+    "/api/v1/payments/admin/academy-receipts/adopt-settled": {
+      "post": {
+        "tags": [
+          "payments",
+          "academy-receipts"
+        ],
+        "summary": "Adopt Previously Settled Academy Receipt",
+        "description": "Adopt a settled single-student payment, creating cash-in ONLY for a\nseparately confirmed, previously unrecorded bank remainder.\n\nPaid history and previous ledger postings are never edited. This is\ndeliberately not a refund, reversal or entitlement reapplication.",
+        "operationId": "adopt_previously_settled_academy_receipt_payments_admin_academy_receipts_adopt_settled_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdoptSettledAcademyReceiptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/payments/admin/academy-receipts/by-reference/{external_reference}": {
+      "get": {
+        "tags": [
+          "payments",
+          "academy-receipts"
+        ],
+        "summary": "Find Verified Receipt By Bank Reference",
+        "description": "Resume previously verified receipt allocations without registering cash again.",
+        "operationId": "find_verified_receipt_by_bank_reference_payments_admin_academy_receipts_by_reference__external_reference__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "external_reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "External Reference"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payments/admin/academy-receipts/{receipt_id}": {
       "get": {
         "tags": [
@@ -92177,6 +92270,51 @@
         "type": "object",
         "title": "AdminReviewRequest",
         "description": "Admin review action for a manual payment."
+      },
+      "AdoptSettledAcademyReceiptRequest": {
+        "properties": {
+          "original_payment_reference": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 4,
+            "title": "Original Payment Reference"
+          },
+          "external_reference": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 5,
+            "title": "External Reference"
+          },
+          "actual_bank_amount_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Actual Bank Amount Kobo"
+          },
+          "reviewed_bank_evidence": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 30,
+            "title": "Reviewed Bank Evidence"
+          },
+          "confirm_original_payment_is_one_beneficiary": {
+            "type": "boolean",
+            "title": "Confirm Original Payment Is One Beneficiary"
+          },
+          "confirm_unrecorded_remainder": {
+            "type": "boolean",
+            "title": "Confirm Unrecorded Remainder"
+          }
+        },
+        "type": "object",
+        "required": [
+          "original_payment_reference",
+          "external_reference",
+          "actual_bank_amount_kobo",
+          "reviewed_bank_evidence",
+          "confirm_original_payment_is_one_beneficiary",
+          "confirm_unrecorded_remainder"
+        ],
+        "title": "AdoptSettledAcademyReceiptRequest"
       },
       "AllocateReceiptRequest": {
         "properties": {
