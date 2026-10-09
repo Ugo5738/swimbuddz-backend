@@ -10,7 +10,6 @@ from sqlalchemy import select
 from libs.auth.models import AuthUser
 from services.payments_service.models import (
     AcademyBankReceipt,
-    AcademyReceiptAllocation,
     Payment,
     PaymentPurpose,
     PaymentStatus,
