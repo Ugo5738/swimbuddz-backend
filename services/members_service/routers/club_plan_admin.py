@@ -4,6 +4,7 @@ import calendar
 import uuid
 from datetime import date, datetime, timedelta
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
@@ -35,6 +36,10 @@ from services.members_service.services.club_plan_schedule import (
 )
 
 logger = get_logger(__name__)
+
+# Pricing a full quarter takes longer than the ordinary 10-second internal call.
+# Leave time for validation and saving the draft within the gateway's 60 seconds.
+_QUARTER_GENERATION_TIMEOUT = 45.0
 
 router = APIRouter(
     prefix="/clubs/admin/plans",
@@ -412,28 +417,41 @@ async def recommend_quarter(body, db, *, source=None):
         else getattr(body, key)
         for key in ("capacity", "minimum_entry_sessions", "refreshments_included")
     }
-    response = await internal_post(
-        service_url=get_settings().SESSIONS_SERVICE_URL,
-        path="/internal/sessions/club-schedule/generate",
-        calling_service="members",
-        json={
-            "club_id": str(club.id),
-            "pool_id": str(club.default_pool_id),
-            "template_id": str(body.template_id) if body.template_id else None,
-            "template_ids": [str(value) for value in body.template_ids],
-            "title": f"{club.name} Club practice",
-            "period_start": start.isoformat(),
-            "period_end": end.isoformat(),
-            "weekday": _WEEKDAY_NUMBER[
-                getattr(club.default_session_day, "value", club.default_session_day)
-            ],
-            "starts_at_local": club.default_session_time.isoformat(),
-            "duration_minutes": club.default_session_duration_minutes,
-            "capacity": draft_settings["capacity"] or body.capacity,
-            "pricing_settings": body.pricing_settings,
-            "excluded_dates": [day.isoformat() for day in body.excluded_dates],
-        },
-    )
+    try:
+        response = await internal_post(
+            service_url=get_settings().SESSIONS_SERVICE_URL,
+            path="/internal/sessions/club-schedule/generate",
+            calling_service="members",
+            timeout=_QUARTER_GENERATION_TIMEOUT,
+            json={
+                "club_id": str(club.id),
+                "pool_id": str(club.default_pool_id),
+                "template_id": str(body.template_id) if body.template_id else None,
+                "template_ids": [str(value) for value in body.template_ids],
+                "title": f"{club.name} Club practice",
+                "period_start": start.isoformat(),
+                "period_end": end.isoformat(),
+                "weekday": _WEEKDAY_NUMBER[
+                    getattr(club.default_session_day, "value", club.default_session_day)
+                ],
+                "starts_at_local": club.default_session_time.isoformat(),
+                "duration_minutes": club.default_session_duration_minutes,
+                "capacity": draft_settings["capacity"] or body.capacity,
+                "pricing_settings": body.pricing_settings,
+                "excluded_dates": [day.isoformat() for day in body.excluded_dates],
+            },
+        )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            504,
+            "Club quarter generation is taking longer than expected. Nothing was "
+            "published. Retry to recover the draft using the same sessions.",
+        ) from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            503,
+            "Club schedule is temporarily unavailable. Retry generating the quarter.",
+        ) from exc
     if response.status_code >= 400:
         raise HTTPException(
             response.status_code,

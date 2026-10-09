@@ -5,6 +5,7 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi import HTTPException
 
@@ -261,6 +262,9 @@ async def test_recommendation_with_no_draft_creates_one_unpublished_plan(
     db.add.assert_called_once_with(created)
     db.commit.assert_awaited_once()
     generate.assert_awaited_once()
+    # A real quarter took ~20 seconds in production; the ordinary 10-second
+    # internal timeout must not be used for this batch operation.
+    assert 20 < generate.call_args.kwargs["timeout"] < 60
 
 
 @pytest.mark.parametrize("override", [False, True])
@@ -337,6 +341,33 @@ async def test_failed_generation_does_not_partially_populate_empty_draft(
     assert error.value.status_code == 503
     assert existing.session_links == [] and existing.club_fee_kobo == 0
     assert existing.capacity == 8 and existing.published_at is None
+    db.add.assert_not_called()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.parametrize("existing_draft", [False, True])
+@pytest.mark.parametrize(
+    "failure,status",
+    [
+        (httpx.ReadTimeout("generation timed out"), 504),
+        (httpx.ConnectError("sessions unavailable"), 503),
+    ],
+)
+@pytest.mark.asyncio
+async def test_generation_transport_failure_is_retryable_without_saving_plan(
+    recommendation_setup, existing_draft, failure, status
+):
+    club, _, generate, body = recommendation_setup
+    existing = empty_draft(club) if existing_draft else None
+    generate.side_effect = failure
+    db = recommendation_db(club, existing)
+    with pytest.raises(HTTPException) as error:
+        await plans.recommend_quarter(body, db)
+    assert error.value.status_code == status
+    assert "Retry" in error.value.detail
+    if existing:
+        assert existing.session_links == [] and existing.club_fee_kobo == 0
+        assert existing.capacity == 8 and existing.published_at is None
     db.add.assert_not_called()
     db.commit.assert_not_awaited()
 
