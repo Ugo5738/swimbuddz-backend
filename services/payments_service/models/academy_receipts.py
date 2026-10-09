@@ -25,6 +25,10 @@ class AcademyBankReceipt(Base):
     __tablename__ = "academy_bank_receipts"
     __table_args__ = (
         CheckConstraint("amount_kobo > 0", name="ck_academy_receipt_positive"),
+        CheckConstraint(
+            "preexisting_paid_kobo >= 0 AND preexisting_paid_kobo <= amount_kobo",
+            name="ck_academy_receipt_preexisting_range",
+        ),
         UniqueConstraint(
             "external_reference", name="uq_academy_receipt_external_reference"
         ),
@@ -34,6 +38,16 @@ class AcademyBankReceipt(Base):
     )
     payment_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("payments.id"), nullable=False, unique=True
+    )
+    # Retroactive adoption: payment_id is the historical settled payment. Only
+    # the previously unbooked remainder gets its own cash-in Payment/ledger row.
+    # Ordinary newly verified receipts have preexisting_paid_kobo=0 and no
+    # remainder_payment_id, preserving their existing behavior.
+    preexisting_paid_kobo: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    remainder_payment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("payments.id"), nullable=True, unique=True
     )
     external_reference: Mapped[str] = mapped_column(String(160), nullable=False)
     amount_kobo: Mapped[int] = mapped_column(BigInteger, nullable=False)
