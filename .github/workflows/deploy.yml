@@ -158,6 +158,7 @@ jobs:
       - name: Verify shared Academy bank receipts and paid transfers
         run: |
           pytest -v tests/integration/test_academy_shared_receipts.py
+          pytest -v tests/integration/test_academy_retroactive_receipt.py
           pytest -v tests/integration/test_academy_verified_credit.py
           pytest -v tests/integration/test_academy_reviewed_paid_transfer.py
           pytest -v tests/integration/test_academy_commercial_terms.py
