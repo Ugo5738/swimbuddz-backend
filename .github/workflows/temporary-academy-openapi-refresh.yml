@@ -25,8 +25,8 @@ jobs:
           python -m pip install -e .
       - name: Regenerate tracked OpenAPI schema
         env:
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/test_db
-          DATABASE_SESSION_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/test_db
+          DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+          DATABASE_SESSION_URL: postgresql+psycopg://test:test@localhost:5432/test_db
         run: |
           python scripts/api/generate-openapi.py > openapi.json
       - name: Commit tracked schema
