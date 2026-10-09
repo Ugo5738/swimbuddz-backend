@@ -85655,6 +85655,25 @@
             "minimum": 0.0,
             "title": "Consumed Services Kobo"
           },
+          "refund_due_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Refund Due Kobo",
+            "default": 0
+          },
+          "refund_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000,
+                "minLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refund Reason"
+          },
           "discount_kobo": {
             "type": "integer",
             "minimum": 0.0,
@@ -85665,7 +85684,8 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 1000
+                "maxLength": 1000,
+                "minLength": 10
               },
               {
                 "type": "null"
