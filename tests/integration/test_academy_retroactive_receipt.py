@@ -90,9 +90,9 @@ async def test_retroactive_adoption_books_only_50k_and_protects_first_student(
     # The historical allocation is not spendable a second time.
     with pytest.raises(HTTPException) as error:
         await receipts.apply_receipt_allocation(
-            rows[0].id, rows[0].id, admin, db_session,
+            rows[0].id, __import__('uuid').UUID(result['allocations'][0]['id']), admin, db_session,
         )
-    assert error.value.status_code == 404
+    assert error.value.status_code == 409
 
 
 async def test_adoption_rejects_unverified_cash_claims(db_session, monkeypatch):
