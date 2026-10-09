@@ -1,4 +1,5 @@
 name: Temporary Retro OpenAPI Refresh
+# Rerun for corrected duplicate-claim guard.
 
 on:
   push:
