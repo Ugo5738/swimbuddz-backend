@@ -343,8 +343,12 @@ async def approve_reviewed_transfer(
         )
         db.add(new_credit)
         await db.flush()
-        installments = await _sync_installment_state_for_enrollment(
-            db, new_enrollment, use_installments=True
+        from services.academy_service.routers._shared import (
+            _ensure_credit_obligation,
+        )
+
+        installments = await _ensure_credit_obligation(
+            db, new_enrollment, now_dt=now
         )
         payable = [
             item
