@@ -30,8 +30,8 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 @pytest.mark.parametrize(
     "transfer_kobo,refund_kobo,discount_kobo,installment_plan",
     [
-        (5_000_000, 0, 0, None),
-        (3_000_000, 2_000_000, 0, None),
+        (5_000_000, 0, 0, []),
+        (3_000_000, 2_000_000, 0, []),
         (5_000_000, 0, 2_000_000, [5_000_000, 5_000_000, 4_500_000]),
     ],
 )
