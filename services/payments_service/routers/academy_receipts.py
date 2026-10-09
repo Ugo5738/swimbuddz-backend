@@ -261,8 +261,18 @@ async def adopt_previously_settled_academy_receipt(
             await db.execute(
                 select(Payment).where(
                     Payment.status == PaymentStatus.PAID,
-                    func.upper(Payment.provider_reference) == reference,
                     Payment.id != payment.id,
+                    or_(
+                        func.upper(Payment.provider_reference) == reference,
+                        func.upper(
+                            Payment.payment_metadata["external_reference"].astext
+                        ) == reference,
+                        func.upper(
+                            Payment.payment_metadata["submitted_transfer"][
+                                "external_reference"
+                            ].astext
+                        ) == reference,
+                    ),
                 )
             )
         )
