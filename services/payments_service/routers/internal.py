@@ -1054,6 +1054,9 @@ class AcademyEnrollmentFinancialState(BaseModel):
     statuses: list[str]
     attempts: list[dict]
     all_unpaid_closed: bool
+    paid_transfer_eligible: bool
+    verified_paid_tuition_kobo: int
+    blocked_references: list[str]
 
 
 @router.get(
@@ -1074,6 +1077,46 @@ async def academy_enrollment_financial_state(
         )
     )
     payments = result.scalars().all()
+    paid = []
+    blocked_references = []
+    for item in payments:
+        metadata = item.payment_metadata or {}
+        closed_unpaid = (
+            item.status == PaymentStatus.FAILED
+            and bool(metadata.get("checkout_closed_unpaid"))
+            and not item.proof_of_payment_media_id
+            and not item.entitlement_applied_at
+            and not metadata.get("recorded_offline")
+        )
+        clean_paid = (
+            item.status == PaymentStatus.PAID
+            and bool(item.entitlement_applied_at)
+            and item.currency == "NGN"
+            and not metadata.get("checkout_reconciliation")
+            and not metadata.get("booking_reconciliation")
+            and not metadata.get("refund_obligation")
+            and not metadata.get("refund_disbursed")
+            and not metadata.get("refund_processed")
+            and not metadata.get("refunded")
+        )
+        superseded_shared = (
+            item.status == PaymentStatus.FAILED
+            and bool(metadata.get("superseded_by_shared_receipt"))
+            and not item.entitlement_applied_at
+        )
+        if clean_paid:
+            paid.append(
+                max(
+                    0,
+                    int(
+                        metadata.get("academy_payment_amount_kobo")
+                        if metadata.get("academy_payment_amount_kobo") is not None
+                        else round(item.amount * 100)
+                    ),
+                )
+            )
+        elif not (closed_unpaid or superseded_shared):
+            blocked_references.append(item.reference)
     attempts = [
         {
             "reference": p.reference,
@@ -1092,6 +1135,9 @@ async def academy_enrollment_financial_state(
         references=[p.reference for p in payments],
         statuses=[p.status.value for p in payments],
         attempts=attempts,
+        paid_transfer_eligible=not blocked_references,
+        verified_paid_tuition_kobo=sum(paid),
+        blocked_references=blocked_references,
         all_unpaid_closed=all(
             p.status == PaymentStatus.FAILED
             and bool((p.payment_metadata or {}).get("checkout_closed_unpaid"))

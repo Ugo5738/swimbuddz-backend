@@ -32,12 +32,14 @@ from . import me as _me
 from . import onboarding as _onboarding
 from . import self_enroll as _self_enroll
 from . import change_cohort as _change_cohort
+from . import paid_transfer as _paid_transfer
 
 router = APIRouter(tags=["academy"])
 
 router.include_router(_admin_crud.router)
 router.include_router(_self_enroll.router)
 router.include_router(_change_cohort.router)
+router.include_router(_paid_transfer.router)
 router.include_router(_me.router)
 router.include_router(_admin_payments.router)
 router.include_router(_by_cohort.router)

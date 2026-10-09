@@ -56,6 +56,10 @@ async def complete_payment(
             status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found"
         )
 
+    if (payment.payment_metadata or {}).get("superseded_by_shared_receipt"):
+        raise HTTPException(
+            409, "Shared receipt already covers this checkout; do not complete it twice"
+        )
     if payment.status == PaymentStatus.PAID:
         return payment
 
