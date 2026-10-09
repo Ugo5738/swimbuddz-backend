@@ -160,6 +160,7 @@ jobs:
           pytest -v tests/integration/test_academy_shared_receipts.py
           pytest -v tests/integration/test_academy_verified_credit.py
           pytest -v tests/integration/test_academy_reviewed_paid_transfer.py
+          pytest -v tests/integration/test_academy_commercial_terms.py
 
       - name: Verify Pool Access booking integration invariants
         run: pytest -v tests/integration/test_pool_access_bookings.py

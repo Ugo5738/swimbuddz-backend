@@ -18666,6 +18666,106 @@
         }
       }
     },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}/commercial-terms": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Preview Commercial Terms",
+        "operationId": "preview_commercial_terms_academy_admin_enrollments__enrollment_id__commercial_terms_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Approve Commercial Terms",
+        "operationId": "approve_commercial_terms_academy_admin_enrollments__enrollment_id__commercial_terms_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialTermsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/my-enrollments": {
       "get": {
         "tags": [
@@ -85697,6 +85797,14 @@
             "type": "boolean",
             "title": "Confirmed Attendance Review",
             "default": false
+          },
+          "installment_amounts_kobo": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 6,
+            "title": "Installment Amounts Kobo"
           }
         },
         "type": "object",
@@ -88371,6 +88479,66 @@
         },
         "type": "object",
         "title": "CohortUpdate"
+      },
+      "CommercialTermsRequest": {
+        "properties": {
+          "adjustment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Adjustment Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Reason"
+          },
+          "expected_price_snapshot_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Price Snapshot Kobo"
+          },
+          "expected_installments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Expected Installments"
+          },
+          "unpaid_installment_amounts_kobo": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Unpaid Installment Amounts Kobo"
+          },
+          "historic_discount_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Historic Discount Kobo",
+            "default": 0
+          },
+          "agreed_cash_total_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Agreed Cash Total Kobo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "adjustment_id",
+          "reason",
+          "expected_price_snapshot_kobo",
+          "expected_installments",
+          "unpaid_installment_amounts_kobo",
+          "agreed_cash_total_kobo"
+        ],
+        "title": "CommercialTermsRequest"
       },
       "ComplexityScoreCalculateRequest": {
         "properties": {
