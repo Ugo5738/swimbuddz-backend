@@ -85693,6 +85693,22 @@
             ],
             "title": "Discount Reason"
           },
+          "installment_amounts_kobo": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 6,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Amounts Kobo"
+          },
           "confirmed_attendance_review": {
             "type": "boolean",
             "title": "Confirmed Attendance Review",
