@@ -103,7 +103,9 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
         transferable_credit_kobo=transfer_kobo,
         consumed_services_kobo=0,
         refund_due_kobo=refund_kobo,
-        refund_reason="Reviewed unspent tuition refund remains payable" if refund_kobo else None,
+        refund_reason=(
+            "Reviewed unspent tuition refund remains payable" if refund_kobo else None
+        ),
         discount_kobo=0,
         confirmed_attendance_review=True,
     )
