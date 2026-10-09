@@ -28,8 +28,12 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 
 @pytest.mark.parametrize(
-    "transfer_kobo,refund_kobo",
-    [(5_000_000, 0), (3_000_000, 2_000_000)],
+    "transfer_kobo,refund_kobo,discount_kobo,installment_plan",
+    [
+        (5_000_000, 0, 0, []),
+        (3_000_000, 2_000_000, 0, []),
+        (5_000_000, 0, 2_000_000, [5_000_000, 5_000_000, 4_500_000]),
+    ],
 )
 async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
     db_session,
@@ -37,6 +41,8 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
     monkeypatch,
     transfer_kobo,
     refund_kobo,
+    discount_kobo,
+    installment_plan,
 ):
     member = MemberFactory.create()
     programme = ProgramFactory.create(price_amount=24_000_000)
@@ -106,7 +112,13 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
         refund_reason=(
             "Reviewed unspent tuition refund remains payable" if refund_kobo else None
         ),
-        discount_kobo=0,
+        discount_kobo=discount_kobo,
+        discount_reason=(
+            "Approved couple pricing discount for this student"
+            if discount_kobo
+            else None
+        ),
+        installment_amounts_kobo=installment_plan,
         confirmed_attendance_review=True,
     )
     result = await paid_transfer.approve_reviewed_transfer(
@@ -116,7 +128,9 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
         db_session,
     )
     assert result["state"] == "completed"
-    assert result["remaining_tuition_kobo"] == 16_500_000 - transfer_kobo
+    assert (
+        result["remaining_tuition_kobo"] == 16_500_000 - discount_kobo - transfer_kobo
+    )
     assert result["refund_due_kobo"] == refund_kobo
     assert result["idempotent"] is False
     old = (
@@ -127,8 +141,31 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
     new = (
         await db_session.execute(select(Enrollment).where(Enrollment.id == new_id))
     ).scalar_one()
-    assert new.price_snapshot_amount == 16_500_000
+    assert new.price_snapshot_amount == 16_500_000 - discount_kobo
     assert new.cohort_id == yaba.id
+    if installment_plan:
+        from services.academy_service.models import (
+            EnrollmentInstallment,
+            InstallmentStatus,
+        )
+
+        scheduled = (
+            (
+                await db_session.execute(
+                    select(EnrollmentInstallment)
+                    .where(EnrollmentInstallment.enrollment_id == new_id)
+                    .order_by(EnrollmentInstallment.installment_number)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [item.status for item in scheduled] == [
+            InstallmentStatus.PAID,
+            InstallmentStatus.PENDING,
+            InstallmentStatus.PENDING,
+        ]
+        assert [item.amount for item in scheduled] == installment_plan
     source_credits = (
         (
             await db_session.execute(

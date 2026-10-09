@@ -23,6 +23,7 @@ from services.academy_service.models import (
     Cohort,
     CohortStatus,
     Enrollment,
+    EnrollmentInstallment,
     EnrollmentStatus,
     InstallmentStatus,
     PaymentStatus,
@@ -36,6 +37,7 @@ from services.academy_service.routers._shared import (
 )
 from services.academy_service.services.installments import (
     apply_member_payment_across_installments,
+    build_schedule,
 )
 from .change_cohort import financial_state
 
@@ -51,6 +53,7 @@ class ApproveReviewedTransfer(BaseModel):
     discount_kobo: int = Field(default=0, ge=0)
     discount_reason: str | None = Field(default=None, min_length=10, max_length=1000)
     confirmed_attendance_review: bool = False
+    installment_amounts_kobo: list[int] = Field(default_factory=list, max_length=6)
 
     @model_validator(mode="after")
     def valid_discount(self):
@@ -58,6 +61,11 @@ class ApproveReviewedTransfer(BaseModel):
             raise ValueError("A refundable tuition surplus requires a written reason")
         if self.discount_kobo and not self.discount_reason:
             raise ValueError("A manual discount requires a written approval reason")
+        if self.installment_amounts_kobo and (
+            len(self.installment_amounts_kobo) < 2
+            or any(amount <= 0 for amount in self.installment_amounts_kobo)
+        ):
+            raise ValueError("Custom installments must be strictly positive")
         return self
 
 
@@ -295,6 +303,14 @@ async def approve_reviewed_transfer(
     new_fee_kobo = base_fee_kobo - payload.discount_kobo
     if new_fee_kobo < 0:
         raise HTTPException(409, "Approved discount exceeds cohort tuition")
+    if (
+        bool(payload.installment_amounts_kobo)
+        and sum(payload.installment_amounts_kobo) != new_fee_kobo
+    ):
+        raise HTTPException(
+            409,
+            "Approved installments must sum to the negotiated destination tuition",
+        )
     if payload.transferable_credit_kobo > new_fee_kobo:
         raise HTTPException(
             409,
@@ -319,10 +335,39 @@ async def approve_reviewed_transfer(
         membership_policy_snapshot=_resolve_enrollment_membership_policy(
             programme, target
         ),
-        uses_installments=bool(payload.transferable_credit_kobo),
+        uses_installments=(
+            bool(payload.transferable_credit_kobo)
+            or bool(payload.installment_amounts_kobo)
+        ),
     )
     db.add(new_enrollment)
     await db.flush()
+
+    # Optional negotiated commercial schedule is enrollment-specific. When
+    # omitted, existing cohort installment behavior is unchanged.
+    if payload.installment_amounts_kobo:
+        dates = build_schedule(
+            total_fee=new_fee_kobo,
+            duration_weeks=int(programme.duration_weeks),
+            cohort_start=target.start_date,
+            enrolled_at=now,
+            count_override=len(payload.installment_amounts_kobo),
+        )
+        db.add_all(
+            [
+                EnrollmentInstallment(
+                    enrollment_id=new_enrollment.id,
+                    installment_number=index,
+                    amount=amount,
+                    due_at=dates[index - 1]["due_at"],
+                    status=InstallmentStatus.PENDING,
+                )
+                for index, amount in enumerate(
+                    payload.installment_amounts_kobo, start=1
+                )
+            ]
+        )
+        await db.flush()
 
     # Credit movement is represented by a new source-linked row, while old
     # credits are retained as transferred_out for a complete history.
@@ -429,6 +474,7 @@ async def approve_reviewed_transfer(
         "new_discount_kobo": payload.discount_kobo,
         "new_discount_reason": payload.discount_reason,
         "new_tuition_kobo": new_fee_kobo,
+        "approved_installment_amounts_kobo": payload.installment_amounts_kobo,
         "payment_references_verified": financial.get("references") or [],
         "financial_resolution": "verified_paid_reassignment",
     }
