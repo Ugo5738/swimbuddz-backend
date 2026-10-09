@@ -53,9 +53,7 @@ class ApproveReviewedTransfer(BaseModel):
     discount_kobo: int = Field(default=0, ge=0)
     discount_reason: str | None = Field(default=None, min_length=10, max_length=1000)
     confirmed_attendance_review: bool = False
-    installment_amounts_kobo: list[int] | None = Field(
-        default=None, min_length=2, max_length=6
-    )
+    installment_amounts_kobo: list[int] = Field(default_factory=list, max_length=6)
 
     @model_validator(mode="after")
     def valid_discount(self):
@@ -63,8 +61,9 @@ class ApproveReviewedTransfer(BaseModel):
             raise ValueError("A refundable tuition surplus requires a written reason")
         if self.discount_kobo and not self.discount_reason:
             raise ValueError("A manual discount requires a written approval reason")
-        if self.installment_amounts_kobo is not None and any(
-            amount <= 0 for amount in self.installment_amounts_kobo
+        if self.installment_amounts_kobo and (
+            len(self.installment_amounts_kobo) < 2
+            or any(amount <= 0 for amount in self.installment_amounts_kobo)
         ):
             raise ValueError("Custom installments must be strictly positive")
         return self
@@ -305,7 +304,7 @@ async def approve_reviewed_transfer(
     if new_fee_kobo < 0:
         raise HTTPException(409, "Approved discount exceeds cohort tuition")
     if (
-        payload.installment_amounts_kobo is not None
+        bool(payload.installment_amounts_kobo)
         and sum(payload.installment_amounts_kobo) != new_fee_kobo
     ):
         raise HTTPException(
@@ -338,7 +337,7 @@ async def approve_reviewed_transfer(
         ),
         uses_installments=(
             bool(payload.transferable_credit_kobo)
-            or payload.installment_amounts_kobo is not None
+            or bool(payload.installment_amounts_kobo)
         ),
     )
     db.add(new_enrollment)
