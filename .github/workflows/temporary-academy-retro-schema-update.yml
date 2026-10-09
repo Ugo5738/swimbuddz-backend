@@ -1,0 +1,42 @@
+name: Temporary Retro OpenAPI Refresh
+
+on:
+  push:
+    branches:
+      - codex/academy-retroactive-receipt-adoption-20261009
+    paths:
+      - .github/workflows/temporary-academy-retro-schema-update.yml
+
+permissions:
+  contents: write
+
+jobs:
+  schema:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+      DATABASE_SESSION_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pinned backend
+        run: |
+          pip install -e ".[dev]" -c constraints.txt
+      - name: Format and regenerate tracked schema
+        run: |
+          ruff format services/payments_service/routers/academy_receipts.py
+          ruff check services/payments_service/routers/academy_receipts.py
+          python scripts/api/generate-openapi.py > openapi.json
+      - name: Commit generated artifact
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet; then
+            git add services/payments_service/routers/academy_receipts.py openapi.json
+            git commit -m "chore(api): sync resume-by-reference OpenAPI schema"
+            git push origin HEAD:codex/academy-retroactive-receipt-adoption-20261009
+          fi
