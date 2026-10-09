@@ -188,7 +188,11 @@ async def adopt_previously_settled_academy_receipt(
         raise HTTPException(409, "Original payment must exist and be settled")
     if payment.purpose != PaymentPurpose.ACADEMY_COHORT:
         raise HTTPException(409, "Only settled Academy tuition can be adopted")
-    if payment.currency != "NGN" or not payment.paid_at or not payment.entitlement_applied_at:
+    if (
+        payment.currency != "NGN"
+        or not payment.paid_at
+        or not payment.entitlement_applied_at
+    ):
         raise HTTPException(409, "Original payment is not fully settled in NGN")
     if payment.provider not in {"offline", "manual_transfer"}:
         raise HTTPException(409, "Only verified offline bank payments qualify")
@@ -196,13 +200,22 @@ async def adopt_previously_settled_academy_receipt(
     enrollment_id = meta.get("enrollment_id")
     if not enrollment_id or not payment.member_auth_id:
         raise HTTPException(409, "Original Academy enrollment identity is missing")
-    if not body.confirm_original_payment_is_one_beneficiary or not body.confirm_unrecorded_remainder:
-        raise HTTPException(422, "Explicit bank and beneficiary reconciliation confirmations required")
+    if (
+        not body.confirm_original_payment_is_one_beneficiary
+        or not body.confirm_unrecorded_remainder
+    ):
+        raise HTTPException(
+            422, "Explicit bank and beneficiary reconciliation confirmations required"
+        )
     paid_kobo = naira_to_kobo(payment.amount)
     if paid_kobo <= 0 or body.actual_bank_amount_kobo <= paid_kobo:
-        raise HTTPException(409, "Bank amount must exceed original paid Academy allocation")
+        raise HTTPException(
+            409, "Bank amount must exceed original paid Academy allocation"
+        )
     if body.actual_bank_amount_kobo > 100 * paid_kobo:
-        raise HTTPException(409, "Suspicious receipt total; investigate outside this workflow")
+        raise HTTPException(
+            409, "Suspicious receipt total; investigate outside this workflow"
+        )
     # Do not import/operate Academy ORM: validate through its existing ownership endpoint.
     try:
         identity = await internal_get(
@@ -213,7 +226,9 @@ async def adopt_previously_settled_academy_receipt(
         identity.raise_for_status()
         owner = identity.json()
     except Exception as exc:
-        raise HTTPException(503, "Cannot independently verify original learner") from exc
+        raise HTTPException(
+            503, "Cannot independently verify original learner"
+        ) from exc
     if str(owner.get("member_auth_id")) != payment.member_auth_id:
         raise HTTPException(409, "Original paid enrollment no longer matches payer")
     if str(owner.get("currency_snapshot") or "NGN").upper() != "NGN":
@@ -221,16 +236,20 @@ async def adopt_previously_settled_academy_receipt(
 
     existing = (
         await db.execute(
-            select(AcademyBankReceipt).where(
+            select(AcademyBankReceipt)
+            .where(
                 (AcademyBankReceipt.payment_id == payment.id)
                 | (AcademyBankReceipt.external_reference == reference)
-            ).with_for_update()
+            )
+            .with_for_update()
         )
     ).scalar_one_or_none()
     if existing:
-        if (existing.payment_id == payment.id
+        if (
+            existing.payment_id == payment.id
             and existing.external_reference == reference
-            and existing.amount_kobo == body.actual_bank_amount_kobo):
+            and existing.amount_kobo == body.actual_bank_amount_kobo
+        ):
             return await _receipt_summary(db, existing)
         raise HTTPException(409, "Existing receipt was adopted with different terms")
 
@@ -238,16 +257,22 @@ async def adopt_previously_settled_academy_receipt(
     # Reject any OTHER paid payment for this bank reference and require human
     # verification of the external bank statement against actual cash-in.
     duplicates = (
-        (await db.execute(
-            select(Payment).where(
-                Payment.status == PaymentStatus.PAID,
-                func.upper(Payment.provider_reference) == reference,
-                Payment.id != payment.id,
+        (
+            await db.execute(
+                select(Payment).where(
+                    Payment.status == PaymentStatus.PAID,
+                    func.upper(Payment.provider_reference) == reference,
+                    Payment.id != payment.id,
+                )
             )
-        )).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     if duplicates:
-        raise HTTPException(409, "Another PAID payment already uses this bank reference")
+        raise HTTPException(
+            409, "Another PAID payment already uses this bank reference"
+        )
     remainder_kobo = body.actual_bank_amount_kobo - paid_kobo
     now = utc_now()
     # A new Payment records ONLY the unrecorded cash. Neither the original
@@ -288,16 +313,18 @@ async def adopt_previously_settled_academy_receipt(
     db.add(receipt)
     await db.flush()
     # Historical allocation is deliberately NOT a new tuition credit.
-    db.add(AcademyReceiptAllocation(
-        receipt_id=receipt.id,
-        member_auth_id=payment.member_auth_id,
-        enrollment_id=uuid.UUID(str(enrollment_id)),
-        amount_kobo=paid_kobo,
-        idempotency_key=f"historical-payment:{payment.id}",
-        state="historical",
-        created_by_auth_id=admin.user_id,
-        applied_at=payment.entitlement_applied_at,
-    ))
+    db.add(
+        AcademyReceiptAllocation(
+            receipt_id=receipt.id,
+            member_auth_id=payment.member_auth_id,
+            enrollment_id=uuid.UUID(str(enrollment_id)),
+            amount_kobo=paid_kobo,
+            idempotency_key=f"historical-payment:{payment.id}",
+            state="historical",
+            created_by_auth_id=admin.user_id,
+            applied_at=payment.entitlement_applied_at,
+        )
+    )
     await db.commit()
     # Ledger idempotency is keyed to the remainder payment, not the old cash-in.
     await emit_payment_to_ledger(db, remainder)
@@ -453,7 +480,9 @@ async def apply_receipt_allocation(
             "idempotent": True,
         }
     if allocation.state != "reserved":
-        raise HTTPException(409, "Historical or void allocations cannot be applied again")
+        raise HTTPException(
+            409, "Historical or void allocations cannot be applied again"
+        )
     source_reference = f"academy-receipt-allocation:{allocation.id}"
     try:
         response = await internal_post(

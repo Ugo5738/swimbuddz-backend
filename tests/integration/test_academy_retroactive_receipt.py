@@ -31,7 +31,8 @@ class IdentityResponse:
 
 
 async def test_retroactive_adoption_books_only_50k_and_protects_first_student(
-    db_session, monkeypatch,
+    db_session,
+    monkeypatch,
 ):
     enrollment_id = uuid4()
     bank_ref = f"BANK-{uuid4()}"
@@ -90,7 +91,10 @@ async def test_retroactive_adoption_books_only_50k_and_protects_first_student(
     # The historical allocation is not spendable a second time.
     with pytest.raises(HTTPException) as error:
         await receipts.apply_receipt_allocation(
-            rows[0].id, __import__('uuid').UUID(result['allocations'][0]['id']), admin, db_session,
+            rows[0].id,
+            __import__("uuid").UUID(result["allocations"][0]["id"]),
+            admin,
+            db_session,
         )
     assert error.value.status_code == 409
 
@@ -113,7 +117,8 @@ async def test_adoption_rejects_unverified_cash_claims(db_session, monkeypatch):
     db_session.add(old_payment)
     await db_session.commit()
     monkeypatch.setattr(
-        receipts, "internal_get",
+        receipts,
+        "internal_get",
         AsyncMock(return_value=IdentityResponse("student")),
     )
     candidate = receipts.AdoptSettledAcademyReceiptRequest(
@@ -126,7 +131,9 @@ async def test_adoption_rejects_unverified_cash_claims(db_session, monkeypatch):
     )
     with pytest.raises(HTTPException) as error:
         await receipts.adopt_previously_settled_academy_receipt(
-            candidate, AuthUser(user_id="admin"), db_session,
+            candidate,
+            AuthUser(user_id="admin"),
+            db_session,
         )
     assert error.value.status_code == 422
     count = (await db_session.execute(select(AcademyBankReceipt))).scalars().all()
