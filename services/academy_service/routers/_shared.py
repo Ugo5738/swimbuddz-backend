@@ -487,6 +487,44 @@ async def _sync_installment_state_for_enrollment(
     return installments
 
 
+
+async def _ensure_credit_obligation(
+    db: AsyncSession,
+    enrollment: Enrollment,
+    *,
+    now_dt=None,
+) -> list[EnrollmentInstallment]:
+    """Ensure verified credits have a tuition obligation to settle.
+
+    A cohort may allow full payment but disable installments. In that case a
+    single frozen-price obligation is required, rather than falsely treating
+    the verified receipt as excess cash or enabling an admin-disabled plan.
+    Existing installment schedules are always preserved.
+    """
+    installments = await _sync_installment_state_for_enrollment(
+        db, enrollment, now_dt=now_dt, use_installments=True
+    )
+    if installments:
+        return installments
+    if enrollment.price_snapshot_amount is None or enrollment.price_snapshot_amount <= 0:
+        raise HTTPException(409, "An enrollment tuition snapshot is required before credit")
+    if enrollment.status not in {
+        EnrollmentStatus.PENDING_APPROVAL,
+        EnrollmentStatus.ENROLLED,
+    }:
+        raise HTTPException(409, "Enrollment does not accept tuition credits")
+    obligation = EnrollmentInstallment(
+        enrollment_id=enrollment.id,
+        installment_number=1,
+        amount=enrollment.price_snapshot_amount,
+        due_at=now_dt or utc_now(),
+        status=InstallmentStatus.PENDING,
+    )
+    db.add(obligation)
+    await db.flush()
+    return await _sync_installment_state_for_enrollment(db, enrollment, now_dt=now_dt)
+
+
 def _to_utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
