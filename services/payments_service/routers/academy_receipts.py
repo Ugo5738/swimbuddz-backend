@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
@@ -328,6 +328,26 @@ async def adopt_previously_settled_academy_receipt(
     await db.commit()
     # Ledger idempotency is keyed to the remainder payment, not the old cash-in.
     await emit_payment_to_ledger(db, remainder)
+    return await _receipt_summary(db, receipt)
+
+
+@router.get("/by-reference/{external_reference}")
+async def find_verified_receipt_by_bank_reference(
+    external_reference: str,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Resume previously verified receipt allocations without registering cash again."""
+    receipt = (
+        await db.execute(
+            select(AcademyBankReceipt).where(
+                AcademyBankReceipt.external_reference
+                == external_reference.strip().upper()
+            )
+        )
+    ).scalar_one_or_none()
+    if not receipt:
+        raise HTTPException(404, "Bank receipt not registered under this reference")
     return await _receipt_summary(db, receipt)
 
 
