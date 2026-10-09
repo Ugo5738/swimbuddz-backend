@@ -85701,15 +85701,15 @@
           "installment_amounts_kobo": {
             "anyOf": [
               {
+                "type": "null"
+              },
+              {
                 "type": "array",
                 "items": {
                   "type": "integer"
                 },
                 "maxItems": 6,
                 "minItems": 2
-              },
-              {
-                "type": "null"
               }
             ],
             "title": "Installment Amounts Kobo"
