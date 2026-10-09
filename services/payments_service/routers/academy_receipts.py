@@ -266,12 +266,14 @@ async def adopt_previously_settled_academy_receipt(
                         func.upper(Payment.provider_reference) == reference,
                         func.upper(
                             Payment.payment_metadata["external_reference"].astext
-                        ) == reference,
+                        )
+                        == reference,
                         func.upper(
                             Payment.payment_metadata["submitted_transfer"][
                                 "external_reference"
                             ].astext
-                        ) == reference,
+                        )
+                        == reference,
                     ),
                 )
             )

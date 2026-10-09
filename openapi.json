@@ -24048,6 +24048,53 @@
         ]
       }
     },
+    "/api/v1/payments/admin/academy-receipts/by-reference/{external_reference}": {
+      "get": {
+        "tags": [
+          "payments",
+          "academy-receipts"
+        ],
+        "summary": "Find Verified Receipt By Bank Reference",
+        "description": "Resume previously verified receipt allocations without registering cash again.",
+        "operationId": "find_verified_receipt_by_bank_reference_payments_admin_academy_receipts_by_reference__external_reference__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "external_reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "External Reference"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payments/admin/academy-receipts/{receipt_id}": {
       "get": {
         "tags": [
