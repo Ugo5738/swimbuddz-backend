@@ -53,7 +53,9 @@ async def submit_proof_of_payment(
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
 
-    if (getattr(payment, "payment_metadata", None) or {}).get("superseded_by_shared_receipt"):
+    if (getattr(payment, "payment_metadata", None) or {}).get(
+        "superseded_by_shared_receipt"
+    ):
         raise HTTPException(
             409,
             "This checkout was reconciled to a shared bank receipt and cannot accept another proof",

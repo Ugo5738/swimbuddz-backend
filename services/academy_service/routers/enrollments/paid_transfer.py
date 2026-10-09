@@ -228,7 +228,9 @@ async def approve_reviewed_transfer(
             409,
             "Verified tuition must equal destination credit plus consumed services plus a recorded refund liability",
         )
-    if (source.progress_records or payload.consumed_services_kobo > 0) and not payload.confirmed_attendance_review:
+    if (
+        source.progress_records or payload.consumed_services_kobo > 0
+    ) and not payload.confirmed_attendance_review:
         raise HTTPException(
             409,
             "Confirm the attendance and milestone review before transferring progress",
@@ -330,7 +332,9 @@ async def approve_reviewed_transfer(
         new_credit = AcademyFinancialCredit(
             enrollment_id=new_enrollment.id,
             source_enrollment_id=source.id,
-            origin_credit_id=(active_credits[0].id if len(active_credits) == 1 else None),
+            origin_credit_id=(
+                active_credits[0].id if len(active_credits) == 1 else None
+            ),
             source_reference=f"cohort-change:{change.id}",
             source_kind="paid_transfer",
             amount_kobo=payload.transferable_credit_kobo,
@@ -386,14 +390,16 @@ async def approve_reviewed_transfer(
         )
 
     if payload.refund_due_kobo:
-        db.add(AcademyTransferRefundObligation(
-            change_id=change.id,
-            source_enrollment_id=source.id,
-            member_auth_id=source.member_auth_id,
-            amount_kobo=payload.refund_due_kobo,
-            reason=payload.refund_reason or payload.reason,
-            state="pending",
-        ))
+        db.add(
+            AcademyTransferRefundObligation(
+                change_id=change.id,
+                source_enrollment_id=source.id,
+                member_auth_id=source.member_auth_id,
+                amount_kobo=payload.refund_due_kobo,
+                reason=payload.refund_reason or payload.reason,
+                state="pending",
+            )
+        )
 
     change.state = "completed"
     change.to_enrollment_id = new_enrollment.id
@@ -409,7 +415,11 @@ async def approve_reviewed_transfer(
         "transferable_credit_kobo": payload.transferable_credit_kobo,
         "old_verified_tuition_kobo": verified_total,
         "credit_source_provenance": [
-            {"id": str(credit.id), "reference": credit.source_reference, "amount_kobo": credit.amount_kobo}
+            {
+                "id": str(credit.id),
+                "reference": credit.source_reference,
+                "amount_kobo": credit.amount_kobo,
+            }
             for credit in active_credits
         ],
         "original_tuition_kobo": source.price_snapshot_amount,
