@@ -1105,16 +1105,18 @@ async def academy_enrollment_financial_state(
             and not item.entitlement_applied_at
         )
         if clean_paid:
-            paid.append(
-                max(
-                    0,
-                    int(
-                        metadata.get("academy_payment_amount_kobo")
-                        if metadata.get("academy_payment_amount_kobo") is not None
-                        else round(item.amount * 100)
-                    ),
-                )
+            # Discounts settle installment obligations but are NOT cash-backed
+            # Academy credit when a student changes cohort. Preserve the
+            # original discount proof in Payments; only transfer funded value.
+            gross_tuition_kobo = int(
+                metadata.get("academy_payment_amount_kobo")
+                if metadata.get("academy_payment_amount_kobo") is not None
+                else round(item.amount * 100)
             )
+            discount_kobo = max(
+                0, round(float(metadata.get("discount_applied") or 0) * 100)
+            )
+            paid.append(max(0, gross_tuition_kobo - discount_kobo))
         elif not (closed_unpaid or superseded_shared):
             blocked_references.append(item.reference)
     attempts = [
