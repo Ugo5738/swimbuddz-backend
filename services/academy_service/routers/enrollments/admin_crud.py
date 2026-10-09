@@ -206,6 +206,16 @@ async def list_enrollments(
     return enrollments
 
 
+@router.get("/admin/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
+async def get_admin_enrollment(
+    enrollment_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Admin-scoped canonical enrollment details for transfer and billing review."""
+    return await get_enrollment(enrollment_id, current_user, db)
+
+
 @router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
 async def get_enrollment(
     enrollment_id: uuid.UUID,
@@ -324,6 +334,15 @@ async def update_enrollment(
         raise HTTPException(status_code=404, detail="Enrollment not found")
 
     update_data = enrollment_in.model_dump(exclude_unset=True)
+    if (
+        "cohort_id" in update_data
+        and enrollment.cohort_id is not None
+        and update_data["cohort_id"] != enrollment.cohort_id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Existing cohort placements must be changed through Academy Transfers so payment and attendance history are preserved",
+        )
     for field, value in update_data.items():
         setattr(enrollment, field, value)
 

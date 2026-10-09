@@ -109,6 +109,7 @@ async def close_unpaid_checkout(
     if not payment or payment.purpose not in {
         PaymentPurpose.CLUB,
         PaymentPurpose.SESSION_BOOKING,
+        PaymentPurpose.ACADEMY_COHORT,
     }:
         raise HTTPException(404, "Supported checkout not found")
     booking_id = booking_identity(payment)
@@ -121,6 +122,15 @@ async def close_unpaid_checkout(
     ):
         raise HTTPException(
             409, "A paid or fulfilled checkout cannot be closed as unpaid"
+        )
+    if payment.purpose == PaymentPurpose.ACADEMY_COHORT and (
+        payment.proof_of_payment_media_id is not None
+        or payment.status == PaymentStatus.PENDING_REVIEW
+        or (payment.payment_metadata or {}).get("recorded_offline")
+    ):
+        raise HTTPException(
+            409,
+            "Academy proof or offline receipt exists. Verify and reconcile it; do not close as unpaid",
         )
     meta = payment.payment_metadata or {}
     closed = meta.get("checkout_closed_unpaid")

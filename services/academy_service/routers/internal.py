@@ -1,11 +1,16 @@
 from datetime import datetime as _datetime
 
 from fastapi import APIRouter, Query
+from libs.auth.dependencies import require_service_role
 from pydantic import BaseModel as _BaseModel
 from pydantic import Field as _Field
 from sqlalchemy import func, or_
 
-from services.academy_service.models import StudentProgress
+from services.academy_service.models import (
+    StudentProgress,
+    AcademyFinancialCredit,
+    InstallmentStatus,
+)
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
@@ -63,6 +68,160 @@ async def list_cohort_ids_for_coach(
     assigned_ids = {row[0] for row in assignment_rows.fetchall()}
 
     return sorted(legacy_ids | assigned_ids)
+
+
+class ApplyVerifiedAcademyCredit(_BaseModel):
+    source_reference: str = _Field(min_length=8, max_length=200)
+    source_kind: str = _Field(pattern="^(receipt_allocation|paid_transfer)$")
+    member_auth_id: str = _Field(min_length=1)
+    amount_kobo: int = _Field(gt=0)
+    actor_auth_id: str = _Field(min_length=1)
+
+
+@router.post("/enrollments/{enrollment_id}/verified-credit")
+async def apply_verified_academy_credit(
+    enrollment_id: uuid.UUID,
+    payload: ApplyVerifiedAcademyCredit,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Idempotent service-owned tuition application; does NOT record bank income.
+
+    Every source reference is globally unique; the payments service owns the
+    corresponding cash receipt and authorizes allocation before calling here.
+    """
+    from services.academy_service.services.installments import (
+        apply_member_payment_across_installments,
+    )
+    from libs.common.datetime_utils import utc_now
+
+    enrollment = (
+        await db.execute(
+            select(Enrollment)
+            .where(Enrollment.id == enrollment_id)
+            .options(
+                selectinload(Enrollment.installments),
+                selectinload(Enrollment.progress_records),
+                selectinload(Enrollment.cohort).selectinload(Cohort.program),
+                selectinload(Enrollment.program),
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(404, "Enrollment not found")
+    if enrollment.member_auth_id != payload.member_auth_id:
+        raise HTTPException(403, "Enrollment does not belong to the credited member")
+    if enrollment.status not in {
+        EnrollmentStatus.PENDING_APPROVAL,
+        EnrollmentStatus.ENROLLED,
+    }:
+        raise HTTPException(409, "This enrollment is not eligible for tuition credits")
+    prior = (
+        await db.execute(
+            select(AcademyFinancialCredit).where(
+                AcademyFinancialCredit.source_reference == payload.source_reference
+            )
+        )
+    ).scalar_one_or_none()
+    if prior:
+        if (
+            prior.enrollment_id != enrollment_id
+            or prior.amount_kobo != payload.amount_kobo
+            or prior.source_kind != payload.source_kind
+        ):
+            raise HTTPException(
+                409, "Credit reference was already used for another enrollment"
+            )
+        return {
+            "state": prior.state,
+            "credit_id": str(prior.id),
+            "amount_kobo": prior.amount_kobo,
+            "idempotent": True,
+        }
+
+    active_credits = (
+        (
+            await db.execute(
+                select(AcademyFinancialCredit).where(
+                    AcademyFinancialCredit.enrollment_id == enrollment_id,
+                    AcademyFinancialCredit.state == "active",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    total_credited = sum(item.amount_kobo for item in active_credits)
+    if (
+        enrollment.price_snapshot_amount is None
+        or total_credited + payload.amount_kobo > enrollment.price_snapshot_amount
+    ):
+        raise HTTPException(
+            409,
+            "Verified credits exceed the frozen Academy tuition; resolve any surplus as an explicit refund",
+        )
+    from services.academy_service.routers._shared import _ensure_credit_obligation
+
+    installments = await _ensure_credit_obligation(db, enrollment)
+    # An existing payment can have fully paid installments; do not alter
+    # their original references or overwrite the credit owner's history.
+    payable = [
+        item
+        for item in installments
+        if item.status not in {InstallmentStatus.PAID, InstallmentStatus.WAIVED}
+    ]
+    remainder = sum(item.amount for item in payable)
+    if payload.amount_kobo > remainder:
+        raise HTTPException(409, "Credit exceeds the remaining installment obligation")
+    now = utc_now()
+    _, overshoot = apply_member_payment_across_installments(
+        amount_kobo=payload.amount_kobo,
+        installments=payable,
+        now=now,
+        payment_reference=payload.source_reference,
+    )
+    if overshoot:
+        raise HTTPException(409, "Unapplied credit requires finance reconciliation")
+    credit = AcademyFinancialCredit(
+        enrollment_id=enrollment.id,
+        source_reference=payload.source_reference,
+        source_kind=payload.source_kind,
+        amount_kobo=payload.amount_kobo,
+        actor_auth_id=payload.actor_auth_id,
+        state="active",
+    )
+    db.add(credit)
+    await db.flush()
+    await _sync_installment_state_for_enrollment(db, enrollment, now_dt=now)
+    await db.commit()
+    return {
+        "state": "active",
+        "credit_id": str(credit.id),
+        "amount_kobo": credit.amount_kobo,
+        "idempotent": False,
+    }
+
+
+@router.get("/enrollments/{enrollment_id}/allocation-identity")
+async def academy_allocation_identity(
+    enrollment_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Private payments-service ownership projection; no user-controlled member ID."""
+    enrollment = (
+        await db.execute(select(Enrollment).where(Enrollment.id == enrollment_id))
+    ).scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(404, "Academy enrollment not found")
+    return {
+        "enrollment_id": str(enrollment.id),
+        "member_auth_id": enrollment.member_auth_id,
+        "currency_snapshot": enrollment.currency_snapshot or "NGN",
+        "status": enrollment.status.value,
+        "price_snapshot_amount": enrollment.price_snapshot_amount,
+    }
 
 
 @router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)

@@ -8,6 +8,10 @@ from services.academy_service.models.cohort import (
 )
 from services.academy_service.models.evidence import MilestoneEvidence
 from services.academy_service.models.enrollment import Enrollment, EnrollmentInstallment
+from services.academy_service.models.financial_credit import (
+    AcademyFinancialCredit,
+    AcademyTransferRefundObligation,
+)
 from services.academy_service.models.journey import (
     AcademyJourney,
     AcademyEnrollmentChange,
@@ -55,6 +59,8 @@ from services.academy_service.models.progress import (
 )
 
 __all__ = [
+    "AcademyFinancialCredit",
+    "AcademyTransferRefundObligation",
     "AcademyJourney",
     "AcademyEnrollmentChange",
     "BillingType",

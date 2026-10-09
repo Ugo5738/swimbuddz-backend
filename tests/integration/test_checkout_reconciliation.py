@@ -131,3 +131,61 @@ async def test_stale_preview_and_paid_receipt_cannot_be_closed(db_session):
     assert row.status == PaymentStatus.PAID
     assert not await record_provider_failure(db_session, row, {"event": "late-failure"})
     assert row.status == PaymentStatus.PAID
+
+
+async def test_academy_unpaid_checkout_closure_preserves_audit(db_session, monkeypatch):
+    enrollment_id = uuid4()
+    row = Payment(
+        reference=f"academy-unpaid-{uuid4()}",
+        purpose=PaymentPurpose.ACADEMY_COHORT,
+        status=PaymentStatus.PENDING,
+        amount=165000,
+        member_auth_id="member",
+        payment_metadata={"enrollment_id": str(enrollment_id)},
+    )
+    db_session.add(row)
+    await db_session.commit()
+    preview = await admin.preview_checkout(row.reference, db_session)
+    monkeypatch.setattr(
+        "services.payments_service.routers.intents._helpers._release_bubbles_hold",
+        AsyncMock(),
+    )
+    body = admin.CloseUnpaidCheckout(
+        preview_token=preview["preview_token"],
+        provider_closure_evidence="Bank confirms no transfer for this checkout",
+        note="Checked bank statement against this payment attempt",
+        apply=True,
+    )
+    result = await admin.close_unpaid_checkout(
+        row.reference, body, AuthUser(user_id="admin"), db_session
+    )
+    assert result["closed_unpaid"] is True
+    assert row.status == PaymentStatus.FAILED
+    assert row.payment_metadata["checkout_closed_unpaid"]["actor"] == "admin"
+    assert row.payment_metadata["enrollment_id"] == str(enrollment_id)
+
+
+async def test_academy_proof_prevents_unpaid_checkout_closure(db_session):
+    row = Payment(
+        reference=f"academy-review-{uuid4()}",
+        purpose=PaymentPurpose.ACADEMY_COHORT,
+        status=PaymentStatus.PENDING_REVIEW,
+        amount=50000,
+        member_auth_id="member",
+        proof_of_payment_media_id=uuid4(),
+        payment_metadata={"enrollment_id": str(uuid4())},
+    )
+    db_session.add(row)
+    await db_session.commit()
+    preview = await admin.preview_checkout(row.reference, db_session)
+    body = admin.CloseUnpaidCheckout(
+        preview_token=preview["preview_token"],
+        provider_closure_evidence="An attempted bank closure support ticket",
+        note="Cannot bypass proof review with a closure request",
+        apply=True,
+    )
+    with pytest.raises(HTTPException, match="Verify and reconcile"):
+        await admin.close_unpaid_checkout(
+            row.reference, body, AuthUser(user_id="admin"), db_session
+        )
+    assert row.status == PaymentStatus.PENDING_REVIEW

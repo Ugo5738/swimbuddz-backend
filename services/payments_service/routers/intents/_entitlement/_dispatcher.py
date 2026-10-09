@@ -254,6 +254,17 @@ async def _mark_paid_and_apply(
         )
 
         flag_duplicate_receipt(payment, duplicate)
+    if (payment.payment_metadata or {}).get("superseded_by_shared_receipt"):
+        payment.entitlement_error = "Late receipt against a checkout already reconciled to a verified shared bank deposit"
+        payment.payment_metadata = {
+            **payment.payment_metadata,
+            "checkout_reconciliation": {
+                "reason": "late_payment_after_shared_receipt_allocation",
+                "shared_receipt": payment.payment_metadata[
+                    "superseded_by_shared_receipt"
+                ],
+            },
+        }
     if (payment.payment_metadata or {}).get("checkout_closed_unpaid"):
         payment.entitlement_error = "Payment received after documented provider closure; Admin reconciliation/refund required"
         payment.payment_metadata = {
