@@ -347,9 +347,7 @@ async def approve_reviewed_transfer(
             _ensure_credit_obligation,
         )
 
-        installments = await _ensure_credit_obligation(
-            db, new_enrollment, now_dt=now
-        )
+        installments = await _ensure_credit_obligation(db, new_enrollment, now_dt=now)
         payable = [
             item
             for item in installments

@@ -487,7 +487,6 @@ async def _sync_installment_state_for_enrollment(
     return installments
 
 
-
 async def _ensure_credit_obligation(
     db: AsyncSession,
     enrollment: Enrollment,
@@ -506,8 +505,13 @@ async def _ensure_credit_obligation(
     )
     if installments:
         return installments
-    if enrollment.price_snapshot_amount is None or enrollment.price_snapshot_amount <= 0:
-        raise HTTPException(409, "An enrollment tuition snapshot is required before credit")
+    if (
+        enrollment.price_snapshot_amount is None
+        or enrollment.price_snapshot_amount <= 0
+    ):
+        raise HTTPException(
+            409, "An enrollment tuition snapshot is required before credit"
+        )
     if enrollment.status not in {
         EnrollmentStatus.PENDING_APPROVAL,
         EnrollmentStatus.ENROLLED,
