@@ -25,6 +25,4 @@ class AcademyCommercialAdjustment(Base):
     reason: Mapped[str] = mapped_column(Text(), nullable=False)
     original_terms: Mapped[dict] = mapped_column(JSON, nullable=False)
     approved_terms: Mapped[dict] = mapped_column(JSON, nullable=False)
-    created_at = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
-    )
+    created_at = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
