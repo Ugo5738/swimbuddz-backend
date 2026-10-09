@@ -85699,19 +85699,11 @@
             "default": false
           },
           "installment_amounts_kobo": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "integer"
-                },
-                "maxItems": 6,
-                "minItems": 2
-              }
-            ],
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 6,
             "title": "Installment Amounts Kobo"
           }
         },
