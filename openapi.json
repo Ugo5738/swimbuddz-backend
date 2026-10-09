@@ -85693,6 +85693,11 @@
             ],
             "title": "Discount Reason"
           },
+          "confirmed_attendance_review": {
+            "type": "boolean",
+            "title": "Confirmed Attendance Review",
+            "default": false
+          },
           "installment_amounts_kobo": {
             "anyOf": [
               {
@@ -85708,11 +85713,6 @@
               }
             ],
             "title": "Installment Amounts Kobo"
-          },
-          "confirmed_attendance_review": {
-            "type": "boolean",
-            "title": "Confirmed Attendance Review",
-            "default": false
           }
         },
         "type": "object",
