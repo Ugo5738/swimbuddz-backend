@@ -32,14 +32,14 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
     monkeypatch,
 ):
     member = MemberFactory.create()
-    programme = ProgramFactory.create(price_amount=240000)
+    programme = ProgramFactory.create(price_amount=24_000_000)
     db_session.add_all([member, programme])
     await db_session.flush()
     vi = CohortFactory.create(program_id=programme.id, name="Sep 2026 VI")
     yaba = CohortFactory.create(
         program_id=programme.id,
         name="Oct 2026 Yaba",
-        price_override=165000,
+        price_override=16_500_000,
     )
     db_session.add_all([vi, yaba])
     await db_session.flush()
