@@ -11,6 +11,7 @@ from services.academy_service.models import (
     AcademyJourney,
     AcademyEnrollmentChange,
     AcademyFinancialCredit,
+    AcademyTransferRefundObligation,
     Enrollment,
     EnrollmentStatus,
     PaymentStatus,
@@ -26,10 +27,16 @@ from tests.factories import (
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 
+@pytest.mark.parametrize(
+    "transfer_kobo,refund_kobo",
+    [(5_000_000, 0), (3_000_000, 2_000_000)],
+)
 async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
     db_session,
     academy_client,
     monkeypatch,
+    transfer_kobo,
+    refund_kobo,
 ):
     member = MemberFactory.create()
     programme = ProgramFactory.create(price_amount=24_000_000)
@@ -93,8 +100,10 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
     )
     payload = paid_transfer.ApproveReviewedTransfer(
         reason="One receipt allocated and unused tuition transferred after review",
-        transferable_credit_kobo=5_000_000,
+        transferable_credit_kobo=transfer_kobo,
         consumed_services_kobo=0,
+        refund_due_kobo=refund_kobo,
+        refund_reason="Reviewed unspent tuition refund remains payable" if refund_kobo else None,
         discount_kobo=0,
         confirmed_attendance_review=True,
     )
@@ -105,7 +114,8 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
         db_session,
     )
     assert result["state"] == "completed"
-    assert result["remaining_tuition_kobo"] == 11_500_000
+    assert result["remaining_tuition_kobo"] == 16_500_000 - transfer_kobo
+    assert result["refund_due_kobo"] == refund_kobo
     assert result["idempotent"] is False
     old = (
         await db_session.execute(select(Enrollment).where(Enrollment.id == source.id))
@@ -142,7 +152,22 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
         .all()
     )
     assert len(new_credits) == 1
-    assert new_credits[0].amount_kobo == 5_000_000
+    assert new_credits[0].amount_kobo == transfer_kobo
+    refund_rows = (
+        (
+            await db_session.execute(
+                select(AcademyTransferRefundObligation).where(
+                    AcademyTransferRefundObligation.change_id == change.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(refund_rows) == (1 if refund_kobo else 0)
+    if refund_rows:
+        assert refund_rows[0].state == "pending"
+        assert refund_rows[0].amount_kobo == refund_kobo
     replay = await paid_transfer.approve_reviewed_transfer(
         change.id,
         payload,
