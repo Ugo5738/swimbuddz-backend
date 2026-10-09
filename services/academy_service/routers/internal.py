@@ -161,9 +161,9 @@ async def apply_verified_academy_credit(
             409,
             "Verified credits exceed the frozen Academy tuition; resolve any surplus as an explicit refund",
         )
-    installments = await _sync_installment_state_for_enrollment(
-        db, enrollment, use_installments=True
-    )
+    from services.academy_service.routers._shared import _ensure_credit_obligation
+
+    installments = await _ensure_credit_obligation(db, enrollment)
     # An existing payment can have fully paid installments; do not alter
     # their original references or overwrite the credit owner's history.
     payable = [
