@@ -345,7 +345,7 @@ async def approve_reviewed_transfer(
 
     # Optional negotiated commercial schedule is enrollment-specific. When
     # omitted, existing cohort installment behavior is unchanged.
-    if payload.installment_amounts_kobo is not None:
+    if payload.installment_amounts_kobo:
         dates = build_schedule(
             total_fee=new_fee_kobo,
             duration_weeks=int(programme.duration_weeks),
