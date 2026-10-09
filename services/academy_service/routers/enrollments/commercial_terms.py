@@ -20,7 +20,6 @@ from services.academy_service.models import (
     AcademyCommercialAdjustment,
     AcademyFinancialCredit,
     Enrollment,
-    EnrollmentInstallment,
     EnrollmentStatus,
     InstallmentStatus,
     PaymentStatus,
@@ -42,7 +41,7 @@ class CommercialTermsRequest(BaseModel):
 
     @model_validator(mode="after")
     def amounts_valid(self):
-        if any(type(x) is not int or x <= 0 for x in self.unpaid_installment_amounts_kobo):
+        if any(not isinstance(x, int) or isinstance(x, bool) or x <= 0 for x in self.unpaid_installment_amounts_kobo):
             raise ValueError("Unpaid amounts must be positive integer kobo")
         return self
 
