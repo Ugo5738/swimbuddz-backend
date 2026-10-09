@@ -1,4 +1,5 @@
 name: Temporary Academy Retro Format and Schema
+# One-shot validation and schema refresh after reviewed source fixes.
 
 on:
   push:
