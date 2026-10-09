@@ -16,7 +16,7 @@ from services.academy_service.models import (
     EnrollmentStatus,
     PaymentStatus,
 )
-from services.academy_service.routers.enrollments import paid_transfer
+from services.academy_service.routers.enrollments import paid_transfer, change_cohort
 from tests.factories import (
     MemberFactory,
     ProgramFactory,
@@ -178,3 +178,61 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
     )
     assert replay["idempotent"] is True
     assert replay["enrollment_id"] == result["enrollment_id"]
+
+
+async def test_active_academy_learner_can_request_review_without_losing_enrollment(
+    db_session,
+    monkeypatch,
+):
+    member = MemberFactory.create()
+    programme = ProgramFactory.create(price_amount=16_500_000)
+    db_session.add_all([member, programme])
+    await db_session.flush()
+    source_cohort = CohortFactory.create(program_id=programme.id)
+    target_cohort = CohortFactory.create(program_id=programme.id)
+    db_session.add_all([source_cohort, target_cohort])
+    await db_session.flush()
+    source = EnrollmentFactory.create(
+        member_id=member.id,
+        member_auth_id="active-learner",
+        program_id=programme.id,
+        cohort_id=source_cohort.id,
+        status=EnrollmentStatus.ENROLLED,
+        payment_status=PaymentStatus.PENDING,
+        price_snapshot_amount=16_500_000,
+    )
+    db_session.add(source)
+    await db_session.commit()
+    monkeypatch.setattr(
+        change_cohort,
+        "financial_state",
+        AsyncMock(
+            return_value={
+                "has_payment_activity": False,
+                "references": [],
+                "statuses": [],
+            }
+        ),
+    )
+    result = await change_cohort.change_my_cohort(
+        source.id,
+        change_cohort.ChangeCohortRequest(target_cohort_id=target_cohort.id),
+        AuthUser(user_id="active-learner"),
+        db_session,
+    )
+    assert result.state == "needs_review"
+    assert result.enrollment_id is None
+    source_after = (
+        await db_session.execute(select(Enrollment).where(Enrollment.id == source.id))
+    ).scalar_one()
+    assert source_after.status == EnrollmentStatus.ENROLLED
+    pending = (
+        await db_session.execute(
+            select(AcademyEnrollmentChange).where(
+                AcademyEnrollmentChange.id == result.change_id
+            )
+        )
+    ).scalar_one()
+    assert pending.from_enrollment_id == source.id
+    assert pending.target_cohort_id == target_cohort.id
+    assert pending.state == "needs_review"
