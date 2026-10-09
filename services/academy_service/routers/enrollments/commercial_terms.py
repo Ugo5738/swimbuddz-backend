@@ -17,13 +17,13 @@ from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from libs.common.datetime_utils import utc_now
 from services.academy_service.models import (
-    AcademyCommercialAdjustment,
     AcademyFinancialCredit,
     Enrollment,
     EnrollmentStatus,
     InstallmentStatus,
     PaymentStatus,
 )
+from services.academy_service.models.commercial_adjustment import AcademyCommercialAdjustment
 from services.academy_service.routers._shared import _sync_installment_state_for_enrollment
 from .change_cohort import financial_state
 
