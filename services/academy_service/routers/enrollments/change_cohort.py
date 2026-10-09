@@ -429,9 +429,10 @@ async def change_my_cohort(
     if enrollment.status not in {
         EnrollmentStatus.PENDING_APPROVAL,
         EnrollmentStatus.WAITLIST,
+        EnrollmentStatus.ENROLLED,
     }:
         raise HTTPException(
-            409, "Active or completed cohort changes require admin review"
+            409, "This enrollment is no longer eligible for a cohort change request"
         )
     target = (
         await db.execute(
