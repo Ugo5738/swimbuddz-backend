@@ -14,7 +14,9 @@ from services.academy_service.models import (
     EnrollmentStatus,
     InstallmentStatus,
 )
-from services.academy_service.models.commercial_adjustment import AcademyCommercialAdjustment
+from services.academy_service.models.commercial_adjustment import (
+    AcademyCommercialAdjustment,
+)
 from services.academy_service.routers.enrollments import commercial_terms
 from tests.factories import (
     MemberFactory,
