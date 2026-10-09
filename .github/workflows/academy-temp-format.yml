@@ -1,0 +1,28 @@
+name: Temporary Academy formatter
+on:
+  push:
+    branches: [codex/academy-transfer-paid-allocations]
+permissions:
+  contents: write
+jobs:
+  format:
+    if: "!contains(github.event.head_commit.message, 'chore(academy): format credit obligation changes')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install ruff==0.4.10
+      - run: ruff format services/academy_service/routers/_shared.py services/academy_service/routers/internal.py services/academy_service/routers/enrollments/paid_transfer.py
+      - name: Commit formatted source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet; then
+            git add services/academy_service/routers/_shared.py services/academy_service/routers/internal.py services/academy_service/routers/enrollments/paid_transfer.py
+            git commit -m "chore(academy): format credit obligation changes"
+            git push origin HEAD:codex/academy-transfer-paid-allocations
+          fi
