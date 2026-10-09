@@ -114,7 +114,9 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
         ),
         discount_kobo=discount_kobo,
         discount_reason=(
-            "Approved couple pricing discount for this student" if discount_kobo else None
+            "Approved couple pricing discount for this student"
+            if discount_kobo
+            else None
         ),
         installment_amounts_kobo=installment_plan,
         confirmed_attendance_review=True,
@@ -126,7 +128,9 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
         db_session,
     )
     assert result["state"] == "completed"
-    assert result["remaining_tuition_kobo"] == 16_500_000 - discount_kobo - transfer_kobo
+    assert (
+        result["remaining_tuition_kobo"] == 16_500_000 - discount_kobo - transfer_kobo
+    )
     assert result["refund_due_kobo"] == refund_kobo
     assert result["idempotent"] is False
     old = (
@@ -140,16 +144,26 @@ async def test_50000_verified_credit_moves_once_from_vi_to_yaba(
     assert new.price_snapshot_amount == 16_500_000 - discount_kobo
     assert new.cohort_id == yaba.id
     if installment_plan:
-        from services.academy_service.models import EnrollmentInstallment, InstallmentStatus
+        from services.academy_service.models import (
+            EnrollmentInstallment,
+            InstallmentStatus,
+        )
+
         scheduled = (
-            (await db_session.execute(
-                select(EnrollmentInstallment)
-                .where(EnrollmentInstallment.enrollment_id == new_id)
-                .order_by(EnrollmentInstallment.installment_number)
-            )).scalars().all()
+            (
+                await db_session.execute(
+                    select(EnrollmentInstallment)
+                    .where(EnrollmentInstallment.enrollment_id == new_id)
+                    .order_by(EnrollmentInstallment.installment_number)
+                )
+            )
+            .scalars()
+            .all()
         )
         assert [item.status for item in scheduled] == [
-            InstallmentStatus.PAID, InstallmentStatus.PENDING, InstallmentStatus.PENDING
+            InstallmentStatus.PAID,
+            InstallmentStatus.PENDING,
+            InstallmentStatus.PENDING,
         ]
         assert [item.amount for item in scheduled] == installment_plan
     source_credits = (
