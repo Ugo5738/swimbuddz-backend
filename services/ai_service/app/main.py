@@ -43,6 +43,11 @@ def create_app() -> FastAPI:
     app.include_router(founding_members_router, prefix="/ai")
     # Internal router is mounted at root so payments_service can reach
     # /internal/ai/founding-members/confirm (no /ai prefix).
+    from services.ai_service.routers.quarterly_metrics import (
+        router as quarterly_metrics_router,
+    )
+
+    app.include_router(quarterly_metrics_router)
     app.include_router(founding_internal_router)
 
     return app

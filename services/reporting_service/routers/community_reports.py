@@ -37,7 +37,9 @@ LEADERBOARD_FIELDS = {
     LeaderboardCategory.STREAKS: MemberQuarterlyReport.streak_longest,
     LeaderboardCategory.MILESTONES: MemberQuarterlyReport.milestones_achieved,
     LeaderboardCategory.VOLUNTEER_HOURS: MemberQuarterlyReport.volunteer_hours,
-    LeaderboardCategory.BUBBLES_EARNED: MemberQuarterlyReport.bubbles_earned,
+    LeaderboardCategory.BUBBLES_EARNED: MemberQuarterlyReport.activity_details[
+        "wallet"
+    ]["metrics"]["reward_bubbles"].as_integer(),
 }
 
 
@@ -79,6 +81,7 @@ async def get_leaderboard(
     if field is None:
         raise HTTPException(status_code=400, detail=f"Unknown category: {category}")
 
+    reward_category = category == LeaderboardCategory.BUBBLES_EARNED
     result = await db.execute(
         select(MemberQuarterlyReport)
         .where(
@@ -86,6 +89,7 @@ async def get_leaderboard(
             MemberQuarterlyReport.quarter == quarter,
             MemberQuarterlyReport.leaderboard_opt_out == False,  # noqa: E712
             MemberQuarterlyReport.total_sessions_attended >= MIN_LEADERBOARD_ATTENDANCE,
+            field.is_not(None) if reward_category else True,
         )
         .order_by(field.desc())
         .limit(limit)
@@ -106,7 +110,14 @@ async def get_leaderboard(
             rank=idx + 1,
             member_id=r.member_id,
             member_name=r.member_name,
-            value=float(getattr(r, field.key)),
+            value=float(
+                (r.activity_details or {})
+                .get("wallet", {})
+                .get("metrics", {})
+                .get("reward_bubbles", 0)
+                if reward_category
+                else getattr(r, field.key)
+            ),
             is_current_user=(str(r.member_auth_id) == current_user.user_id),
         )
         for idx, r in enumerate(reports)

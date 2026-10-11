@@ -41,6 +41,11 @@ app.include_router(media_router)
 app.include_router(payment_proofs_router)
 app.include_router(assets_router)
 app.include_router(audio_router)
+from services.media_service.routers.quarterly_metrics import (
+    router as quarterly_metrics_router,
+)
+
+app.include_router(quarterly_metrics_router)
 app.include_router(internal_router)
 app.include_router(vaults_router)
 # Admin-evidence router must be registered after the generic media

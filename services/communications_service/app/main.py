@@ -51,6 +51,11 @@ def create_app() -> FastAPI:
     app.include_router(notifications_router)
     app.include_router(preferences_router)
     app.include_router(testimonials_router)
+    from services.communications_service.routers.quarterly_metrics import (
+        router as quarterly_metrics_router,
+    )
+
+    app.include_router(quarterly_metrics_router)
     app.include_router(internal_router)
 
     return app

@@ -44,6 +44,11 @@ def create_app() -> FastAPI:
     app.include_router(scoring_router, prefix="/academy")
     app.include_router(reports_router, prefix="/academy")
     app.include_router(admin_tasks_router, prefix="/academy")
+    from services.academy_service.routers.quarterly_metrics import (
+        router as quarterly_metrics_router,
+    )
+
+    app.include_router(quarterly_metrics_router)
     app.include_router(internal_router)
     app.include_router(extensions_router, prefix="/academy")
 

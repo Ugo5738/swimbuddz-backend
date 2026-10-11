@@ -22,6 +22,13 @@ from services.reporting_service.models import (
     CommunityQuarterlyStats,
     MemberQuarterlyReport,
 )
+from services.reporting_service.services.ecosystem import (
+    fetch_ecosystem_stats,
+    fetch_member_extensions,
+)
+from services.reporting_service.services.activity_policy import (
+    meaningful_activity_count,
+)
 from services.reporting_service.services.quarter_utils import quarter_date_range
 
 logger = get_logger(__name__)
@@ -87,7 +94,9 @@ async def _fetch_member_attendance_records(
         f"/internal/attendance/member/{member_id}",
         params={"session_ids": ",".join(session_ids)},
     )
-    return data if isinstance(data, list) else []
+    if not isinstance(data, list):
+        raise RuntimeError("Programme attendance source unavailable")
+    return data
 
 
 async def _fetch_session_stats(date_from: str, date_to: str) -> dict:
@@ -119,7 +128,9 @@ async def _fetch_member_session_commitments(
         f"/internal/sessions/member/{member_auth_id}/session-commitments",
         params={"from": date_from, "to": date_to},
     )
-    return data if isinstance(data, list) else []
+    if not isinstance(data, list):
+        raise RuntimeError("Programme session commitments unavailable")
+    return data
 
 
 async def _fetch_converted_guest_hours(
@@ -132,7 +143,9 @@ async def _fetch_converted_guest_hours(
         f"/internal/sessions/member/{member_id}/converted-guest-hours",
         params={"from": date_from, "to": date_to},
     )
-    return float(data.get("swimmer_hours", 0.0)) if isinstance(data, dict) else 0.0
+    if not isinstance(data, dict) or "swimmer_hours" not in data:
+        raise RuntimeError("Converted guest swim history unavailable")
+    return float(data["swimmer_hours"])
 
 
 async def _fetch_cohort_sessions(
@@ -148,7 +161,9 @@ async def _fetch_cohort_sessions(
             "statuses": "scheduled,in_progress,completed",
         },
     )
-    return data if isinstance(data, list) else []
+    if not isinstance(data, list):
+        raise RuntimeError("Academy cohort session dates unavailable")
+    return data
 
 
 async def _fetch_payment_summary(
@@ -196,7 +211,9 @@ async def _fetch_member_cohort_enrollments(
         f"/internal/academy/member-cohort-enrollments/{member_auth_id}",
         params={"from": date_from, "to": date_to},
     )
-    return data if isinstance(data, list) else []
+    if not isinstance(data, list):
+        raise RuntimeError("Academy programme enrollments unavailable")
+    return data
 
 
 async def _fetch_store_summary(
@@ -241,7 +258,9 @@ async def _fetch_all_approved_members() -> list[dict]:
         settings.MEMBERS_SERVICE_URL,
         "/internal/members/approved-list",
     )
-    return data or []
+    if not isinstance(data, list):
+        raise RuntimeError("Approved member list unavailable")
+    return data
 
 
 def _compute_streaks(attendance_data: dict) -> tuple[int, int]:
@@ -311,6 +330,8 @@ def _attendance_status_by_session(records: list[dict]) -> dict[str, str]:
     statuses: dict[str, str] = {}
     for record in records:
         session_id = str(record.get("session_id") or "")
+        if record.get("role", "swimmer") not in {"swimmer", "guest"}:
+            continue
         status = str(record.get("status") or "").lower()
         if not session_id or not status:
             continue
@@ -345,7 +366,9 @@ def _weekly_attendance(
     for session in attended_sessions:
         starts_at = _parse_iso_datetime(session.get("starts_at"))
         if starts_at is not None:
-            iso = starts_at.isocalendar()
+            from services.reporting_service.services.quarter_utils import LAGOS_TZ
+
+            iso = starts_at.astimezone(LAGOS_TZ).isocalendar()
             attended_weeks.add((iso.year, iso.week))
 
     weeks: list[bool] = []
@@ -384,7 +407,9 @@ def _summarize_expected_sessions(
                 on_time += 1
             starts_at = _parse_iso_datetime(session.get("starts_at"))
             if starts_at is not None:
-                day_counts[starts_at.strftime("%A")] += 1
+                from services.reporting_service.services.quarter_utils import LAGOS_TZ
+
+                day_counts[starts_at.astimezone(LAGOS_TZ).strftime("%A")] += 1
             if session.get("location_name"):
                 location_counts[session["location_name"]] += 1
         else:
@@ -419,7 +444,9 @@ async def _compute_segment_attendance(
     strongest commitment. Community-only members retain non-attendance card
     metrics; their generic report attendance falls back to existing stats.
     """
-    elapsed_end = min(end, utc_now())
+    # These existing commitment APIs use an inclusive datetime bound. Include
+    # the entire final second, matching the all-swim source's half-open window.
+    elapsed_end = min(end + timedelta(microseconds=999999), utc_now())
     date_from = start.isoformat()
     date_to = elapsed_end.isoformat()
 
@@ -512,11 +539,15 @@ async def _compute_segment_attendance(
             }
         )
 
-    attended_sessions = [
-        session
-        for summary in summaries.values()
-        for session in summary.get("attended_sessions", [])
-    ]
+    attended_sessions = list(
+        {
+            _session_id(session): session
+            for summary in summaries.values()
+            for session in summary.get("attended_sessions", [])
+        }.values()
+    )
+    if fallback_attendance.get("attendance_available"):
+        attended_sessions = fallback_attendance.get("attended_sessions", [])
     computed_pool_hours = round(
         sum(_effective_pool_hours(s) for s in attended_sessions), 1
     )
@@ -538,7 +569,25 @@ async def _compute_segment_attendance(
         ).items()
     }
 
+    actual_types = dict(
+        Counter(_session_type(session) for session in attended_sessions)
+    )
+    actual_locations = Counter(
+        s.get("location_name") for s in attended_sessions if s.get("location_name")
+    )
     return {
+        "all_sessions_attended": len(attended_sessions)
+        if fallback_attendance.get("attendance_available")
+        else None,
+        "attended_by_type": actual_types
+        if fallback_attendance.get("attendance_available")
+        else None,
+        "locations": [
+            {"location": name, "checkins": count}
+            for name, count in actual_locations.items()
+        ]
+        if fallback_attendance.get("attendance_available")
+        else None,
         "primary_segment": primary_segment,
         "total_attended": primary["total_attended"],
         "total_available": primary["total_available"],
@@ -582,6 +631,7 @@ async def compute_member_report(
         store,
         volunteer,
         transport,
+        extensions,
     ) = await asyncio.gather(
         _fetch_member_info(member_auth_id)
         if member_info is None
@@ -593,6 +643,7 @@ async def compute_member_report(
         _fetch_store_summary(member_auth_id, date_from, date_to),
         _fetch_volunteer_summary(member_auth_id, date_from, date_to),
         _fetch_transport_summary(member_auth_id, date_from, date_to),
+        fetch_member_extensions(member_auth_id, year, quarter),
     )
 
     if member_info is None:
@@ -664,6 +715,35 @@ async def compute_member_report(
         streak_current=streak_current,
         favorite_day=segment_attendance.get("favorite_day"),
         favorite_location=segment_attendance.get("favorite_location"),
+        activity_details={
+            "version": 1,
+            "attendance": {
+                "available": bool(attendance.get("attendance_available")),
+                "all_sessions_attended": segment_attendance.get(
+                    "all_sessions_attended"
+                ),
+                "attended_by_type": segment_attendance.get("attended_by_type"),
+                "expected_by_type": segment_attendance.get("sessions_by_type"),
+                "locations": segment_attendance.get("locations"),
+                "pool_hours_basis": "Full scheduled duration of recorded attended swims, plus exact converted guest minutes; not measured time in water.",
+                "programme": member_programme,
+            },
+            "wallet": extensions["wallet"],
+            "members": extensions["members"],
+            "percentile_basis": "active_swimmers_in_primary_programme_strictly_fewer_sessions",
+            "data_quality": [
+                f"{name} source unavailable; these metrics are unknown."
+                for name, section in extensions.items()
+                if not section.get("available")
+            ]
+            + (
+                []
+                if attendance.get("attendance_available")
+                else [
+                    "All-swim attendance source unavailable; totals need regeneration."
+                ]
+            ),
+        },
         # Academy
         milestones_achieved=academy.get("milestones_achieved", 0),
         milestones_in_progress=academy.get("milestones_in_progress", 0),
@@ -671,8 +751,12 @@ async def compute_member_report(
         certificates_earned=academy.get("certificates_earned", 0),
         # Financial
         total_spent_ngn=payments.get("total_spent", 0),
-        bubbles_earned=wallet.get("bubbles_earned", 0),
-        bubbles_spent=wallet.get("bubbles_spent", 0),
+        bubbles_earned=extensions["wallet"]["metrics"].get(
+            "wallet_credits", wallet.get("bubbles_earned", 0)
+        ),
+        bubbles_spent=extensions["wallet"]["metrics"].get(
+            "wallet_debits", wallet.get("bubbles_spent", 0)
+        ),
         # Transport
         rides_taken=transport.get("rides_taken", 0),
         rides_offered=transport.get("rides_offered", 0),
@@ -728,17 +812,11 @@ async def compute_all_member_reports(year: int, quarter: int, db: AsyncSession) 
         logger.warning("No report-eligible member-role profiles found.")
         return 0
 
-    # Regeneration is authoritative for the selected quarter. Remove stale rows
-    # first so prospects/admins from older report definitions cannot linger.
-    await db.execute(
-        delete(MemberQuarterlyReport).where(
-            MemberQuarterlyReport.year == year,
-            MemberQuarterlyReport.quarter == quarter,
-        )
-    )
-    await db.commit()
-
+    # Update existing reports in place so interrupted generation cannot erase
+    # member privacy choices or all previous quarter data. The per-member
+    # update never assigns leaderboard_opt_out, including concurrent changes.
     count = 0
+    failures = 0
 
     for member in candidate_members:
         try:
@@ -751,7 +829,7 @@ async def compute_all_member_reports(year: int, quarter: int, db: AsyncSession) 
             )
             tier = str(report.member_tier or "").lower()
             has_quarter_activity = bool(
-                report.total_sessions_attended
+                meaningful_activity_count(report)
                 or report.total_sessions_available
                 or report.programs_enrolled
                 or report.events_attended
@@ -764,9 +842,24 @@ async def compute_all_member_reports(year: int, quarter: int, db: AsyncSession) 
             count += 1
         except Exception as e:
             logger.error(f"Failed to compute report for {member.get('auth_id')}: {e}")
+            failures += 1
             # Rollback so the session is usable for the next member
             await db.rollback()
 
+    if failures:
+        raise RuntimeError(
+            f"{failures} individual report computations failed; quarter generation is incomplete."
+        )
+    await db.execute(
+        delete(MemberQuarterlyReport).where(
+            MemberQuarterlyReport.year == year,
+            MemberQuarterlyReport.quarter == quarter,
+            MemberQuarterlyReport.member_auth_id.not_in(
+                [member["auth_id"] for member in candidate_members]
+            ),
+        )
+    )
+    await db.commit()
     logger.info(f"Generated {count} eligible swimmer reports for Q{quarter} {year}")
 
     # Compute percentile ranks across all member reports
@@ -789,17 +882,28 @@ async def _compute_percentile_ranks(year: int, quarter: int, db: AsyncSession) -
         .order_by(MemberQuarterlyReport.total_sessions_attended.asc())
     )
     reports = result.scalars().all()
-    total = len(reports)
-
-    if total == 0:
-        return
-
-    for i, report in enumerate(reports):
-        # Percentile: fraction of members with fewer or equal sessions
-        report.attendance_percentile = round((i + 1) / total, 2)
-
+    for report in reports:
+        peers = [
+            r
+            for r in reports
+            if r.member_tier == report.member_tier and r.total_sessions_attended > 0
+        ]
+        report.attendance_percentile = (
+            round(
+                sum(
+                    r.total_sessions_attended < report.total_sessions_attended
+                    for r in peers
+                )
+                / len(peers),
+                4,
+            )
+            if report.total_sessions_attended > 0 and peers
+            else 0.0
+        )
     await db.commit()
-    logger.info(f"Computed percentile ranks for {total} members Q{quarter} {year}")
+    logger.info(
+        f"Computed programme-specific attendance percentiles for {len(reports)} members Q{quarter} {year}"
+    )
 
 
 async def compute_community_stats(
@@ -816,8 +920,24 @@ async def compute_community_stats(
             func.sum(MemberQuarterlyReport.total_sessions_available).label(
                 "total_available"
             ),
+            func.sum(
+                func.coalesce(
+                    MemberQuarterlyReport.activity_details["attendance"][
+                        "all_sessions_attended"
+                    ].as_integer(),
+                    MemberQuarterlyReport.total_sessions_attended,
+                )
+            ).label("all_recorded_attendance"),
             func.count(MemberQuarterlyReport.id)
-            .filter(MemberQuarterlyReport.total_sessions_attended > 0)
+            .filter(
+                func.coalesce(
+                    MemberQuarterlyReport.activity_details["attendance"][
+                        "all_sessions_attended"
+                    ].as_integer(),
+                    MemberQuarterlyReport.total_sessions_attended,
+                )
+                > 0
+            )
             .label("active_swimmers"),
             func.sum(MemberQuarterlyReport.milestones_achieved).label(
                 "total_milestones"
@@ -846,6 +966,8 @@ async def compute_community_stats(
         start.isoformat(), end.isoformat()
     )
 
+    ecosystem_stats = await fetch_ecosystem_stats(year, quarter)
+
     # Check for existing stats
     result = await db.execute(
         select(CommunityQuarterlyStats).where(
@@ -872,7 +994,7 @@ async def compute_community_stats(
             detailed_stats.get("total_attendance_records")
             if detailed_stats.get("attendance_available")
             else (
-                int(row.total_attendance or 0)
+                int(row.all_recorded_attendance or 0)
                 + int(detailed_stats.get("guest_pass_attendance_records") or 0)
             )
         ),
@@ -901,6 +1023,7 @@ async def compute_community_stats(
         # Academy
         total_cohorts_completed=row_cohorts or 0,
         stats_by_type=session_stats.get("by_type"),
+        ecosystem_stats=ecosystem_stats,
         # Community milestones
         community_milestones=_build_community_milestones(
             total_pool_hours=community_swimmer_hours,
@@ -930,58 +1053,36 @@ def _build_community_milestones(
     total_sessions: int,
     total_volunteer: float,
 ) -> list[dict]:
-    """Build fun community milestone comparisons (Lagos Lagoon style)."""
+    """Use recorded outcomes; scheduled time does not establish distance swum."""
     milestones = []
-
-    # Lagos Lagoon is roughly 6.4 km across. Average swim speed ~2 km/h.
-    # So crossing takes ~3.2 hours.
     if total_pool_hours > 0:
-        lagoon_crossings = total_pool_hours / 3.2
         milestones.append(
             {
                 "icon": "waves",
-                "text": f"Together we spent {total_pool_hours:.0f} hours in the pool — "
-                f"that's like crossing the Lagos Lagoon {lagoon_crossings:.0f} times!",
+                "text": f"Together we logged {total_pool_hours:g} scheduled swimmer-hours across recorded visits.",
             }
         )
-
-    # Olympic pool is 50m. Average swim speed in training ~1.5 km/h
-    # In total_pool_hours we could swim total_pool_hours * 1500 metres
-    if total_pool_hours > 0:
-        km_swum = total_pool_hours * 1.5
-        milestones.append(
-            {
-                "icon": "map",
-                "text": f"We collectively swam an estimated {km_swum:.0f} km — "
-                f"that's the distance from Lagos to {'Ibadan' if km_swum < 150 else 'Abuja' if km_swum < 800 else 'Cape Town'}!",
-            }
-        )
-
     if total_sessions > 0:
         milestones.append(
             {
                 "icon": "calendar",
-                "text": f"We held {total_sessions} sessions this quarter — "
-                f"that's about {total_sessions / 13:.1f} sessions per week!",
+                "text": f"Our calendar listed {total_sessions} sessions this quarter.",
             }
         )
-
     if total_members > 0:
         milestones.append(
             {
                 "icon": "users",
-                "text": f"{total_members} active swimmers made waves together this quarter.",
+                "text": f"{total_members} members recorded a swim this quarter.",
             }
         )
-
     if total_volunteer > 0:
         milestones.append(
             {
                 "icon": "heart",
-                "text": f"Our volunteers gave {total_volunteer:.0f} hours back to the community!",
+                "text": f"Our volunteers contributed {total_volunteer:g} recorded hours.",
             }
         )
-
     return milestones
 
 

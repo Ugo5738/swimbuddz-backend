@@ -2,6 +2,7 @@
 
 import csv
 import io
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -176,9 +177,9 @@ async def admin_export_csv(
     writer.writerow(
         [
             "Member Name",
-            "Tier",
-            "Sessions Attended",
-            "Sessions Available",
+            "Quarter Programme",
+            "Programme Sessions Attended",
+            "Programme Sessions Available",
             "Attendance Rate %",
             "Punctuality Rate %",
             "Longest Streak",
@@ -186,14 +187,23 @@ async def admin_export_csv(
             "Certificates Earned",
             "Programs Enrolled",
             "Total Spent (NGN)",
-            "Bubbles Earned",
-            "Bubbles Spent",
+            "Wallet Credits",
+            "Wallet Debits",
             "Rides Taken",
             "Rides Offered",
             "Volunteer Hours",
             "Orders Placed",
             "Store Spent (NGN)",
             "Events Attended",
+            "All Recorded Swims",
+            "Scheduled Swimmer Hours",
+            "Attended Sessions by Type",
+            "Locations",
+            "Reward Bubbles",
+            "Purchase Bubbles",
+            "Club Enrollments",
+            "Pod Memberships",
+            "Experience Check-ins",
         ]
     )
 
@@ -219,6 +229,38 @@ async def admin_export_csv(
                 r.orders_placed,
                 r.store_spent_ngn,
                 r.events_attended,
+                (r.activity_details or {})
+                .get("attendance", {})
+                .get("all_sessions_attended", ""),
+                r.pool_hours,
+                json.dumps(
+                    (r.activity_details or {})
+                    .get("attendance", {})
+                    .get("attended_by_type")
+                ),
+                json.dumps(
+                    (r.activity_details or {}).get("attendance", {}).get("locations")
+                ),
+                (r.activity_details or {})
+                .get("wallet", {})
+                .get("metrics", {})
+                .get("reward_bubbles", ""),
+                (r.activity_details or {})
+                .get("wallet", {})
+                .get("metrics", {})
+                .get("purchase_bubbles", ""),
+                (r.activity_details or {})
+                .get("members", {})
+                .get("metrics", {})
+                .get("club_enrolled_members", ""),
+                (r.activity_details or {})
+                .get("members", {})
+                .get("metrics", {})
+                .get("pods_with_assignments", ""),
+                (r.activity_details or {})
+                .get("members", {})
+                .get("metrics", {})
+                .get("experience_checkins", ""),
             ]
         )
 
@@ -284,7 +326,7 @@ async def admin_generate_report(
         await compute_community_stats(body.year, body.quarter, db)
         snapshot.status = ReportStatus.COMPLETED
         snapshot.member_count = count
-        snapshot.semantics_version = 2
+        snapshot.semantics_version = 3
         snapshot.completed_at = utc_now()
         await db.commit()
         await db.refresh(snapshot)
@@ -349,13 +391,19 @@ async def admin_send_report_emails(
         )
     )
     snapshot = snapshot_result.scalar_one_or_none()
-    if snapshot is None or snapshot.semantics_version < 2:
+    if snapshot is None or snapshot.semantics_version < 3:
         raise HTTPException(
             status_code=409,
             detail=(
                 "Regenerate this quarter under the corrected reporting definitions "
                 "before sending member reports."
             ),
+        )
+
+    review = await build_business_review(body.year, body.quarter, db)
+    if not review.member_distribution_ready:
+        raise HTTPException(
+            status_code=409, detail=" ".join(review.member_distribution_blockers)
         )
 
     result = await db.execute(

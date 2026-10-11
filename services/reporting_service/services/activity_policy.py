@@ -8,9 +8,19 @@ ReportActivityState = Literal["active", "low_activity", "no_activity"]
 
 def meaningful_activity_count(report: Any) -> int:
     """Count recorded participation signals without treating spend as activity."""
+    details = getattr(report, "activity_details", None) or {}
+    attendance = details.get("attendance") or {}
+    all_swims = attendance.get("all_sessions_attended")
+    swim_count = int(
+        all_swims if all_swims is not None else report.total_sessions_attended or 0
+    )
+    # Session-linked events already belong to the all-swim count. Experience
+    # ticket check-ins are a separate participant/event source.
+    experience = (details.get("members") or {}).get("metrics") or {}
     return (
-        int(report.total_sessions_attended or 0)
-        + int(report.events_attended or 0)
+        swim_count
+        + (int(report.events_attended or 0) if all_swims is None else 0)
+        + int(experience.get("experience_checkins") or 0)
         + int(report.milestones_achieved or 0)
         + int(report.certificates_earned or 0)
         + (1 if float(report.volunteer_hours or 0) > 0 else 0)

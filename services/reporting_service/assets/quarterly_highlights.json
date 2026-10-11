@@ -1,0 +1,103 @@
+{
+  "2026-Q3": {
+    "highlights": [
+      {
+        "title": "Location-specific Club plans",
+        "description": "Location-specific onboarding, versioned plans, dated enrollments, pods, quarter scheduling and prepaid reservations.",
+        "status": "implemented",
+        "sources": [
+          "docs/CLUB_ONBOARDING_GUEST_PASSES_AND_CHARGES.md",
+          "docs/CLUB_EXPERIENCE_SCHEDULING.md"
+        ]
+      },
+      {
+        "title": "Guest and group booking",
+        "description": "Standalone guest passes, invitation links, named booking guests, walk-in participants and member conversion.",
+        "status": "implemented",
+        "sources": [
+          "docs/GUEST_BOOKING_IMPLEMENTATION_REVIEW.md"
+        ]
+      },
+      {
+        "title": "Private Media Vaults",
+        "description": "Private uploads, volunteer access, previews, exports and review workflows for session media.",
+        "status": "implemented",
+        "sources": [
+          "docs/design/MEDIA_VAULT.md"
+        ]
+      },
+      {
+        "title": "Expanded Bubbles checkout",
+        "description": "Broader Bubbles and discount checkout, bank transfers and verified offline payment recording. Rewards existed before Q3.",
+        "status": "expanded",
+        "sources": [
+          "docs/MANUAL_PAYMENT_RECORDING.md"
+        ]
+      },
+      {
+        "title": "Community Experience ticketing",
+        "description": "Optional packages, named participant checkout and calendar planning. Capability does not establish ticket sales or attendance.",
+        "status": "implemented",
+        "sources": [
+          "docs/CLUB_EXPERIENCE_SCHEDULING.md"
+        ]
+      },
+      {
+        "title": "Volunteer recognition and automation",
+        "description": "Template-generated opportunities, shift overrides and volunteer-of-the-month recognition.",
+        "status": "expanded",
+        "sources": [
+          "docs/community/VOLUNTEER_ROLES.md"
+        ]
+      },
+      {
+        "title": "Stroke Lab improvements",
+        "description": "Coaching selection/retry refinements and a larger public upload limit. The public analyzer existed before Q3.",
+        "status": "expanded",
+        "sources": [
+          "docs/design/STROKELAB_PUBLIC_ANALYZER_DESIGN.md"
+        ]
+      },
+      {
+        "title": "Modular Academy curriculum",
+        "description": "Curriculum pathway documentation; delivery of new modules in Q3 is not established.",
+        "status": "planning",
+        "sources": [
+          "docs/academy/MODULAR_CURRICULUM_PATHWAY.md"
+        ]
+      }
+    ],
+    "external_podcast_episodes": [
+      {
+        "episode_number": 1,
+        "title": "Is It Too Late to Learn Swimming as an Adult?",
+        "url": "https://www.youtube.com/watch?v=DDqH3JDcl_Y",
+        "original_release_at": null,
+        "reported_quarter": "2026-Q3",
+        "verification": "user_reported",
+        "note": "Original Q3 broadcast date awaits confirmation. Playlist currently shows an October upload."
+      },
+      {
+        "episode_number": 2,
+        "title": "How Busy Professionals Learned to Swim",
+        "url": "https://www.youtube.com/watch?v=o66pYl9ENoA",
+        "original_release_at": "2026-09-03",
+        "verification": "youtube_verified",
+        "note": "YouTube description: Streamed live on Sep 3, 2026."
+      }
+    ]
+  },
+  "2026-Q4": {
+    "highlights": [],
+    "external_podcast_episodes": [
+      {
+        "episode_number": 3,
+        "title": "I Can Swim… Now What?",
+        "url": "https://www.youtube.com/watch?v=g_4oasxw46M",
+        "original_release_at": "2026-10-01",
+        "verification": "user_reported",
+        "note": "User supplied original broadcast date; Q4, excluded from Q3."
+      }
+    ]
+  }
+}

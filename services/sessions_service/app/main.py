@@ -84,6 +84,11 @@ def create_app() -> FastAPI:
     app.include_router(club_schedule_router)
     app.include_router(club_reservations_router)
     app.include_router(club_holds_router)
+    from services.sessions_service.routers.quarterly_metrics import (
+        router as quarterly_metrics_router,
+    )
+
+    app.include_router(quarterly_metrics_router)
     app.include_router(internal_router)
 
     return app

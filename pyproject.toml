@@ -82,6 +82,7 @@ include = ["libs*", "services*", "mcp*", "alembic*"]
 # data file (e.g. other CoA verticals).
 [tool.setuptools.package-data]
 "services.ledger_service" = ["coa_templates/*.yaml"]
+"services.reporting_service" = ["assets/*.json"]
 
 [tool.ruff]
 extend-exclude = [
