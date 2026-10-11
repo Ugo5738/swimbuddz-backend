@@ -478,6 +478,7 @@ async def get_member_wallet_summary(
     """
     from services.wallet_service.models import (
         TransactionDirection,
+        TransactionStatus,
         Wallet,
         WalletTransaction,
     )
@@ -521,6 +522,7 @@ async def get_member_wallet_summary(
             ).label("spent"),
         ).where(
             WalletTransaction.wallet_id == wallet_id,
+            WalletTransaction.status == TransactionStatus.COMPLETED,
             WalletTransaction.created_at >= date_from,
             WalletTransaction.created_at <= date_to,
         )

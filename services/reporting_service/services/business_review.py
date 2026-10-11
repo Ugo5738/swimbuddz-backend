@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
 from libs.common.service_client import internal_get
 from services.reporting_service.models import (
     CommunityQuarterlyStats,
@@ -25,6 +26,10 @@ from services.reporting_service.schemas.business_review import (
     BusinessReviewFinance,
     BusinessReviewResponse,
     QuarterComparison,
+)
+from services.reporting_service.services.ecosystem import fetch_ecosystem_stats
+from services.reporting_service.services.locations import (
+    canonical_location as _canonical_location,
 )
 from services.reporting_service.services.quarter_utils import (
     quarter_date_range,
@@ -61,31 +66,6 @@ def _comparison(current: float | int | None, previous: float | int | None):
     return QuarterComparison(
         current=current, previous=previous, delta=delta, delta_pct=delta_pct
     )
-
-
-def _canonical_location(name: str | None) -> tuple[str, str]:
-    """Collapse known cross-service location aliases into one operating site."""
-    raw = (name or "Unspecified").strip()
-    lowered = raw.lower()
-    if lowered in {"vi", "v.i.", "v.i"}:
-        return "victoria-island", "Victoria Island — Oduduwa House Pool"
-
-    aliases = (
-        (("rowe park", "yaba"), "yaba", "Yaba — Rowe Park Pool"),
-        (
-            ("oduduwa", "victoria island"),
-            "victoria-island",
-            "Victoria Island — Oduduwa House Pool",
-        ),
-        (("siloam", "festac"), "festac", "Festac — Siloam Pool"),
-        (("herel", "ikoyi"), "ikoyi", "Ikoyi — Herel Play"),
-        (("ikeja",), "ikeja", "Ikeja"),
-        (("ogudu",), "ogudu", "Ogudu GRA"),
-    )
-    for needles, key, label in aliases:
-        if any(needle in lowered for needle in needles):
-            return key, label
-    return lowered or "unspecified", raw or "Unspecified"
 
 
 def _naira(minor: int | float | None) -> int:
@@ -302,7 +282,39 @@ async def build_business_review(
         name for name, count in normalized_name_counts.items() if count > 1
     )
 
+    ecosystem = getattr(current_stats, "ecosystem_stats", None)
+    ecosystem_source = "snapshot"
+    if ecosystem is None:
+        ecosystem = await fetch_ecosystem_stats(year, quarter)
+        ecosystem_source = "live_preview"
+    for location in ecosystem.get("locations", []):
+        key, label = _canonical_location(location.get("location"))
+        row = location_map[key]
+        row["location"] = label
+        row.update({k: v for k, v in location.items() if k != "location"})
     data_quality: list[str] = []
+    if ecosystem_source == "live_preview":
+        data_quality.append(
+            "Extended metrics are a live preview; regenerate the quarter to freeze them with the member scorecards."
+        )
+    for source, section in ecosystem.get("sections", {}).items():
+        if not section.get("available"):
+            data_quality.append(
+                f"Extended {source} source unavailable; its metrics are unknown, not zero."
+            )
+    session_source = ecosystem.get("sections", {}).get("sessions") or {}
+    session_metrics = session_source.get("metrics") or {}
+    calendar_sessions = session_metrics.get("calendar_sessions")
+    recorded_sessions = session_metrics.get("sessions_with_checkins")
+    if session_source.get("available") and end < utc_now() and calendar_sessions:
+        if session_metrics.get("completed_sessions") == 0:
+            data_quality.append(
+                "No calendar sessions are marked completed for this closed quarter; review session delivery/status before calling the calendar total completed sessions."
+            )
+        if recorded_sessions is not None and recorded_sessions < calendar_sessions:
+            data_quality.append(
+                f"Only {recorded_sessions} of {calendar_sessions} calendar sessions have recorded swimmer check-ins. Missing check-ins do not establish cancellation or non-attendance; reconcile attendance coverage before publishing complete-quarter totals."
+            )
     if not finance_available:
         data_quality.append(
             "Finance section incomplete because ledger reporting was unavailable."
@@ -326,7 +338,7 @@ async def build_business_review(
         data_quality.append("Session detail summary unavailable.")
     elif not sessions.get("attendance_available"):
         data_quality.append(
-            "All-human attendance detail was unavailable; community attendance falls back to the frozen member snapshot plus known GuestPass attendance."
+            "All-human attendance detail was unavailable; community attendance falls back to the frozen quarter total."
         )
     estimated_guest_hours = float(sessions.get("estimated_guest_swimmer_hours") or 0)
     if estimated_guest_hours > 0:
@@ -369,9 +381,35 @@ async def build_business_review(
     )
 
     distribution_blockers: list[str] = []
-    if not snapshot or snapshot.semantics_version < 2:
+    if not snapshot or snapshot.semantics_version < 3:
         distribution_blockers.append(
             "Regenerate this quarter under the corrected reporting definitions before sending member reports."
+        )
+    if (
+        snapshot
+        and str(getattr(snapshot.status, "value", snapshot.status)) != "completed"
+    ):
+        distribution_blockers.append(
+            "Quarter generation is not complete; review a completed snapshot before distribution."
+        )
+    member_details = (
+        (
+            await db.execute(
+                select(MemberQuarterlyReport.activity_details).where(
+                    MemberQuarterlyReport.year == year,
+                    MemberQuarterlyReport.quarter == quarter,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if any(
+        not d or not (d.get("attendance") or {}).get("available")
+        for d in member_details
+    ):
+        distribution_blockers.append(
+            "Some individual reports lack verified all-swim attendance data; regenerate after restoring the source."
         )
     if duplicate_names:
         distribution_blockers.append(
@@ -446,6 +484,7 @@ async def build_business_review(
         ),
         snapshot_generated_at=snapshot.completed_at if snapshot else None,
         executive_scorecard=scorecard,
+        ecosystem={**ecosystem, "source": ecosystem_source},
         community={
             "active_members": current_stats.total_active_members,
             "registered_swimmer_profiles": snapshot.member_count if snapshot else 0,
@@ -454,10 +493,7 @@ async def build_business_review(
             "attendance_records": int(
                 sessions.get("total_attendance_records")
                 if sessions.get("attendance_available")
-                else (
-                    current_stats.total_attendance_records
-                    + int(sessions.get("guest_pass_attendance_records") or 0)
-                )
+                else (current_stats.total_attendance_records)
             ),
             "member_attendance_records": int(
                 sessions.get("member_attendance_records") or 0

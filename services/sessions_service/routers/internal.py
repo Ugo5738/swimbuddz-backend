@@ -171,6 +171,8 @@ class SessionSummaryBatchRequest(BaseModel):
 
 
 class SessionListSummary(BaseModel):
+    ends_at: Optional[str] = None
+    status: Optional[str] = None
     id: str
     title: str
     session_type: str
@@ -563,13 +565,18 @@ async def get_session_range_stats(
     """
     from collections import Counter
 
+    from libs.common.reporting import reporting_window
+
+    date_from, date_to = reporting_window(date_from, date_to)
+
     result = await db.execute(
         select(Session).where(
             Session.starts_at >= date_from,
-            Session.starts_at <= date_to,
+            Session.starts_at < date_to,
             Session.status.in_(
                 [
                     SessionStatus.SCHEDULED,
+                    SessionStatus.IN_PROGRESS,
                     SessionStatus.COMPLETED,
                 ]
             ),
@@ -604,16 +611,24 @@ async def get_session_detailed_stats(
     """
     from collections import Counter
     from datetime import datetime as _dt
+    from libs.common.reporting import reporting_window
 
     # Parse date strings flexibly
     parsed_from = _dt.fromisoformat(date_from.replace("Z", "+00:00"))
     parsed_to = _dt.fromisoformat(date_to.replace("Z", "+00:00"))
+    parsed_from, parsed_to = reporting_window(parsed_from, parsed_to)
 
     result = await db.execute(
         select(Session).where(
             Session.starts_at >= parsed_from,
-            Session.starts_at <= parsed_to,
-            Session.status.in_([SessionStatus.SCHEDULED, SessionStatus.COMPLETED]),
+            Session.starts_at < parsed_to,
+            Session.status.in_(
+                [
+                    SessionStatus.SCHEDULED,
+                    SessionStatus.IN_PROGRESS,
+                    SessionStatus.COMPLETED,
+                ]
+            ),
         )
     )
     sessions = result.scalars().all()
@@ -631,7 +646,7 @@ async def get_session_detailed_stats(
             .join(Session, Session.id == GuestPass.session_id)
             .where(
                 Session.starts_at >= parsed_from,
-                Session.starts_at <= parsed_to,
+                Session.starts_at < parsed_to,
                 GuestPass.status == "attended",
             )
         )
@@ -794,6 +809,9 @@ async def get_session_detailed_stats(
                 if hasattr(session.session_type, "value")
                 else str(session.session_type),
                 "capacity": session.capacity,
+                "pool_id": str(session.pool_id) if session.pool_id else None,
+                "status": session.status.value,
+                "member_ids": attendance.get("member_ids") or [],
                 "attendance": actual_attendance,
                 "member_attendance": member_count,
                 "guest_attendance": (
@@ -963,6 +981,8 @@ async def get_session_summaries_batch(
             title=session.title,
             session_type=session.session_type.value,
             starts_at=session.starts_at.isoformat(),
+            ends_at=session.ends_at.isoformat(),
+            status=session.status.value,
             location_name=session.location_name,
             location=session.location.value if session.location else None,
             club_id=(

@@ -34,6 +34,7 @@ class MemberQuarterlyReportResponse(BaseModel):
     streak_current: int
     favorite_day: Optional[str] = None
     favorite_location: Optional[str] = None
+    activity_details: Optional[dict] = None
 
     # Academy
     milestones_achieved: int
@@ -143,6 +144,7 @@ class CommunityQuarterlyStatsResponse(BaseModel):
     total_cohorts_completed: int = 0
     stats_by_type: Optional[dict] = None
     community_milestones: Optional[list] = None
+    ecosystem_stats: Optional[dict] = None
     computed_at: datetime
 
     model_config = {"from_attributes": True}

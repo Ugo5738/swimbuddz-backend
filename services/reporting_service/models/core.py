@@ -90,6 +90,8 @@ class MemberQuarterlyReport(Base):
     streak_current: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     favorite_day: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     favorite_location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Nullable on legacy snapshots: absence means not collected, never zero.
+    activity_details: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # ── Academy stats ──
     milestones_achieved: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -219,6 +221,7 @@ class CommunityQuarterlyStats(Base):
 
     stats_by_type: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     community_milestones: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    ecosystem_stats: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
