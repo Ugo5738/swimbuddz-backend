@@ -761,12 +761,15 @@ async def get_academy_quarter_summary_internal(
     Completion uses issued certificates as the time-bounded graduation signal
     and dropped_at for time-bounded exits; Enrollment has no graduated_at field.
     """
+    from libs.common.reporting import reporting_window
+
+    date_from, date_to = reporting_window(date_from, date_to)
     cohorts = (
         (
             await db.execute(
                 select(Cohort)
                 .where(
-                    Cohort.start_date <= date_to,
+                    Cohort.start_date < date_to,
                     Cohort.end_date >= date_from,
                 )
                 .options(selectinload(Cohort.enrollments))
@@ -836,7 +839,7 @@ async def get_academy_quarter_summary_internal(
                         Enrollment.paid_at,
                         Enrollment.created_at,
                     )
-                    <= date_to,
+                    < date_to,
                 )
             )
         ).scalar_one()
@@ -847,7 +850,7 @@ async def get_academy_quarter_summary_internal(
             await db.execute(
                 select(func.count(Enrollment.id)).where(
                     Enrollment.certificate_issued_at >= date_from,
-                    Enrollment.certificate_issued_at <= date_to,
+                    Enrollment.certificate_issued_at < date_to,
                 )
             )
         ).scalar_one()
@@ -858,7 +861,7 @@ async def get_academy_quarter_summary_internal(
             await db.execute(
                 select(func.count(Enrollment.id)).where(
                     Enrollment.dropped_at >= date_from,
-                    Enrollment.dropped_at <= date_to,
+                    Enrollment.dropped_at < date_to,
                 )
             )
         ).scalar_one()
@@ -870,7 +873,7 @@ async def get_academy_quarter_summary_internal(
             await db.execute(
                 select(func.count(StudentProgress.id)).where(
                     StudentProgress.updated_at >= date_from,
-                    StudentProgress.updated_at <= date_to,
+                    StudentProgress.updated_at < date_to,
                 )
             )
         ).scalar_one()
@@ -884,8 +887,8 @@ async def get_academy_quarter_summary_internal(
 
     return AcademyQuarterSummary(
         cohorts_in_window=len(cohorts),
-        cohorts_started=sum(1 for c in cohorts if date_from <= c.start_date <= date_to),
-        cohorts_ended=sum(1 for c in cohorts if date_from <= c.end_date <= date_to),
+        cohorts_started=sum(1 for c in cohorts if date_from <= c.start_date < date_to),
+        cohorts_ended=sum(1 for c in cohorts if date_from <= c.end_date < date_to),
         total_capacity=total_capacity,
         active_enrollments=status_counts["active"],
         pending_approvals=status_counts["pending_approval"],

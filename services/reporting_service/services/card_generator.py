@@ -267,22 +267,23 @@ def _text_height(draw, text: str, font) -> int:
 
 
 def _pick_fun_fact(report: "MemberQuarterlyReport") -> str:
-    """Choose a contextual fun fact based on member activity.
+    """Use verifiable participation rather than inferred distance or traffic."""
+    details = getattr(report, "activity_details", None) or {}
+    all_swims = (details.get("attendance") or {}).get("all_sessions_attended")
+    if all_swims:
+        return f"{all_swims} recorded swims this quarter"
+    if getattr(report, "total_sessions_attended", 0):
+        return f"{report.total_sessions_attended} recorded programme swims"
+    return "Your quarter, one contribution at a time"
 
-    Priority:
-    1. High percentile (>= 50th) → competitive nudge with actual %
-    2. High pool hours (>= 20) → Lagos traffic comparison
-    3. Default → fish status
-    """
-    pool_hours = getattr(report, "pool_hours", 0.0)
-    percentile = getattr(report, "attendance_percentile", 0.0)
 
-    if percentile >= 0.5:
-        pct_beat = int(percentile * 100)
-        return f"Showed up more than {pct_beat}% of swimmers"
-    if pool_hours >= 20:
-        return "More pool time than Lagos traffic"
-    return "On your way to fish status"
+def _reward_bubbles(report) -> int:
+    wallet = (getattr(report, "activity_details", None) or {}).get("wallet") or {}
+    return (
+        int((wallet.get("metrics") or {}).get("reward_bubbles") or 0)
+        if wallet.get("available")
+        else 0
+    )
 
 
 def _format_hours(hours: float) -> str:
@@ -314,9 +315,9 @@ def _pick_community_primary_stat(report: "MemberQuarterlyReport") -> tuple[str, 
     if volunteer_hours > 0:
         return (_format_hours(volunteer_hours), "Volunteered")
 
-    bubbles = int(getattr(report, "bubbles_earned", 0) or 0)
+    bubbles = _reward_bubbles(report)
     if bubbles > 0:
-        return (str(bubbles), "Bubbles")
+        return (str(bubbles), "Reward Bubbles")
 
     for attr, label in [
         ("events_attended", "Events"),
@@ -346,8 +347,8 @@ def _pick_third_stat(
         return (str(report.milestones_achieved), "Milestones")
     if "Volunteered" not in excluded_labels and report.volunteer_hours > 0:
         return (_format_hours(report.volunteer_hours), "Volunteered")
-    if "Bubbles" not in excluded_labels and report.bubbles_earned > 0:
-        return (str(report.bubbles_earned), "Bubbles")
+    if "Reward Bubbles" not in excluded_labels and _reward_bubbles(report) > 0:
+        return (str(_reward_bubbles(report)), "Reward Bubbles")
 
     for val, display, label in [
         (report.events_attended, str(report.events_attended), "Events"),
@@ -550,7 +551,7 @@ async def generate_card_image(
     pool_hours = getattr(report, "pool_hours", 0.0)
     if pool_hours > 0:
         hero_val = f"{pool_hours:.0f}" if pool_hours >= 10 else f"{pool_hours:.1f}"
-        hero_unit = "pool hours"
+        hero_unit = "estimated pool hours"
     else:
         hero_val = str(report.total_sessions_attended)
         hero_unit = (
@@ -589,7 +590,12 @@ async def generate_card_image(
     badge_parts = []
     if is_first:
         badge_parts.append("NEW SWIMMER")
-    if percentile >= 0.5:
+    details = getattr(report, "activity_details", None) or {}
+    if (
+        percentile >= 0.5
+        and details.get("percentile_basis")
+        == "active_swimmers_in_primary_programme_strictly_fewer_sessions"
+    ):
         top_pct = max(1, int((1 - percentile) * 100))
         badge_parts.append(f"Top {top_pct}%")
 

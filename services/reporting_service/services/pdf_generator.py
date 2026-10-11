@@ -98,7 +98,7 @@ async def generate_pdf_report(report: "MemberQuarterlyReport") -> bytes:
     elements.append(
         Paragraph(
             f"<b>{report.member_name}</b> &nbsp;|&nbsp; "
-            f"Tier: {report.member_tier or 'Community'} &nbsp;|&nbsp; "
+            f"Programme: {report.member_tier or 'Community'} &nbsp;|&nbsp; "
             f"Generated: {report.computed_at.strftime('%B %d, %Y')}",
             body_style,
         )
@@ -108,10 +108,20 @@ async def generate_pdf_report(report: "MemberQuarterlyReport") -> bytes:
     # ── Summary Stats Table ──
     elements.append(Paragraph("Performance Summary", section_style))
 
+    programme = str(report.member_tier or "community").title()
+    activity = getattr(report, "activity_details", None) or {}
+    attendance_details = activity.get("attendance") or {}
     summary_data = [
         ["Metric", "Value"],
-        ["Sessions Attended", str(report.total_sessions_attended)],
-        ["Sessions Available", str(report.total_sessions_available)],
+        [
+            "All Recorded Swims",
+            str(attendance_details.get("all_sessions_attended"))
+            if attendance_details.get("all_sessions_attended") is not None
+            else "Not collected",
+        ],
+        ["Scheduled Swimmer Hours", f"{report.pool_hours:g}h"],
+        [f"{programme} Sessions Attended", str(report.total_sessions_attended)],
+        [f"{programme} Sessions Available", str(report.total_sessions_available)],
         ["Attendance Rate", _fmt_pct(report.attendance_rate)],
         ["Punctuality Rate", _fmt_pct(report.punctuality_rate)],
         ["Longest Streak", f"{report.streak_longest} weeks"],
@@ -187,8 +197,25 @@ async def generate_pdf_report(report: "MemberQuarterlyReport") -> bytes:
         # ["Total Spent", _fmt_ngn(report.total_spent_ngn)],  # hidden for now
         ["Store Purchases", _fmt_ngn(report.store_spent_ngn)],
         ["Orders Placed", str(report.orders_placed)],
-        ["Bubbles Earned", str(report.bubbles_earned)],
-        ["Bubbles Spent", str(report.bubbles_spent)],
+        [
+            "Reward Bubbles",
+            str(
+                (
+                    (getattr(report, "activity_details", None) or {})
+                    .get("wallet", {})
+                    .get("metrics", {})
+                    .get("reward_bubbles")
+                )
+            )
+            if (
+                (getattr(report, "activity_details", None) or {})
+                .get("wallet", {})
+                .get("available")
+            )
+            else "Not collected",
+        ],
+        ["Wallet Credits (all sources)", str(report.bubbles_earned)],
+        ["Wallet Debits (all purposes)", str(report.bubbles_spent)],
     ]
     fin_table = Table(fin_data, colWidths=[8 * cm, 8 * cm])
     fin_table.setStyle(

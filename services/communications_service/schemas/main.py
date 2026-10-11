@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
@@ -160,6 +160,7 @@ class ContentPostBase(BaseModel):
     category: str  # swimming_tips/safety/education/beyond_the_pool/etc.
     featured_image_media_id: Optional[uuid.UUID] = None
     video_url: Optional[str] = Field(None, max_length=500)
+    episode_air_date: Optional[date] = None
     episode_number: Optional[int] = Field(None, ge=1)
     guest_names: Optional[str] = Field(None, max_length=500)
     featured_image_prompt: Optional[str] = Field(None, max_length=1200)
@@ -196,6 +197,7 @@ class ContentPostUpdate(BaseModel):
     body: Optional[str] = None
     category: Optional[str] = None
     video_url: Optional[str] = Field(None, max_length=500)
+    episode_air_date: Optional[date] = None
     episode_number: Optional[int] = Field(None, ge=1)
     guest_names: Optional[str] = Field(None, max_length=500)
     featured_image_media_id: Optional[uuid.UUID] = None

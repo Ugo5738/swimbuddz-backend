@@ -1,9 +1,10 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -192,6 +193,7 @@ class ContentPost(Base):
     )  # FK to media_service.media_items
     # Public editorial series metadata; stored alongside existing content posts.
     video_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    episode_air_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     episode_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     guest_names: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     featured_image_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

@@ -81,9 +81,22 @@ def test_card_stats_uses_community_metric_instead_of_attendance_for_community_me
     report.milestones_achieved = 0
     report.programs_enrolled = 0
     report.volunteer_hours = 2.5
-    report.bubbles_earned = 30
+    report.bubbles_earned = 230
+    report.activity_details = {
+        "wallet": {"available": True, "metrics": {"reward_bubbles": 30}}
+    }
 
     stats = card_generator._card_stats(report)
 
     assert stats[0] == ("2.5h", "Volunteered")
-    assert ("30", "Bubbles") in stats
+    assert ("30", "Reward Bubbles") in stats
+    assert all(value != "230" for value, _ in stats)
+
+
+def test_legacy_wallet_credits_are_not_presented_as_rewards():
+    report = _report()
+    report.bubbles_earned = 420
+    report.milestones_achieved = 0
+    report.volunteer_hours = 0
+    assert ("420", "Bubbles") not in card_generator._card_stats(report)
+    assert card_generator._reward_bubbles(report) == 0

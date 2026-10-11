@@ -140,7 +140,7 @@ async def run_quarterly_snapshot():
             # Mark as completed
             snapshot.status = ReportStatus.COMPLETED
             snapshot.member_count = count
-            snapshot.semantics_version = 2
+            snapshot.semantics_version = 3
             snapshot.completed_at = utc_now()
             await db.commit()
 

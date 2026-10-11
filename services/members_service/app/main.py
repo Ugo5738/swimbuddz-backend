@@ -98,6 +98,11 @@ def create_app() -> FastAPI:
     # eats requests to `/internal/members/pods*` as `member_id="pods"`,
     # which then 422s on UUID validation.
     app.include_router(internal_pods_router)
+    from services.members_service.routers.quarterly_metrics import (
+        router as quarterly_metrics_router,
+    )
+
+    app.include_router(quarterly_metrics_router)
     app.include_router(internal_router)
 
     return app

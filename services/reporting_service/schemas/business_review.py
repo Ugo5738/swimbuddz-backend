@@ -44,6 +44,7 @@ class BusinessReviewResponse(BaseModel):
     finance: BusinessReviewFinance
     locations: list[dict[str, Any]]
     session_mix: dict[str, int]
+    ecosystem: dict[str, Any] = Field(default_factory=dict)
     data_quality: list[str] = Field(default_factory=list)
     member_distribution_ready: bool = False
     member_distribution_blockers: list[str] = Field(default_factory=list)

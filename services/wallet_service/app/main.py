@@ -54,6 +54,11 @@ def create_app() -> FastAPI:
     app.include_router(rewards_admin_router)
 
     # Internal service-to-service routes (not proxied by gateway)
+    from services.wallet_service.routers.quarterly_metrics import (
+        router as quarterly_metrics_router,
+    )
+
+    app.include_router(quarterly_metrics_router)
     app.include_router(internal_router)
     app.include_router(rewards_internal_router)
 

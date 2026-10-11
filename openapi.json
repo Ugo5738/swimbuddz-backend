@@ -8583,6 +8583,80 @@
         }
       }
     },
+    "/api/v1/internal/members/reporting-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Reporting Summary",
+        "operationId": "get_reporting_summary_internal_members_reporting_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          },
+          {
+            "name": "member_auth_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportingSection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/members/by-auth/{auth_id}": {
       "get": {
         "tags": [
@@ -13983,6 +14057,64 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/internal/sessions/reporting-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Reporting Summary",
+        "operationId": "get_reporting_summary_internal_sessions_reporting_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportingSection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/internal/sessions/participants/{participant_id}/settlement-context": {
@@ -21077,6 +21209,64 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/academy/reporting-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Reporting Summary",
+        "operationId": "get_reporting_summary_internal_academy_reporting_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportingSection"
+                }
               }
             }
           },
@@ -30625,6 +30815,64 @@
         }
       }
     },
+    "/api/v1/internal/communications/reporting-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Reporting Summary",
+        "operationId": "get_reporting_summary_internal_communications_reporting_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportingSection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/communications/session-published": {
       "post": {
         "tags": [
@@ -35271,6 +35519,80 @@
         }
       }
     },
+    "/api/v1/internal/wallet/reporting-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Reporting Summary",
+        "operationId": "get_reporting_summary_internal_wallet_reporting_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          },
+          {
+            "name": "member_auth_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportingSection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/wallet/referral-code/resolve": {
       "get": {
         "tags": [
@@ -39075,6 +39397,64 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/internal/ai/reporting-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Reporting Summary",
+        "operationId": "get_reporting_summary_internal_ai_reporting_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportingSection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/internal/ai/founding-members/confirm": {
@@ -53205,6 +53585,64 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MediaItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/media/reporting-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Reporting Summary",
+        "operationId": "get_reporting_summary_internal_media_reporting_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportingSection"
                 }
               }
             }
@@ -75507,6 +75945,46 @@
         "title": "RecurringBlockInput",
         "description": "A weekly availability window, sliced into bookable slots downstream."
       },
+      "ReportingSection": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": true
+          },
+          "metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Metrics"
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "ReportingSection"
+      },
       "ResolveAccountRequest": {
         "properties": {
           "bank_code": {
@@ -81816,6 +82294,28 @@
       },
       "SessionListSummary": {
         "properties": {
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
           "id": {
             "type": "string",
             "title": "Id"
@@ -84682,6 +85182,11 @@
           "status": {
             "type": "string",
             "title": "Status"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "default": "swimmer"
           }
         },
         "type": "object",
@@ -85116,6 +85621,19 @@
             "type": "number",
             "title": "Total Pool Hours",
             "default": 0.0
+          },
+          "attendance_available": {
+            "type": "boolean",
+            "title": "Attendance Available",
+            "default": false
+          },
+          "attended_sessions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Attended Sessions"
           }
         },
         "type": "object",
@@ -85249,6 +85767,14 @@
             },
             "type": "array",
             "title": "Participant Ids"
+          },
+          "member_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Member Ids"
           }
         },
         "type": "object",
@@ -97921,6 +98447,18 @@
             ],
             "title": "Video Url"
           },
+          "episode_air_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Air Date"
+          },
           "episode_number": {
             "anyOf": [
               {
@@ -98047,6 +98585,18 @@
               }
             ],
             "title": "Video Url"
+          },
+          "episode_air_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Air Date"
           },
           "episode_number": {
             "anyOf": [
@@ -98367,6 +98917,18 @@
               }
             ],
             "title": "Video Url"
+          },
+          "episode_air_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Air Date"
           },
           "episode_number": {
             "anyOf": [
@@ -100033,6 +100595,11 @@
             "type": "object",
             "title": "Session Mix"
           },
+          "ecosystem": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Ecosystem"
+          },
           "data_quality": {
             "items": {
               "type": "string"
@@ -100318,6 +100885,18 @@
               }
             ],
             "title": "Community Milestones"
+          },
+          "ecosystem_stats": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ecosystem Stats"
           },
           "computed_at": {
             "type": "string",
@@ -101007,6 +101586,18 @@
               }
             ],
             "title": "Favorite Location"
+          },
+          "activity_details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity Details"
           },
           "milestones_achieved": {
             "type": "integer",
