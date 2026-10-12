@@ -169,6 +169,32 @@ class MediaVaultGrant(Base):
     vault = relationship("MediaVault", back_populates="grants")
 
 
+class MediaItemMemberShare(Base):
+    """Revocable, explicit member access to one cleared session video."""
+
+    __tablename__ = "media_vault_member_shares"
+    __table_args__ = (
+        UniqueConstraint("media_item_id", "member_id", name="uq_vault_media_member_share"),
+        Index("ix_vault_media_shares_member_active", "member_id", "revoked_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    media_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
 class MediaVaultGuestLink(Base):
     """Hashed capability link for a short-lived external contributor."""
 
