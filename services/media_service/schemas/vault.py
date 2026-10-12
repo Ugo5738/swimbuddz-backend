@@ -242,6 +242,21 @@ class MultipartInitiateRequest(BaseModel):
     captured_at: Optional[datetime] = None
     client_fingerprint: Optional[str] = Field(default=None, max_length=128)
     checksum_sha256: Optional[str] = Field(default=None, min_length=64, max_length=64)
+    labels: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("labels")
+    @classmethod
+    def normalize_labels(cls, values: list[str]) -> list[str]:
+        labels = []
+        seen = set()
+        for raw in values:
+            label = raw.strip()
+            if not label or len(label) > 40:
+                raise ValueError("Labels must be between 1 and 40 characters")
+            if label.casefold() not in seen:
+                labels.append(label)
+                seen.add(label.casefold())
+        return labels
 
 
 class MultipartInitiateResponse(BaseModel):
