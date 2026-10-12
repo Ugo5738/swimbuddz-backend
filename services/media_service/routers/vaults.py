@@ -45,6 +45,8 @@ from services.media_service.models import (
 from services.media_service.schemas import (
     BandwidthSummary,
     BulkReviewRequest,
+    BulkVaultGrantCreate,
+    BulkVaultGrantResponse,
     DownloadAuthorizationResponse,
     ExportCreate,
     ExportResponse,
@@ -886,7 +888,10 @@ DEFAULT_VAULT_TAGS = [
     "Water confidence",
     "Progress",
     "Member stories",
+    "Academy",
+    "Club",
     "Community",
+    "Event",
 ]
 
 
@@ -1044,6 +1049,82 @@ async def create_vault(
             await db.rollback()
             vault = await get_vault_or_404(db, vault.id)
     return await _vault_response(db, vault, actor)
+
+
+@router.post("/grants/bulk", response_model=BulkVaultGrantResponse)
+async def bulk_grant_vault_access(
+    payload: BulkVaultGrantCreate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Grant access to one member across multiple existing vaults atomically.
+
+    This does not create a future-vault wildcard grant. Existing grants of
+    the same role are renewed; their original source is preserved.
+    """
+    actor = await resolve_actor(current_user)
+    query = select(MediaVault).where(
+        MediaVault.deleted_at.is_(None),
+        MediaVault.status != "archived",
+    )
+    if payload.scope == "selected":
+        query = query.where(MediaVault.id.in_(payload.vault_ids))
+    vaults = list((await db.scalars(query.order_by(MediaVault.capture_date))).all())
+    if payload.scope == "selected" and len(vaults) != len(payload.vault_ids):
+        raise HTTPException(status_code=422, detail="A selected vault is unavailable or archived")
+    if not vaults:
+        raise HTTPException(status_code=422, detail="There are no eligible vaults")
+    existing_rows = await db.scalars(
+        select(MediaVaultGrant).where(
+            MediaVaultGrant.vault_id.in_([vault.id for vault in vaults]),
+            MediaVaultGrant.member_id == payload.member_id,
+            MediaVaultGrant.role == payload.role,
+        )
+    )
+    existing = {grant.vault_id: grant for grant in existing_rows}
+    for vault in vaults:
+        starts_at, expires_at = payload.starts_at, payload.expires_at
+        if payload.role == "contributor":
+            starts_at, expires_at = ensure_contributor_window(
+                vault, starts_at=starts_at, expires_at=expires_at
+            )
+        grant = existing.get(vault.id)
+        if grant is None:
+            db.add(
+                MediaVaultGrant(
+                    vault_id=vault.id,
+                    member_id=payload.member_id,
+                    role=payload.role,
+                    starts_at=starts_at,
+                    expires_at=expires_at,
+                    can_download_originals=payload.can_download_originals,
+                    source="bulk_manual",
+                    created_by=actor.auth_id,
+                )
+            )
+        else:
+            grant.starts_at = starts_at
+            grant.expires_at = expires_at
+            grant.can_download_originals = payload.can_download_originals
+            grant.revoked_at = None
+    await write_audit(
+        db,
+        action="media.vault.grants.bulk",
+        actor=current_user,
+        entity_type="media_vault",
+        entity_id=payload.member_id,
+        new_value={
+            "member_id": str(payload.member_id),
+            "vault_ids": [str(v.id) for v in vaults],
+            "scope": payload.scope,
+            "role": payload.role,
+            "expires_at": payload.expires_at.isoformat(),
+        },
+    )
+    await db.commit()
+    return BulkVaultGrantResponse(
+        granted_count=len(vaults), vault_ids=[vault.id for vault in vaults]
+    )
 
 
 @router.get("/{vault_id}", response_model=VaultResponse)
