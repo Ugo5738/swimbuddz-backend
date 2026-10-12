@@ -121,6 +121,37 @@ class VaultGrantCreate(BaseModel):
         return self
 
 
+class BulkVaultGrantCreate(BaseModel):
+    """Grant one member access to selected vaults or all existing vaults."""
+
+    member_id: uuid.UUID
+    role: Literal["contributor", "curator"]
+    scope: Literal["selected", "all_current"]
+    vault_ids: list[uuid.UUID] = Field(default_factory=list, max_length=1000)
+    starts_at: datetime
+    expires_at: datetime
+    can_download_originals: bool = False
+
+    @model_validator(mode="after")
+    def validate_bulk_grant(self):
+        if self.expires_at <= self.starts_at:
+            raise ValueError("expires_at must be after starts_at")
+        if self.scope == "selected" and not self.vault_ids:
+            raise ValueError("Select at least one vault")
+        if self.scope == "all_current" and self.vault_ids:
+            raise ValueError("Do not supply vault_ids when selecting all current vaults")
+        if len(self.vault_ids) != len(set(self.vault_ids)):
+            raise ValueError("Duplicate vault IDs are not allowed")
+        if self.role == "curator":
+            self.can_download_originals = True
+        return self
+
+
+class BulkVaultGrantResponse(BaseModel):
+    granted_count: int
+    vault_ids: list[uuid.UUID]
+
+
 class VaultGrantResponse(BaseModel):
     id: uuid.UUID
     vault_id: uuid.UUID
