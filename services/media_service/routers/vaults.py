@@ -1787,11 +1787,13 @@ async def share_vault_videos_with_members(
                     share.revoked_at = None
                     changed += 1
             else:
-                db.add(MediaItemMemberShare(
-                    media_item_id=item.id,
-                    member_id=member_id,
-                    created_by=uuid.UUID(str(current_user.user_id)),
-                ))
+                db.add(
+                    MediaItemMemberShare(
+                        media_item_id=item.id,
+                        member_id=member_id,
+                        created_by=uuid.UUID(str(current_user.user_id)),
+                    )
+                )
                 changed += 1
     await write_audit(
         db,
