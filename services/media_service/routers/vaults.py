@@ -1795,6 +1795,16 @@ async def share_vault_videos_with_members(
                     )
                 )
                 changed += 1
+    preview_jobs: list[uuid.UUID] = []
+    if payload.action == "grant":
+        for item in items:
+            if item.proxy_object_key:
+                continue
+            metadata = dict(item.metadata_info or {})
+            if metadata.get("proxy_status") not in {"pending", "processing"}:
+                metadata["proxy_status"] = "pending"
+                item.metadata_info = metadata
+                preview_jobs.append(item.id)
     await write_audit(
         db,
         action=f"media.vault.member_share.{payload.action}",
@@ -1808,6 +1818,21 @@ async def share_vault_videos_with_members(
         },
     )
     await db.commit()
+    # Video derivatives are prepared in the existing worker. Member sharing
+    # never changes the original or publishes it, and a queue outage should
+    # not roll back a successfully saved access grant.
+    for media_item_id in preview_jobs:
+        try:
+            pool = await _get_redis_pool()
+            await pool.enqueue_job(
+                "task_build_vault_preview",
+                str(media_item_id),
+                True,
+                False,
+                _queue_name="arq:media",
+            )
+        except Exception:
+            logger.exception("Could not queue shared member video %s", media_item_id)
     return MemberVideoShareResponse(affected_count=changed)
 
 
