@@ -174,7 +174,9 @@ class MediaItemMemberShare(Base):
 
     __tablename__ = "media_vault_member_shares"
     __table_args__ = (
-        UniqueConstraint("media_item_id", "member_id", name="uq_vault_media_member_share"),
+        UniqueConstraint(
+            "media_item_id", "member_id", name="uq_vault_media_member_share"
+        ),
         Index("ix_vault_media_shares_member_active", "member_id", "revoked_at"),
     )
 
@@ -187,7 +189,9 @@ class MediaItemMemberShare(Base):
         nullable=False,
         index=True,
     )
-    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
