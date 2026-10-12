@@ -139,7 +139,9 @@ class BulkVaultGrantCreate(BaseModel):
         if self.scope == "selected" and not self.vault_ids:
             raise ValueError("Select at least one vault")
         if self.scope == "all_current" and self.vault_ids:
-            raise ValueError("Do not supply vault_ids when selecting all current vaults")
+            raise ValueError(
+                "Do not supply vault_ids when selecting all current vaults"
+            )
         if len(self.vault_ids) != len(set(self.vault_ids)):
             raise ValueError("Duplicate vault IDs are not allowed")
         if self.role == "curator":
