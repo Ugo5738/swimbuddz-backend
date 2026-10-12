@@ -1085,11 +1085,17 @@ async def my_session_videos(
         .where(*conditions)
     )
     results = await db.execute(
-        select(MediaItem, MediaVault.title, MediaVault.capture_date, MediaVault.session_id)
+        select(
+            MediaItem, MediaVault.title, MediaVault.capture_date, MediaVault.session_id
+        )
         .join(MediaItemMemberShare, MediaItemMemberShare.media_item_id == MediaItem.id)
         .join(MediaVault, MediaVault.id == MediaItem.vault_id)
         .where(*conditions)
-        .order_by(desc(MediaVault.capture_date), desc(MediaItem.created_at), desc(MediaItem.id))
+        .order_by(
+            desc(MediaVault.capture_date),
+            desc(MediaItem.created_at),
+            desc(MediaItem.id),
+        )
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -1179,7 +1185,9 @@ async def bulk_grant_vault_access(
         query = query.where(MediaVault.id.in_(payload.vault_ids))
     vaults = list((await db.scalars(query.order_by(MediaVault.capture_date))).all())
     if payload.scope == "selected" and len(vaults) != len(payload.vault_ids):
-        raise HTTPException(status_code=422, detail="A selected vault is unavailable or archived")
+        raise HTTPException(
+            status_code=422, detail="A selected vault is unavailable or archived"
+        )
     if not vaults:
         raise HTTPException(status_code=422, detail="There are no eligible vaults")
     existing_rows = await db.scalars(
@@ -1742,7 +1750,9 @@ async def share_vault_videos_with_members(
     )
     items = list(rows.all())
     if len(items) != len(ids):
-        raise HTTPException(status_code=404, detail="One or more media items were not found")
+        raise HTTPException(
+            status_code=404, detail="One or more media items were not found"
+        )
     if payload.action == "grant" and any(
         item.media_type != MediaType.VIDEO
         or item.processing_status != "ready"
@@ -1752,7 +1762,9 @@ async def share_vault_videos_with_members(
     ):
         raise HTTPException(
             status_code=422,
-            detail="Only approved, consent-cleared, ready videos may be shared with members",
+            detail=(
+                "Only approved, consent-cleared, ready videos may be shared with members"
+            ),
         )
     existing_rows = await db.scalars(
         select(MediaItemMemberShare).where(
