@@ -531,6 +531,7 @@ async def _initiate_upload(
         processing_status="uploading",
         review_status="unreviewed",
         consent_status="unreviewed",
+        vault_labels=payload.labels,
         duplicate_of_id=duplicate_id,
         is_processed=True,
         metadata_info={"original_preserved": True, "auto_transcoded": False},
