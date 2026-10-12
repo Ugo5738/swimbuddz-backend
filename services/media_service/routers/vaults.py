@@ -205,6 +205,54 @@ async def _vault_response(
     )
 
 
+async def _vault_list_responses(
+    db: AsyncSession, vaults: list[MediaVault], actor: VaultActor
+) -> list[VaultResponse]:
+    """Fetch list counters and effective roles in batches, not two queries per vault."""
+    if not vaults:
+        return []
+    ids = [vault.id for vault in vaults]
+    rows = await db.execute(
+        select(
+            MediaItem.vault_id,
+            func.count(MediaItem.id),
+            func.count(case((MediaItem.review_status == "unreviewed", MediaItem.id))),
+        )
+        .where(
+            MediaItem.vault_id.in_(ids),
+            MediaItem.soft_deleted_at.is_(None),
+            MediaItem.processing_status == "ready",
+        )
+        .group_by(MediaItem.vault_id)
+    )
+    counts = {vault_id: (int(total), int(pending)) for vault_id, total, pending in rows}
+    roles: dict[uuid.UUID, str] = {}
+    if not actor.is_admin and actor.member_id:
+        now = utc_now()
+        rows = await db.execute(
+            select(MediaVaultGrant.vault_id, MediaVaultGrant.role).where(
+                MediaVaultGrant.vault_id.in_(ids),
+                MediaVaultGrant.member_id == actor.member_id,
+                MediaVaultGrant.revoked_at.is_(None),
+                MediaVaultGrant.starts_at <= now,
+                MediaVaultGrant.expires_at >= now,
+            )
+        )
+        for vault_id, role in rows:
+            if ROLE_RANK.get(role, 0) > ROLE_RANK.get(roles.get(vault_id), 0):
+                roles[vault_id] = role
+    return [
+        VaultResponse.model_validate(vault).model_copy(
+            update={
+                "effective_role": "admin" if actor.is_admin else roles.get(vault.id),
+                "item_count": counts.get(vault.id, (0, 0))[0],
+                "pending_review_count": counts.get(vault.id, (0, 0))[1],
+            }
+        )
+        for vault in vaults
+    ]
+
+
 async def _media_response(item: MediaItem) -> VaultMediaResponse:
     """Attach short-lived URLs only for small, explicitly-built derivatives."""
     response = VaultMediaResponse.model_validate(item)
@@ -873,7 +921,7 @@ async def list_vaults(
     )
     vaults = list(result.scalars().all())
     return VaultListResponse(
-        items=[await _vault_response(db, vault, actor) for vault in vaults],
+        items=await _vault_list_responses(db, vaults, actor),
         total=len(vaults),
     )
 
