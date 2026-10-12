@@ -327,6 +327,32 @@ class VaultMediaListResponse(BaseModel):
     page_size: int
 
 
+class MemberVideoShareRequest(BaseModel):
+    """Only administrators can give or revoke a member's personal media access."""
+
+    media_item_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    member_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    action: Literal["grant", "revoke"] = "grant"
+
+
+class MemberVideoShareResponse(BaseModel):
+    affected_count: int
+
+
+class MemberVideoItem(BaseModel):
+    media: VaultMediaResponse
+    vault_title: str
+    capture_date: date
+    session_id: Optional[uuid.UUID]
+
+
+class MemberVideosResponse(BaseModel):
+    items: list[MemberVideoItem]
+    total: int
+    page: int
+    page_size: int
+
+
 class ReviewUpdate(BaseModel):
     review_status: Optional[ReviewStatus] = None
     consent_status: Optional[ConsentStatus] = None
