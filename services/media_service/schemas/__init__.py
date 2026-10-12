@@ -37,6 +37,8 @@ from services.media_service.schemas.main import (
 from services.media_service.schemas.vault import (
     BandwidthSummary,
     BulkReviewRequest,
+    BulkVaultGrantCreate,
+    BulkVaultGrantResponse,
     DownloadAuthorizationResponse,
     ExportCreate,
     ExportResponse,
