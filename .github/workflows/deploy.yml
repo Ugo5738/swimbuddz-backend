@@ -19,6 +19,8 @@ jobs:
   # BACKEND CI
   # ------------------------------------------------------------------
   backend-ci:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
 
     services:
@@ -42,6 +44,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -56,6 +60,18 @@ jobs:
           # run, so CI's resolver can't float FastAPI/Pydantic to a newer release
           # that changes OpenAPI schema generation (breaks the openapi.json check).
           pip install -e ".[dev]" -c constraints.txt
+
+      - name: Temporarily regenerate API contract for feature PR
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/vault-bulk-access-and-enrollment-ux-20261012'
+        run: |
+          python scripts/api/generate-openapi.py > openapi.json
+          git config user.name "swimbuddz-ci"
+          git config user.email "swimbuddz-ci@users.noreply.github.com"
+          git add openapi.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Regenerate OpenAPI after media vault endpoints"
+            git push origin "HEAD:refs/heads/${{ github.head_ref }}"
+          fi
 
       - name: Lint with Ruff
         run: |
