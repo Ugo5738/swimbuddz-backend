@@ -18898,6 +18898,108 @@
         }
       }
     },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}/deletion-preview": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Deletion Preview",
+        "operationId": "deletion_preview_academy_admin_enrollments__enrollment_id__deletion_preview_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}/delete-empty": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Delete Empty Enrollment",
+        "operationId": "delete_empty_enrollment_academy_admin_enrollments__enrollment_id__delete_empty_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmDelete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/my-enrollments": {
       "get": {
         "tags": [
@@ -89377,6 +89479,33 @@
         ],
         "title": "ComplexityScoreCalculation",
         "description": "Preview of complexity score calculation without saving."
+      },
+      "ConfirmDelete": {
+        "properties": {
+          "preview_token": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Preview Token"
+          },
+          "confirmation": {
+            "type": "string",
+            "title": "Confirmation"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 20,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "preview_token",
+          "confirmation",
+          "reason"
+        ],
+        "title": "ConfirmDelete"
       },
       "CurriculumLessonCreate": {
         "properties": {
