@@ -65,8 +65,17 @@ async def inspect(db: AsyncSession, enrollment: Enrollment):
         blockers.append("settled_or_modified_installments")
     # Never use Academy-only local state to assume absence of money.
     financial = await financial_state(eid)
-    if financial.get("has_payment_activity") or financial.get("references") or financial.get("attempts"):
-        blockers.append("payment_attempts_exist")
+    attempts = financial.get("attempts") or []
+    # A fully documented provider/bank closure is not a tuition receipt.
+    # Preserve failed Payment attempts in Payments and an audit snapshot here;
+    # do not delete those attempts or change their financial history.
+    closed_unpaid = bool(attempts) and bool(financial.get("all_unpaid_closed")) and all(
+        item.get("status") == "failed" and item.get("closed_unpaid")
+        and not item.get("proof_submitted") and not item.get("entitlement_applied")
+        for item in attempts
+    )
+    if (financial.get("has_payment_activity") or financial.get("references") or attempts) and not closed_unpaid:
+        blockers.append("unclosed_payment_attempts")
     if financial.get("verified_paid_tuition_kobo") or financial.get("blocked_references"):
         blockers.append("financial_history_or_unresolved_checkout")
     return checks, sorted(set(blockers)), financial
@@ -85,6 +94,7 @@ def snapshot(enrollment, checks, blockers, financial):
         "dependency_counts": checks,
         "blockers": blockers,
         "payment_attempt_count": len(financial.get("attempts") or []),
+        "payment_attempts_preserved": financial.get("attempts") or [],
         "created_at": enrollment.created_at.isoformat() if enrollment.created_at else None,
         "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None,
     }
