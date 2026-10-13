@@ -13,11 +13,12 @@ from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.academy_service.models import (
-    AcademyCommercialAdjustment, AcademyEnrollmentChange,
+    AcademyEnrollmentChange,
     AcademyEnrollmentDeletionAudit, AcademyFinancialCredit,
     AcademyTransferRefundObligation, Enrollment, EnrollmentStatus,
     InstallmentStatus, MilestoneEvidence, StudentProgress,
 )
+from services.academy_service.models.commercial_adjustment import AcademyCommercialAdjustment
 from .change_cohort import financial_state
 
 router = APIRouter()
