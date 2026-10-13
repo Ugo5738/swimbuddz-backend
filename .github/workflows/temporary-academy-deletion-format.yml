@@ -1,4 +1,5 @@
 name: Temporary Academy Deletion Formatter
+# Re-run after restoring the audit ORM module.
 on:
   push:
     branches: [codex/academy-safe-enrollment-deletion-20261011]
