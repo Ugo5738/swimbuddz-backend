@@ -86,6 +86,8 @@ async def inspect(db: AsyncSession, enrollment: Enrollment):
         EnrollmentStatus.DROPPED,
     }:
         blockers.append("active_or_historical_status")
+    if enrollment.payment_status != PaymentStatus.PENDING:
+        blockers.append("enrollment_payment_state")
     if (
         enrollment.payment_reference
         or enrollment.paid_at
