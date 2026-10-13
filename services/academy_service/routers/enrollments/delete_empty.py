@@ -41,15 +41,19 @@ class ConfirmDelete(BaseModel):
 
 async def inspect(db: AsyncSession, enrollment: Enrollment):
     eid = enrollment.id
+    change_rows = (
+        (await db.execute(select(AcademyEnrollmentChange).where(
+            (AcademyEnrollmentChange.from_enrollment_id == eid)
+            | (AcademyEnrollmentChange.to_enrollment_id == eid)
+        ))).scalars().all()
+    )
+    discardable_changes = [
+        change for change in change_rows
+        if change.state == "needs_review"
+        and change.from_enrollment_id == eid and change.to_enrollment_id is None
+    ]
     checks = {
-        "cohort_transfers": await db.scalar(
-            select(func.count())
-            .select_from(AcademyEnrollmentChange)
-            .where(
-                (AcademyEnrollmentChange.from_enrollment_id == eid)
-                | (AcademyEnrollmentChange.to_enrollment_id == eid)
-            )
-        ),
+        "cohort_transfers": len(change_rows) - len(discardable_changes),
         "financial_credits": await db.scalar(
             select(func.count())
             .select_from(AcademyFinancialCredit)
@@ -129,10 +133,10 @@ async def inspect(db: AsyncSession, enrollment: Enrollment):
         "blocked_references"
     ):
         blockers.append("financial_history_or_unresolved_checkout")
-    return checks, sorted(set(blockers)), financial
+    return checks, sorted(set(blockers)), financial, discardable_changes
 
 
-def snapshot(enrollment, checks, blockers, financial):
+def snapshot(enrollment, checks, blockers, financial, discardable_changes):
     return {
         "enrollment_id": str(enrollment.id),
         "member_id": str(enrollment.member_id),
@@ -143,6 +147,12 @@ def snapshot(enrollment, checks, blockers, financial):
         "payment_status": enrollment.payment_status.value,
         "installment_count": len(enrollment.installments),
         "dependency_counts": checks,
+        "discardable_unapproved_change_requests": [
+            {"id": str(change.id), "state": change.state,
+             "target_cohort_id": str(change.target_cohort_id),
+             "snapshot": change.snapshot}
+            for change in discardable_changes
+        ],
         "blockers": blockers,
         "payment_attempt_count": len(financial.get("attempts") or []),
         "payment_attempts_preserved": financial.get("attempts") or [],
@@ -175,8 +185,8 @@ async def deletion_preview(
     enrollment = await load(db, enrollment_id)
     if not enrollment:
         raise HTTPException(404, "Enrollment not found")
-    checks, blockers, financial = await inspect(db, enrollment)
-    data = snapshot(enrollment, checks, blockers, financial)
+    checks, blockers, financial, discardable_changes = await inspect(db, enrollment)
+    data = snapshot(enrollment, checks, blockers, financial, discardable_changes)
     token = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
     return {
         "eligible": not blockers,
@@ -199,8 +209,8 @@ async def delete_empty_enrollment(
         raise HTTPException(404, "Enrollment not found")
     if body.confirmation != str(enrollment_id):
         raise HTTPException(422, "Type the exact enrollment ID to confirm deletion")
-    checks, blockers, financial = await inspect(db, enrollment)
-    data = snapshot(enrollment, checks, blockers, financial)
+    checks, blockers, financial, discardable_changes = await inspect(db, enrollment)
+    data = snapshot(enrollment, checks, blockers, financial, discardable_changes)
     token = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
     if token != body.preview_token:
         raise HTTPException(409, "Enrollment changed; refresh the deletion preview")
@@ -222,6 +232,8 @@ async def delete_empty_enrollment(
             snapshot=data,
         )
     )
+    for change in discardable_changes:
+        await db.delete(change)
     await db.delete(enrollment)
     await db.commit()
     return {
