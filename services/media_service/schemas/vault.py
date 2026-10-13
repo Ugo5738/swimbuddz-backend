@@ -121,6 +121,39 @@ class VaultGrantCreate(BaseModel):
         return self
 
 
+class BulkVaultGrantCreate(BaseModel):
+    """Grant one member access to selected vaults or all existing vaults."""
+
+    member_id: uuid.UUID
+    role: Literal["contributor", "curator"]
+    scope: Literal["selected", "all_current"]
+    vault_ids: list[uuid.UUID] = Field(default_factory=list, max_length=1000)
+    starts_at: datetime
+    expires_at: datetime
+    can_download_originals: bool = False
+
+    @model_validator(mode="after")
+    def validate_bulk_grant(self):
+        if self.expires_at <= self.starts_at:
+            raise ValueError("expires_at must be after starts_at")
+        if self.scope == "selected" and not self.vault_ids:
+            raise ValueError("Select at least one vault")
+        if self.scope == "all_current" and self.vault_ids:
+            raise ValueError(
+                "Do not supply vault_ids when selecting all current vaults"
+            )
+        if len(self.vault_ids) != len(set(self.vault_ids)):
+            raise ValueError("Duplicate vault IDs are not allowed")
+        if self.role == "curator":
+            self.can_download_originals = True
+        return self
+
+
+class BulkVaultGrantResponse(BaseModel):
+    granted_count: int
+    vault_ids: list[uuid.UUID]
+
+
 class VaultGrantResponse(BaseModel):
     id: uuid.UUID
     vault_id: uuid.UUID
@@ -211,6 +244,21 @@ class MultipartInitiateRequest(BaseModel):
     captured_at: Optional[datetime] = None
     client_fingerprint: Optional[str] = Field(default=None, max_length=128)
     checksum_sha256: Optional[str] = Field(default=None, min_length=64, max_length=64)
+    labels: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("labels")
+    @classmethod
+    def normalize_labels(cls, values: list[str]) -> list[str]:
+        labels = []
+        seen = set()
+        for raw in values:
+            label = raw.strip()
+            if not label or len(label) > 40:
+                raise ValueError("Labels must be between 1 and 40 characters")
+            if label.casefold() not in seen:
+                labels.append(label)
+                seen.add(label.casefold())
+        return labels
 
 
 class MultipartInitiateResponse(BaseModel):
@@ -276,6 +324,32 @@ class VaultMediaResponse(BaseModel):
 
 class VaultMediaListResponse(BaseModel):
     items: list[VaultMediaResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class MemberVideoShareRequest(BaseModel):
+    """Only administrators can give or revoke a member's personal media access."""
+
+    media_item_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    member_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    action: Literal["grant", "revoke"] = "grant"
+
+
+class MemberVideoShareResponse(BaseModel):
+    affected_count: int
+
+
+class MemberVideoItem(BaseModel):
+    media: VaultMediaResponse
+    vault_title: str
+    capture_date: date
+    session_id: Optional[uuid.UUID]
+
+
+class MemberVideosResponse(BaseModel):
+    items: list[MemberVideoItem]
     total: int
     page: int
     page_size: int

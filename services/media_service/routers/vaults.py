@@ -33,6 +33,7 @@ from services.media_service.models import (
     MediaAccessLogEvent,
     MediaAccessLogObject,
     MediaItem,
+    MediaItemMemberShare,
     MediaTakedownRequest,
     MediaTransferLog,
     MediaType,
@@ -45,6 +46,8 @@ from services.media_service.models import (
 from services.media_service.schemas import (
     BandwidthSummary,
     BulkReviewRequest,
+    BulkVaultGrantCreate,
+    BulkVaultGrantResponse,
     DownloadAuthorizationResponse,
     ExportCreate,
     ExportResponse,
@@ -56,6 +59,10 @@ from services.media_service.schemas import (
     MultipartInitiateResponse,
     MultipartSignPartsRequest,
     MultipartSignPartsResponse,
+    MemberVideoShareRequest,
+    MemberVideoShareResponse,
+    MemberVideoItem,
+    MemberVideosResponse,
     PublishRequest,
     ReviewUpdate,
     TakedownCreate,
@@ -201,6 +208,54 @@ async def _vault_response(
             "pending_review_count": int(pending_count or 0),
         }
     )
+
+
+async def _vault_list_responses(
+    db: AsyncSession, vaults: list[MediaVault], actor: VaultActor
+) -> list[VaultResponse]:
+    """Fetch list counters and effective roles in batches, not two queries per vault."""
+    if not vaults:
+        return []
+    ids = [vault.id for vault in vaults]
+    rows = await db.execute(
+        select(
+            MediaItem.vault_id,
+            func.count(MediaItem.id),
+            func.count(case((MediaItem.review_status == "unreviewed", MediaItem.id))),
+        )
+        .where(
+            MediaItem.vault_id.in_(ids),
+            MediaItem.soft_deleted_at.is_(None),
+            MediaItem.processing_status == "ready",
+        )
+        .group_by(MediaItem.vault_id)
+    )
+    counts = {vault_id: (int(total), int(pending)) for vault_id, total, pending in rows}
+    roles: dict[uuid.UUID, str] = {}
+    if not actor.is_admin and actor.member_id:
+        now = utc_now()
+        rows = await db.execute(
+            select(MediaVaultGrant.vault_id, MediaVaultGrant.role).where(
+                MediaVaultGrant.vault_id.in_(ids),
+                MediaVaultGrant.member_id == actor.member_id,
+                MediaVaultGrant.revoked_at.is_(None),
+                MediaVaultGrant.starts_at <= now,
+                MediaVaultGrant.expires_at >= now,
+            )
+        )
+        for vault_id, role in rows:
+            if ROLE_RANK.get(role, 0) > ROLE_RANK.get(roles.get(vault_id), 0):
+                roles[vault_id] = role
+    return [
+        VaultResponse.model_validate(vault).model_copy(
+            update={
+                "effective_role": "admin" if actor.is_admin else roles.get(vault.id),
+                "item_count": counts.get(vault.id, (0, 0))[0],
+                "pending_review_count": counts.get(vault.id, (0, 0))[1],
+            }
+        )
+        for vault in vaults
+    ]
 
 
 async def _media_response(item: MediaItem) -> VaultMediaResponse:
@@ -481,6 +536,7 @@ async def _initiate_upload(
         processing_status="uploading",
         review_status="unreviewed",
         consent_status="unreviewed",
+        vault_labels=payload.labels,
         duplicate_of_id=duplicate_id,
         is_processed=True,
         metadata_info={"original_preserved": True, "auto_transcoded": False},
@@ -871,7 +927,7 @@ async def list_vaults(
     )
     vaults = list(result.scalars().all())
     return VaultListResponse(
-        items=[await _vault_response(db, vault, actor) for vault in vaults],
+        items=await _vault_list_responses(db, vaults, actor),
         total=len(vaults),
     )
 
@@ -886,7 +942,10 @@ DEFAULT_VAULT_TAGS = [
     "Water confidence",
     "Progress",
     "Member stories",
+    "Academy",
+    "Club",
     "Community",
+    "Event",
 ]
 
 
@@ -996,6 +1055,66 @@ async def list_media_tags(
     return sorted(set(DEFAULT_VAULT_TAGS) | set(rows.scalars()), key=str.casefold)
 
 
+@router.get("/my-videos", response_model=MemberVideosResponse)
+async def my_session_videos(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=24, ge=1, le=60),
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Personal videos expressly shared with a member after consent clearance."""
+    actor = await resolve_actor(current_user)
+    if not actor.member_id:
+        return MemberVideosResponse(items=[], total=0, page=page, page_size=page_size)
+
+    conditions = [
+        MediaItemMemberShare.member_id == actor.member_id,
+        MediaItemMemberShare.revoked_at.is_(None),
+        MediaItem.soft_deleted_at.is_(None),
+        MediaItem.processing_status == "ready",
+        MediaItem.media_type == MediaType.VIDEO,
+        MediaItem.consent_status == "cleared",
+        MediaItem.review_status.in_(["approved", "published"]),
+        MediaVault.deleted_at.is_(None),
+        MediaVault.status != "archived",
+    ]
+    total = await db.scalar(
+        select(func.count(MediaItem.id))
+        .join(MediaItemMemberShare, MediaItemMemberShare.media_item_id == MediaItem.id)
+        .join(MediaVault, MediaVault.id == MediaItem.vault_id)
+        .where(*conditions)
+    )
+    results = await db.execute(
+        select(
+            MediaItem, MediaVault.title, MediaVault.capture_date, MediaVault.session_id
+        )
+        .join(MediaItemMemberShare, MediaItemMemberShare.media_item_id == MediaItem.id)
+        .join(MediaVault, MediaVault.id == MediaItem.vault_id)
+        .where(*conditions)
+        .order_by(
+            desc(MediaVault.capture_date),
+            desc(MediaItem.created_at),
+            desc(MediaItem.id),
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return MemberVideosResponse(
+        items=[
+            MemberVideoItem(
+                media=await _media_response(item),
+                vault_title=title,
+                capture_date=capture_date,
+                session_id=session_id,
+            )
+            for item, title, capture_date, session_id in results
+        ],
+        total=int(total or 0),
+        page=page,
+        page_size=page_size,
+    )
+
+
 @router.post("", response_model=VaultResponse, status_code=201)
 async def create_vault(
     payload: VaultCreate,
@@ -1044,6 +1163,84 @@ async def create_vault(
             await db.rollback()
             vault = await get_vault_or_404(db, vault.id)
     return await _vault_response(db, vault, actor)
+
+
+@router.post("/grants/bulk", response_model=BulkVaultGrantResponse)
+async def bulk_grant_vault_access(
+    payload: BulkVaultGrantCreate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Grant access to one member across multiple existing vaults atomically.
+
+    This does not create a future-vault wildcard grant. Existing grants of
+    the same role are renewed; their original source is preserved.
+    """
+    actor = await resolve_actor(current_user)
+    query = select(MediaVault).where(
+        MediaVault.deleted_at.is_(None),
+        MediaVault.status != "archived",
+    )
+    if payload.scope == "selected":
+        query = query.where(MediaVault.id.in_(payload.vault_ids))
+    vaults = list((await db.scalars(query.order_by(MediaVault.capture_date))).all())
+    if payload.scope == "selected" and len(vaults) != len(payload.vault_ids):
+        raise HTTPException(
+            status_code=422, detail="A selected vault is unavailable or archived"
+        )
+    if not vaults:
+        raise HTTPException(status_code=422, detail="There are no eligible vaults")
+    existing_rows = await db.scalars(
+        select(MediaVaultGrant).where(
+            MediaVaultGrant.vault_id.in_([vault.id for vault in vaults]),
+            MediaVaultGrant.member_id == payload.member_id,
+            MediaVaultGrant.role == payload.role,
+        )
+    )
+    existing = {grant.vault_id: grant for grant in existing_rows}
+    for vault in vaults:
+        starts_at, expires_at = payload.starts_at, payload.expires_at
+        if payload.role == "contributor":
+            starts_at, expires_at = ensure_contributor_window(
+                vault, starts_at=starts_at, expires_at=expires_at
+            )
+        grant = existing.get(vault.id)
+        if grant is None:
+            db.add(
+                MediaVaultGrant(
+                    vault_id=vault.id,
+                    member_id=payload.member_id,
+                    role=payload.role,
+                    starts_at=starts_at,
+                    expires_at=expires_at,
+                    can_download_originals=payload.can_download_originals,
+                    source="bulk_manual",
+                    created_by=actor.auth_id,
+                )
+            )
+        else:
+            grant.starts_at = starts_at
+            grant.expires_at = expires_at
+            grant.can_download_originals = payload.can_download_originals
+            grant.revoked_at = None
+    await write_audit(
+        db,
+        action="media.vault.grants.bulk",
+        actor=current_user,
+        entity_type="media_vault",
+        entity_id=payload.member_id,
+        new_value={
+            "member_id": str(payload.member_id),
+            "vault_ids": [str(v.id) for v in vaults],
+            "scope": payload.scope,
+            "role": payload.role,
+            "expires_at": payload.expires_at.isoformat(),
+        },
+    )
+    await db.commit()
+    return BulkVaultGrantResponse(
+        granted_count=len(vaults), vault_ids=[vault.id for vault in vaults]
+    )
 
 
 @router.get("/{vault_id}", response_model=VaultResponse)
@@ -1531,6 +1728,112 @@ async def list_vault_items(
         page=page,
         page_size=page_size,
     )
+
+
+@router.post("/{vault_id}/items/shares", response_model=MemberVideoShareResponse)
+async def share_vault_videos_with_members(
+    vault_id: uuid.UUID,
+    payload: MemberVideoShareRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Explicit sharing; attendance by itself is never permission to see recordings."""
+    await get_vault_or_404(db, vault_id)
+    ids = list(set(payload.media_item_ids))
+    member_ids = list(set(payload.member_ids))
+    rows = await db.scalars(
+        select(MediaItem).where(
+            MediaItem.vault_id == vault_id,
+            MediaItem.id.in_(ids),
+            MediaItem.soft_deleted_at.is_(None),
+        )
+    )
+    items = list(rows.all())
+    if len(items) != len(ids):
+        raise HTTPException(
+            status_code=404, detail="One or more media items were not found"
+        )
+    if payload.action == "grant" and any(
+        item.media_type != MediaType.VIDEO
+        or item.processing_status != "ready"
+        or item.review_status not in {"approved", "published"}
+        or item.consent_status != "cleared"
+        for item in items
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Only approved, consent-cleared, ready videos may be shared with members"
+            ),
+        )
+    existing_rows = await db.scalars(
+        select(MediaItemMemberShare).where(
+            MediaItemMemberShare.media_item_id.in_(ids),
+            MediaItemMemberShare.member_id.in_(member_ids),
+        )
+    )
+    existing = {(row.media_item_id, row.member_id): row for row in existing_rows}
+    now = utc_now()
+    changed = 0
+    for item in items:
+        for member_id in member_ids:
+            share = existing.get((item.id, member_id))
+            if payload.action == "revoke":
+                if share and share.revoked_at is None:
+                    share.revoked_at = now
+                    changed += 1
+            elif share:
+                if share.revoked_at is not None:
+                    share.revoked_at = None
+                    changed += 1
+            else:
+                db.add(
+                    MediaItemMemberShare(
+                        media_item_id=item.id,
+                        member_id=member_id,
+                        created_by=uuid.UUID(str(current_user.user_id)),
+                    )
+                )
+                changed += 1
+    preview_jobs: list[uuid.UUID] = []
+    if payload.action == "grant":
+        for item in items:
+            if item.proxy_object_key:
+                continue
+            metadata = dict(item.metadata_info or {})
+            if metadata.get("proxy_status") not in {"pending", "processing"}:
+                metadata["proxy_status"] = "pending"
+                item.metadata_info = metadata
+                preview_jobs.append(item.id)
+    await write_audit(
+        db,
+        action=f"media.vault.member_share.{payload.action}",
+        actor=current_user,
+        entity_id=vault_id,
+        entity_type="media_vault",
+        new_value={
+            "media_item_ids": [str(x) for x in ids],
+            "member_ids": [str(x) for x in member_ids],
+            "changed": changed,
+        },
+    )
+    await db.commit()
+    # Video derivatives are prepared in the existing worker. Member sharing
+    # never changes the original or publishes it, and a queue outage should
+    # not roll back a successfully saved access grant.
+    for media_item_id in preview_jobs:
+        try:
+            pool = await _get_redis_pool()
+            await pool.enqueue_job(
+                "task_build_vault_preview",
+                str(media_item_id),
+                True,
+                False,
+                _queue_name="arq:media",
+            )
+        except Exception:
+            logger.exception("Could not queue shared member video %s", media_item_id)
+    return MemberVideoShareResponse(affected_count=changed)
 
 
 @router.patch("/{vault_id}/items/{item_id}", response_model=VaultMediaResponse)

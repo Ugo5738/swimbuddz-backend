@@ -54788,6 +54788,115 @@
         ]
       }
     },
+    "/api/v1/media/vaults/my-videos": {
+      "get": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "My Session Videos",
+        "description": "Personal videos expressly shared with a member after consent clearance.",
+        "operationId": "my_session_videos_media_vaults_my_videos_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 60,
+              "minimum": 1,
+              "default": 24,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberVideosResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/grants/bulk": {
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Bulk Grant Vault Access",
+        "description": "Grant access to one member across multiple existing vaults atomically.\n\nThis does not create a future-vault wildcard grant. Existing grants of\nthe same role are renewed; their original source is preserved.",
+        "operationId": "bulk_grant_vault_access_media_vaults_grants_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkVaultGrantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkVaultGrantResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/media/vaults/{vault_id}": {
       "get": {
         "tags": [
@@ -55923,6 +56032,65 @@
                     "$ref": "#/components/schemas/VaultMediaResponse"
                   },
                   "title": "Response Bulk Review Items Media Vaults  Vault Id  Items Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/{vault_id}/items/shares": {
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Share Vault Videos With Members",
+        "description": "Explicit sharing; attendance by itself is never permission to see recordings.",
+        "operationId": "share_vault_videos_with_members_media_vaults__vault_id__items_shares_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vault_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vault Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberVideoShareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberVideoShareResponse"
                 }
               }
             }
@@ -128818,6 +128986,87 @@
         ],
         "title": "BulkReviewRequest"
       },
+      "BulkVaultGrantCreate": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "contributor",
+              "curator"
+            ],
+            "title": "Role"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "selected",
+              "all_current"
+            ],
+            "title": "Scope"
+          },
+          "vault_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Vault Ids"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "can_download_originals": {
+            "type": "boolean",
+            "title": "Can Download Originals",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "role",
+          "scope",
+          "starts_at",
+          "expires_at"
+        ],
+        "title": "BulkVaultGrantCreate",
+        "description": "Grant one member access to selected vaults or all existing vaults."
+      },
+      "BulkVaultGrantResponse": {
+        "properties": {
+          "granted_count": {
+            "type": "integer",
+            "title": "Granted Count"
+          },
+          "vault_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Vault Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "granted_count",
+          "vault_ids"
+        ],
+        "title": "BulkVaultGrantResponse"
+      },
       "CompletedPart": {
         "properties": {
           "part_number": {
@@ -129705,6 +129954,126 @@
         "title": "MediaTagResponse",
         "description": "Media tag response schema."
       },
+      "MemberVideoItem": {
+        "properties": {
+          "media": {
+            "$ref": "#/components/schemas/VaultMediaResponse"
+          },
+          "vault_title": {
+            "type": "string",
+            "title": "Vault Title"
+          },
+          "capture_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Capture Date"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "media",
+          "vault_title",
+          "capture_date",
+          "session_id"
+        ],
+        "title": "MemberVideoItem"
+      },
+      "MemberVideoShareRequest": {
+        "properties": {
+          "media_item_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Media Item Ids"
+          },
+          "member_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Member Ids"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "grant",
+              "revoke"
+            ],
+            "title": "Action",
+            "default": "grant"
+          }
+        },
+        "type": "object",
+        "required": [
+          "media_item_ids",
+          "member_ids"
+        ],
+        "title": "MemberVideoShareRequest",
+        "description": "Only administrators can give or revoke a member's personal media access."
+      },
+      "MemberVideoShareResponse": {
+        "properties": {
+          "affected_count": {
+            "type": "integer",
+            "title": "Affected Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "affected_count"
+        ],
+        "title": "MemberVideoShareResponse"
+      },
+      "MemberVideosResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberVideoItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "MemberVideosResponse"
+      },
       "MultipartCompleteRequest": {
         "properties": {
           "parts": {
@@ -129779,6 +130148,14 @@
               }
             ],
             "title": "Checksum Sha256"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Labels"
           }
         },
         "type": "object",
