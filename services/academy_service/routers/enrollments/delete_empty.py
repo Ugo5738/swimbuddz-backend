@@ -21,6 +21,7 @@ from services.academy_service.models import (
     Enrollment,
     EnrollmentStatus,
     InstallmentStatus,
+    PaymentStatus,
     MilestoneEvidence,
     StudentProgress,
 )
