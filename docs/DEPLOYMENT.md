@@ -601,20 +601,36 @@ docker compose logs service-name
 
 ### Migration Failures
 
-**Reset migrations (CAUTION - data loss):**
+Production migrations preserve existing data. Inspect the failing service's
+migration graph and generate fixes locally; do not reset the production schema.
+
+For `Multiple head revisions are present`, two migration branches need a merge
+revision. For example, the October 2026 Reporting repair merges the content
+acquisition and quarterly activity branches without changing either migration:
 
 ```bash
-# Drop all tables
-docker compose exec db psql -U swimbuddz_user -d swimbuddz -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-
-# Rerun migrations
-docker compose run --rm gateway-service alembic upgrade head
+alembic -c services/reporting_service/alembic.ini heads
+alembic -c services/reporting_service/alembic.ini merge \
+  -m "merge reporting heads" a08e16d7c9fa d4e8f1a6b209
+pytest -v tests/unit/test_migration_graphs.py
 ```
 
-**Create new migration:**
+The merge is already committed as `8cb71fcb8897`; do not generate another for
+those same branches. CI checks all service graphs and applies Reporting
+migrations, including upgrades from either previous head in isolated PostgreSQL
+schemas. Commit future merge revisions with their branch migrations, validate
+them, and deploy the updated gateway image before retrying the standard command:
 
 ```bash
-docker compose run --rm gateway-service alembic revision --autogenerate -m "description"
+docker compose -f docker-compose.prod.yml run --rm --no-deps gateway \
+  ./scripts/db/migrate-prod.sh --all .env.prod
+```
+
+For local verification of the Reporting repair against a disposable database:
+
+```bash
+REPORTING_MIGRATION_TEST_DATABASE_URL=postgresql+psycopg://test:test@localhost:5432/test_db \
+  pytest -v tests/unit/test_reporting_migrations_database.py
 ```
 
 ### High Memory Usage

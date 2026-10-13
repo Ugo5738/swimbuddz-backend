@@ -14,6 +14,7 @@ from services.media_service.models.core import (
     SiteAsset,
 )
 from services.media_service.models.vault import (
+    MediaItemMemberShare,
     MediaAccessLogEvent,
     MediaAccessLogObject,
     MediaTakedownRequest,
@@ -34,6 +35,7 @@ __all__ = [
     "MediaAuditLog",
     "MediaVault",
     "MediaVaultGrant",
+    "MediaItemMemberShare",
     "MediaVaultGuestLink",
     "MediaUploadBatch",
     "MediaVaultExport",
