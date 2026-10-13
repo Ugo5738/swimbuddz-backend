@@ -1,0 +1,33 @@
+name: Temporary Academy Deletion Formatter
+on:
+  push:
+    branches: [codex/academy-safe-enrollment-deletion-20261011]
+    paths: [.github/workflows/temporary-academy-deletion-format.yml]
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+      DATABASE_SESSION_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          pip install -e ".[dev]" -c constraints.txt
+          ruff format services/academy_service/models/__init__.py services/academy_service/models/deletion_audit.py services/academy_service/alembic/versions/a20261013_delete_empty_enrollment_audit.py services/academy_service/routers/enrollments/__init__.py services/academy_service/routers/enrollments/delete_empty.py tests/integration/test_academy_delete_empty.py
+          ruff check services/academy_service/models/__init__.py services/academy_service/models/deletion_audit.py services/academy_service/routers/enrollments/delete_empty.py tests/integration/test_academy_delete_empty.py
+          python scripts/api/generate-openapi.py > openapi.json
+      - run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add services/academy_service/models services/academy_service/alembic/versions/a20261013_delete_empty_enrollment_audit.py services/academy_service/routers/enrollments tests/integration/test_academy_delete_empty.py openapi.json
+            git commit -m "style(academy): format deletion controls and refresh API schema"
+            git push origin HEAD:codex/academy-safe-enrollment-deletion-20261011
+          fi
