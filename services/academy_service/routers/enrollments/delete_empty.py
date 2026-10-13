@@ -42,15 +42,23 @@ class ConfirmDelete(BaseModel):
 async def inspect(db: AsyncSession, enrollment: Enrollment):
     eid = enrollment.id
     change_rows = (
-        (await db.execute(select(AcademyEnrollmentChange).where(
-            (AcademyEnrollmentChange.from_enrollment_id == eid)
-            | (AcademyEnrollmentChange.to_enrollment_id == eid)
-        ))).scalars().all()
+        (
+            await db.execute(
+                select(AcademyEnrollmentChange).where(
+                    (AcademyEnrollmentChange.from_enrollment_id == eid)
+                    | (AcademyEnrollmentChange.to_enrollment_id == eid)
+                )
+            )
+        )
+        .scalars()
+        .all()
     )
     discardable_changes = [
-        change for change in change_rows
+        change
+        for change in change_rows
         if change.state == "needs_review"
-        and change.from_enrollment_id == eid and change.to_enrollment_id is None
+        and change.from_enrollment_id == eid
+        and change.to_enrollment_id is None
     ]
     checks = {
         "cohort_transfers": len(change_rows) - len(discardable_changes),
@@ -148,9 +156,12 @@ def snapshot(enrollment, checks, blockers, financial, discardable_changes):
         "installment_count": len(enrollment.installments),
         "dependency_counts": checks,
         "discardable_unapproved_change_requests": [
-            {"id": str(change.id), "state": change.state,
-             "target_cohort_id": str(change.target_cohort_id),
-             "snapshot": change.snapshot}
+            {
+                "id": str(change.id),
+                "state": change.state,
+                "target_cohort_id": str(change.target_cohort_id),
+                "snapshot": change.snapshot,
+            }
             for change in discardable_changes
         ],
         "blockers": blockers,
