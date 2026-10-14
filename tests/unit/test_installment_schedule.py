@@ -549,3 +549,106 @@ class TestSyncEnrollmentInstallmentState:
         self._sync(enrollment, installments, now=now)
         assert enrollment.status == EnrollmentStatus.DROPPED
         assert enrollment.dropped_at == datetime(2026, 5, 20, tzinfo=timezone.utc)
+
+
+def test_ajibola_grace_and_repayment_restores_academy_access():
+    """A paid September deposit cannot hide an unpaid October obligation."""
+    due_at = datetime(2026, 10, 19, 11, 0, tzinfo=timezone.utc)
+    cutoff = installment_access_cutoff(due_at)
+    assert cutoff == datetime(2026, 11, 1, 23, 0, tzinfo=timezone.utc)
+
+    installments = [
+        FakeInstallment(
+            installment_number=1,
+            amount=10_000_000,
+            status=InstallmentStatus.PAID,
+            due_at=datetime(2026, 9, 27, tzinfo=timezone.utc),
+        ),
+        FakeInstallment(
+            installment_number=2,
+            amount=10_000_000,
+            status=InstallmentStatus.PENDING,
+            due_at=due_at,
+        ),
+    ]
+    enrollment = FakeEnrollment(status=EnrollmentStatus.ENROLLED)
+
+    def sync(now: datetime) -> None:
+        sync_enrollment_installment_state(
+            enrollment=enrollment,
+            installments=installments,
+            duration_weeks=12,
+            cohort_start=datetime(2026, 9, 20, tzinfo=timezone.utc),
+            cohort_requires_approval=False,
+            now=now,
+        )
+
+    before_due = datetime(2026, 10, 14, tzinfo=timezone.utc)
+    sync(before_due)
+    assert enrollment.payment_status == PaymentStatus.PAID
+    assert enrollment.access_suspended is False
+    assert installments[1].status == InstallmentStatus.PENDING
+
+    during_grace = datetime(2026, 10, 25, tzinfo=timezone.utc)
+    assert mark_overdue_installments(installments, now=during_grace) == 0
+    sync(during_grace)
+    assert enrollment.access_suspended is False
+
+    assert mark_overdue_installments(installments, now=cutoff) == 1
+    sync(cutoff)
+    assert installments[1].status == InstallmentStatus.MISSED
+    assert enrollment.payment_status == PaymentStatus.FAILED
+    assert enrollment.access_suspended is True
+
+    modified, overshoot = apply_member_payment_across_installments(
+        amount_kobo=10_000_000,
+        installments=installments,
+        now=cutoff + timedelta(minutes=1),
+        payment_reference="PAY-REPAYMENT",
+    )
+    assert len(modified) == 1
+    assert overshoot == 0
+    sync(cutoff + timedelta(minutes=1))
+    assert enrollment.payment_status == PaymentStatus.PAID
+    assert enrollment.access_suspended is False
+    assert enrollment.missed_installments_count == 0
+
+
+def test_drop_out_review_repays_oldest_miss_before_future_installments():
+    """Partial cure exits dropout review but does not falsely restore access."""
+    now = datetime(2026, 6, 2, tzinfo=timezone.utc)
+    installments = [
+        FakeInstallment(
+            installment_number=n,
+            amount=5_000_000,
+            status=InstallmentStatus.MISSED,
+            due_at=datetime(2026, n + 2, 15, tzinfo=timezone.utc),
+        )
+        for n in (1, 2)
+    ]
+    enrollment = FakeEnrollment(
+        status=EnrollmentStatus.DROPOUT_PENDING,
+        missed_installments_count=2,
+        access_suspended=True,
+    )
+
+    modified, overshoot = apply_member_payment_across_installments(
+        amount_kobo=5_000_000,
+        installments=installments,
+        now=now,
+        payment_reference="PAY-ONE-MISS",
+    )
+    assert len(modified) == 1
+    assert overshoot == 0
+    sync_enrollment_installment_state(
+        enrollment=enrollment,
+        installments=installments,
+        duration_weeks=12,
+        cohort_start=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        cohort_requires_approval=False,
+        admin_dropout_approval=True,
+        now=now,
+    )
+    assert enrollment.status == EnrollmentStatus.ENROLLED
+    assert enrollment.missed_installments_count == 1
+    assert enrollment.access_suspended is True
