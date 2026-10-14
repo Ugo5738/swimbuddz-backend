@@ -65,7 +65,10 @@ async def academy_payment_context(
             for item in installments
         )
     )
-    if enrollment_status not in {"pending_approval", "enrolled"} and not catchup_available:
+    if (
+        enrollment_status not in {"pending_approval", "enrolled"}
+        and not catchup_available
+    ):
         detail = (
             "This Academy enrollment is waitlisted and cannot be paid until "
             "a place becomes available."
