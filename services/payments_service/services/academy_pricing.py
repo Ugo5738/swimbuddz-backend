@@ -49,7 +49,23 @@ async def academy_payment_context(
         )
 
     enrollment_status = str(enrollment.get("status") or "").lower()
-    if enrollment_status not in {"pending_approval", "enrolled"}:
+    program = enrollment.get("program") or {}
+    cohort = enrollment.get("cohort") or {}
+    installments = sorted(
+        enrollment.get("installments") or [],
+        key=lambda item: item.get("installment_number", 0),
+    )
+    # A learner under dropout review must be able to settle existing
+    # obligations. Never create new debt for a closed/waitlisted enrollment.
+    catchup_available = (
+        enrollment_status == "dropout_pending"
+        and any(
+            str(item.get("status") or "").lower() in {"pending", "missed"}
+            and int(item.get("amount") or 0) > 0
+            for item in installments
+        )
+    )
+    if enrollment_status not in {"pending_approval", "enrolled"} and not catchup_available:
         detail = (
             "This Academy enrollment is waitlisted and cannot be paid until "
             "a place becomes available."
@@ -60,13 +76,6 @@ async def academy_payment_context(
             status_code=status.HTTP_409_CONFLICT,
             detail=detail,
         )
-
-    program = enrollment.get("program") or {}
-    cohort = enrollment.get("cohort") or {}
-    installments = sorted(
-        enrollment.get("installments") or [],
-        key=lambda item: item.get("installment_number", 0),
-    )
     next_installment = next(
         (
             item
