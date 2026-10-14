@@ -925,6 +925,13 @@ async def complete_observed_club_assessment(
             or not report.get("swim_video_media_id")
             or not report.get("tread_video_media_id")):
             raise HTTPException(status_code=409, detail="Video submission is not awaiting approval")
+        if body.outcome in {"club_ready", "club_ready_modified"}:
+            required = ("continuous_25m", "float_or_tread", "controlled_breathing", "stop_and_recover")
+            if not all(body.observed_checks.get(key) is True for key in required):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Video approval requires observed swimming, treading, breathing and recovery checks",
+                )
         report["video_review_status"] = "reviewed"
         report["first_session_check_required"] = body.outcome in {"club_ready", "club_ready_modified"}
         assessment.self_report = report
