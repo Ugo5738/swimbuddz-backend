@@ -32,9 +32,7 @@ async def test_video_submission_is_held_for_assessor_and_media_verified(monkeypa
         member_id=member.id,
         status="assessment_pending",
     )
-    assessment = SimpleNamespace(
-        self_report={"can_swim_25m_continuously": True}
-    )
+    assessment = SimpleNamespace(self_report={"can_swim_25m_continuously": True})
     db = SimpleNamespace(
         get=AsyncMock(return_value=application),
         scalar=AsyncMock(return_value=assessment),
@@ -44,9 +42,7 @@ async def test_video_submission_is_held_for_assessor_and_media_verified(monkeypa
     video_verify = AsyncMock()
     monkeypatch.setattr(clubs, "_member_for_user", AsyncMock(return_value=member))
     monkeypatch.setattr(clubs, "_verify_club_video", video_verify)
-    monkeypatch.setattr(
-        clubs, "_application_out", AsyncMock(return_value=application)
-    )
+    monkeypatch.setattr(clubs, "_application_out", AsyncMock(return_value=application))
     body = make_video_submission()
 
     result = await clubs.submit_club_video_assessment(
@@ -111,9 +107,7 @@ async def test_video_approval_requires_observed_skill_checks(monkeypatch):
     db = SimpleNamespace(
         get=AsyncMock(return_value=application),
         execute=AsyncMock(
-            return_value=SimpleNamespace(
-                scalar_one_or_none=lambda: assessment
-            )
+            return_value=SimpleNamespace(scalar_one_or_none=lambda: assessment)
         ),
         commit=AsyncMock(),
     )
@@ -159,9 +153,7 @@ async def test_first_session_check_tracks_failed_verification(monkeypatch):
         commit=AsyncMock(),
         refresh=AsyncMock(),
     )
-    monkeypatch.setattr(
-        clubs, "_application_out", AsyncMock(return_value=application)
-    )
+    monkeypatch.setattr(clubs, "_application_out", AsyncMock(return_value=application))
 
     await clubs.verify_club_first_session(
         application.id,
