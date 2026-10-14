@@ -109,6 +109,46 @@ A prepaid future quarter is shown as upcoming and does not
 grant access before its start. Renewal dates follow continuous coverage, so a
 later prepaid quarter does not hide an intervening gap.
 
+## Video-based Club readiness assessment
+
+Club applicants can choose between an **in-person** 10–15 minute pool assessment
+and a **private, coach-reviewed video assessment** after completing the same safety
+pre-assessment and location/quarter application.
+
+- For video review, upload two distinct videos via the media service's
+  `club_assessment_video` purpose: a continuous, uncut 25-metre swim and a
+  30-second tread without touching the wall or floor. Previous recordings are
+  acceptable if they show the full task clearly. Record safely under pool
+  supervision. The applicant confirms the footage is authentic.
+- Each upload is stored in the **private S3 bucket**, linked to the applicant's
+  Club application ID and verified by media-service for uploader ownership,
+  video MIME/type, purpose and application binding. Members-service stores only
+  opaque media IDs in the existing `ClubReadinessAssessment.self_report`;
+  the Club application cannot be automatically approved by uploading.
+- Only an administrator can save the observed outcome, and a video Club-ready
+  approval requires positive checks for 25 m, 30-second floating/treading,
+  breathing and recovery. Checkout remains inaccessible until the existing
+  approval path completes.
+- The reviewer may request replacement videos (with feedback) or require a
+  separate in-pool assessment. Video review feedback is saved and emailed.
+  An in-person requirement cannot be overridden by another video upload.
+- Club-ready approvals based on video record
+  `first_session_check_required=true`. During the first in-person Club
+  practice, staff must verify swimming and water safety live; Admin records
+  the observation and marks passed or needs follow-up.
+- **Do not post assessment footage in a public media vault or gallery.**
+  Operational access is the applicant and authorised reviewers only.
+
+New endpoints are owned by Members-service:
+`PUT /clubs/applications/{id}/assessment-method`,
+`POST /clubs/applications/{id}/video-assessment`,
+`PUT /clubs/admin/applications/{id}/video-feedback` and
+`PUT /clubs/admin/applications/{id}/first-session-verification`.
+Video ownership verification is owned by Media-service
+(`GET /internal/media/club-assessments/{id}/verify`).
+The existing Club readiness result email, payment quote, enrolment and pod
+assignment flows are reused, not duplicated.
+
 ## Club payment arrangements
 
 `quarterly_prepaid` is the standard Club product. A settled application creates
