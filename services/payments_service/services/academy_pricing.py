@@ -57,13 +57,10 @@ async def academy_payment_context(
     )
     # A learner under dropout review must be able to settle existing
     # obligations. Never create new debt for a closed/waitlisted enrollment.
-    catchup_available = (
-        enrollment_status == "dropout_pending"
-        and any(
-            str(item.get("status") or "").lower() in {"pending", "missed"}
-            and int(item.get("amount") or 0) > 0
-            for item in installments
-        )
+    catchup_available = enrollment_status == "dropout_pending" and any(
+        str(item.get("status") or "").lower() in {"pending", "missed"}
+        and int(item.get("amount") or 0) > 0
+        for item in installments
     )
     if (
         enrollment_status not in {"pending_approval", "enrolled"}
