@@ -283,3 +283,28 @@ async def test_learner_cannot_pay_another_members_remaining_installments(monkeyp
             enrollment_id=uuid4(), member_auth_id="wrong-member", use_installments=True,
         )
     assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["paid", "failed", "pending"])
+async def test_frozen_fully_settled_schedule_never_rebills_even_with_stale_payment_status(
+    monkeypatch, status
+):
+    enrollment = _enrollment_payload(
+        payment_status=status, installments=[
+            {"id": str(uuid4()), "installment_number": 1, "status": "paid", "amount": 5_000_000},
+            {"id": str(uuid4()), "installment_number": 2, "status": "waived", "amount": 10_000_000},
+        ],
+    )
+    client = _AsyncClientContext(_Response(enrollment))
+    monkeypatch.setattr(academy_pricing.httpx, "AsyncClient", lambda **_: client)
+    monkeypatch.setattr(
+        academy_pricing, "get_member_by_auth_id",
+        AsyncMock(return_value={"id": enrollment["member_id"], "membership": {}}),
+    )
+    with pytest.raises(HTTPException) as exc:
+        await academy_pricing.academy_payment_context(
+            enrollment_id=uuid4(), member_auth_id="member", use_installments=True,
+        )
+    assert exc.value.status_code == 400
+    assert "already settled" in exc.value.detail
