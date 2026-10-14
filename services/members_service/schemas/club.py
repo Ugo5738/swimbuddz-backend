@@ -201,7 +201,7 @@ class ClubObservedAssessmentUpdate(BaseModel):
     assessment_method: Literal["in_person", "video"] = "in_person"
     approved_payment_modes: list[
         Literal["quarterly_prepaid", "transition_per_session"]
-    ] = Field(default_factory=lambda: ["quarterly_prepaid"], min_length=1, max_length=2)
+    ] = Field(default_factory=lambda: ["quarterly_prepaid"], min_length=0, max_length=2)
     transition_expires_at: Optional[date] = None
 
     @model_validator(mode="after")
@@ -209,6 +209,8 @@ class ClubObservedAssessmentUpdate(BaseModel):
         self.approved_payment_modes = list(dict.fromkeys(self.approved_payment_modes))
         if self.outcome == "academy_first":
             return self
+        if not self.approved_payment_modes:
+            raise ValueError("Approve at least one Club payment arrangement")
         if "transition_per_session" in self.approved_payment_modes:
             if (
                 self.transition_expires_at is not None
