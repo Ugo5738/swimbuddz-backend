@@ -1,4 +1,5 @@
 """Contract tests for private video-based Club readiness."""
+
 import uuid
 
 import pytest
@@ -31,18 +32,18 @@ def test_video_submission_requires_authentic_safe_distinct_clips():
         {"recorded_in_supervised_pool": False},
         {"authentic_uncut_footage": False},
     ]:
+        payload = valid.model_dump()
+        payload.update(overrides)
         with pytest.raises(ValidationError):
-            ClubVideoAssessmentSubmit.model_validate({
-                **valid.model_dump(),
-                **overrides,
-            })
+            ClubVideoAssessmentSubmit.model_validate(payload)
 
 
 @pytest.mark.parametrize("decision", ["request_another_video", "in_person_required"])
 def test_review_feedback_requires_reason(decision):
     with pytest.raises(ValidationError):
         ClubVideoAssessmentFeedback(decision=decision, notes="No")
-    assert ClubVideoAssessmentFeedback(decision=decision, notes="Please try again").decision == decision
+    result = ClubVideoAssessmentFeedback(decision=decision, notes="Please try again")
+    assert result.decision == decision
 
 
 def test_first_session_check_requires_observation():
