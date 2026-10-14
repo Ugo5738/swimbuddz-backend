@@ -92,3 +92,41 @@ async def send_club_assessment_result_email(
         ),
     )
     return await send_email(to_email, title, body, html_body)
+
+
+async def send_club_video_feedback_email(
+    to_email: str,
+    member_name: str,
+    application_id: str,
+    decision: str,
+    notes: str,
+) -> bool:
+    """Help applicants resume a video review without exposing private footage."""
+    base_url = get_settings().FRONTEND_URL.rstrip("/")
+    link = f"{base_url}/upgrade/club/assessment/{application_id}"
+    if decision == "request_another_video":
+        title = "Your SwimBuddz Club videos need another look"
+        message = "Please submit clearer video evidence so we can complete your Club readiness assessment."
+        action = "Upload replacement videos"
+    elif decision == "in_person_required":
+        title = "Your SwimBuddz Club assessment: next steps"
+        message = "We need to assess your swimming in person before you can join Club."
+        action = "View assessment details"
+    else:
+        raise ValueError("Unknown Club video feedback decision")
+    body = (
+        f"Hi {member_name},\n\n{message}\n\n"
+        f"Coach feedback: {notes}\n\n{action}: {link}\n\nThe SwimBuddz Team"
+    )
+    html_body = wrap_html(
+        title=escape(title),
+        preheader=escape(message),
+        body_html=(
+            f"<p>Hi {escape(member_name)},</p>"
+            f"<p>{escape(message)}</p>"
+            + detail_box({"Coach feedback": escape(notes)})
+            + cta_button(action, escape(link, quote=True))
+            + sign_off()
+        ),
+    )
+    return await send_email(to_email, title, body, html_body)
