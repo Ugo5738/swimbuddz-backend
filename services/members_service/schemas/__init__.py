@@ -57,6 +57,7 @@ from services.members_service.schemas.club import (  # noqa: F401
     ClubBase,
     ClubCreate,
     ClubObservedAssessmentUpdate,
+    ClubAssessmentMethodChoice,
     ClubVideoAssessmentSubmit,
     ClubVideoAssessmentFeedback,
     ClubFirstSessionVerification,
