@@ -271,7 +271,9 @@ async def test_dropout_pending_can_pay_existing_missed_installments(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("status", ["waitlist", "dropped", "graduated", "dropout_pending"])
+@pytest.mark.parametrize(
+    "status", ["waitlist", "dropped", "graduated", "dropout_pending"]
+)
 async def test_closed_or_unscheduled_dropout_enrollment_cannot_be_rebilled(
     monkeypatch, status
 ):
