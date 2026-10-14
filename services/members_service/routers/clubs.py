@@ -18,6 +18,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import List, Literal, Optional
 
 import httpx
+from libs.common.service_client.core import internal_get
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from libs.auth.dependencies import get_current_user, require_admin, require_service_role
 from libs.auth.models import AuthUser
@@ -55,6 +56,9 @@ from services.members_service.schemas import (
     ClubApplicationReservationResponse,
     ClubCreate,
     ClubObservedAssessmentUpdate,
+    ClubVideoAssessmentSubmit,
+    ClubVideoAssessmentFeedback,
+    ClubFirstSessionVerification,
     ClubPaymentContext,
     ClubPlanCreate,
     ClubPlanResponse,
@@ -761,6 +765,108 @@ async def submit_club_pre_assessment(
     return await _application_out(application, db)
 
 
+
+async def _verify_club_video(media_id, application_id, current_user):
+    try:
+        response = await internal_get(
+            service_url=settings.MEDIA_SERVICE_URL,
+            path=f"/internal/media/club-assessments/{media_id}/verify",
+            calling_service="members",
+            params={"owner_auth_id": str(current_user.user_id), "application_id": str(application_id)},
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail="Video verification unavailable") from exc
+    if response.status_code == 404:
+        raise HTTPException(status_code=422, detail="Upload your own Club assessment video")
+    if response.status_code != 200:
+        raise HTTPException(status_code=503, detail="Video verification unavailable")
+
+
+@router.post("/applications/{application_id}/video-assessment", response_model=ClubApplicationResponse)
+async def submit_club_video_assessment(
+    application_id: uuid.UUID,
+    body: ClubVideoAssessmentSubmit,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    member = await _member_for_user(current_user, db)
+    application = await db.get(ClubApplication, application_id)
+    if application is None or application.member_id != member.id:
+        raise HTTPException(status_code=404, detail="Club application not found")
+    if application.status not in {"assessment_pending", "assessment_required"}:
+        raise HTTPException(status_code=409, detail="Application is no longer accepting videos")
+    for media_id in (body.swim_video_media_id, body.tread_video_media_id):
+        await _verify_club_video(media_id, application_id, current_user)
+    assessment = await db.scalar(select(ClubReadinessAssessment).where(
+        ClubReadinessAssessment.application_id == application_id))
+    if assessment is None or not (assessment.self_report or {}).get("can_swim_25m_continuously") is not None:
+        raise HTTPException(status_code=409, detail="Complete Club readiness first")
+    report = dict(assessment.self_report or {})
+    report.update({
+        "assessment_method": "video",
+        "swim_video_media_id": str(body.swim_video_media_id),
+        "tread_video_media_id": str(body.tread_video_media_id),
+        "video_recorded_in_supervised_pool": body.recorded_in_supervised_pool,
+        "video_authentic_uncut_footage": body.authentic_uncut_footage,
+        "video_notes": body.notes,
+        "video_review_status": "submitted",
+        "video_submitted_at": utc_now().isoformat(),
+    })
+    assessment.self_report = report
+    application.status = "assessment_pending"
+    await db.commit()
+    await db.refresh(application)
+    return await _application_out(application, db)
+
+
+@router.put("/admin/applications/{application_id}/video-feedback", response_model=ClubApplicationResponse)
+async def review_club_video_feedback(
+    application_id: uuid.UUID,
+    body: ClubVideoAssessmentFeedback,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    application = await db.get(ClubApplication, application_id)
+    if application is None or application.status != "assessment_pending":
+        raise HTTPException(status_code=409, detail="No pending video assessment")
+    assessment = await db.scalar(select(ClubReadinessAssessment).where(
+        ClubReadinessAssessment.application_id == application_id))
+    report = dict(assessment.self_report or {}) if assessment else {}
+    if report.get("assessment_method") != "video" or report.get("video_review_status") != "submitted":
+        raise HTTPException(status_code=409, detail="No video submission awaiting review")
+    report["video_review_status"] = body.decision
+    report["video_feedback"] = body.notes
+    assessment.self_report = report
+    await db.commit()
+    await db.refresh(application)
+    return await _application_out(application, db)
+
+
+@router.put("/admin/applications/{application_id}/first-session-verification", response_model=ClubApplicationResponse)
+async def verify_club_first_session(
+    application_id: uuid.UUID,
+    body: ClubFirstSessionVerification,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    application = await db.get(ClubApplication, application_id)
+    if application is None or application.status != "enrolled":
+        raise HTTPException(status_code=409, detail="Member is not enrolled")
+    assessment = await db.scalar(select(ClubReadinessAssessment).where(
+        ClubReadinessAssessment.application_id == application_id))
+    report = dict(assessment.self_report or {}) if assessment else {}
+    if not report.get("first_session_check_required"):
+        raise HTTPException(status_code=409, detail="No first-session check is due")
+    report["first_session_check_result"] = "passed" if body.verified else "needs_follow_up"
+    report["first_session_check_notes"] = body.notes
+    report["first_session_checked_at"] = utc_now().isoformat()
+    report["first_session_check_required"] = not body.verified
+    assessment.self_report = report
+    await db.commit()
+    await db.refresh(application)
+    return await _application_out(application, db, include_internal_notes=True)
+
+
 @router.get("/admin/applications", response_model=List[ClubApplicationResponse])
 async def list_club_applications_for_review(
     application_status: Optional[str] = Query(default=None, alias="status"),
@@ -807,9 +913,23 @@ async def complete_observed_club_assessment(
         assessment = ClubReadinessAssessment(application_id=application.id)
         db.add(assessment)
     commercial_fields = {
+        "assessment_method",
         "approved_payment_modes",
         "transition_expires_at",
     }
+    report = dict(assessment.self_report or {})
+    if body.assessment_method == "video":
+        if (application.status != "assessment_pending"
+            or report.get("assessment_method") != "video"
+            or report.get("video_review_status") != "submitted"
+            or not report.get("swim_video_media_id")
+            or not report.get("tread_video_media_id")):
+            raise HTTPException(status_code=409, detail="Video submission is not awaiting approval")
+        report["video_review_status"] = "reviewed"
+        report["first_session_check_required"] = body.outcome in {"club_ready", "club_ready_modified"}
+        assessment.self_report = report
+    elif application.status not in {"assessment_pending", "assessment_required"}:
+        raise HTTPException(status_code=409, detail="Application is not awaiting assessment")
     for field, value in body.model_dump(
         exclude={"send_result_email", *commercial_fields}
     ).items():
