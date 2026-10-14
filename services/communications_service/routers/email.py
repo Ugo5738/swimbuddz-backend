@@ -297,6 +297,7 @@ async def send_templated_email(
     - coach_application_more_info: More info requested from coach applicant
     - member_approved: Member application approved
     - club_assessment_result: Club approval or Academy recommendation with next steps
+    - club_assessment_video_feedback: Request clearer evidence or an in-person assessment
     - member_rejected: Member application rejected
     - payment_approved: Payment was approved
     - session_confirmation: Session booking confirmed
@@ -320,6 +321,13 @@ async def send_templated_email(
     )
 
     template_handlers = {
+        "club_assessment_video_feedback": lambda d: club.send_club_video_feedback_email(
+            to_email=request.to_email,
+            member_name=d.get("member_name", ""),
+            application_id=d["application_id"],
+            decision=d["decision"],
+            notes=d["notes"],
+        ),
         "club_assessment_result": lambda d: club.send_club_assessment_result_email(
             to_email=request.to_email,
             member_name=d.get("member_name", ""),
