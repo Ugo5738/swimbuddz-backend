@@ -1064,7 +1064,10 @@ async def complete_observed_club_assessment(
             "club_ready_modified",
         }
         assessment.self_report = report
-    elif application.status not in {"assessment_pending", "assessment_required"}:
+    elif getattr(application, "status", "assessment_pending") not in {
+        "assessment_pending",
+        "assessment_required",
+    }:
         raise HTTPException(
             status_code=409, detail="Application is not awaiting assessment"
         )
