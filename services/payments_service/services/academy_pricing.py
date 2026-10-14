@@ -91,6 +91,14 @@ async def academy_payment_context(
             )
         )
     else:
+        # A frozen schedule is authoritative, even if its aggregate enrollment
+        # payment_status is stale. Never fall back to the original tuition and
+        # sell the same fully settled obligation a second time.
+        if installments:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All required Academy installments are already settled",
+            )
         snapshot_amount_kobo = enrollment.get("price_snapshot_amount")
         if snapshot_amount_kobo is not None:
             academy_amount_kobo = int(snapshot_amount_kobo)
