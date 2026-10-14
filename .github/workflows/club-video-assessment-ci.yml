@@ -1,0 +1,24 @@
+name: Club video assessment checks
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install backend dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Compile Python modules
+        run: python -m compileall -q services libs
+      - name: Lint modified backend modules
+        run: |
+          ruff check services/members_service/routers/clubs.py services/members_service/schemas/club.py services/media_service/routers/media.py services/media_service/routers/internal.py services/media_service/services/storage.py services/communications_service/templates/club.py services/communications_service/routers/email.py tests/unit/test_club_video_assessment.py
+      - name: Club assessment tests
+        run: pytest -q tests/unit/test_club_video_assessment.py tests/unit/test_club_assessment_email.py tests/unit/test_club_workflow_guards.py
