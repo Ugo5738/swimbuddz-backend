@@ -1034,7 +1034,7 @@ async def complete_observed_club_assessment(
         "approved_payment_modes",
         "transition_expires_at",
     }
-    report = dict(getattr(assessment, "self_report", None) or {})
+    report = dict(assessment.self_report or {})
     if body.assessment_method == "video":
         if (
             application.status != "assessment_pending"
@@ -1064,10 +1064,7 @@ async def complete_observed_club_assessment(
             "club_ready_modified",
         }
         assessment.self_report = report
-    elif getattr(application, "status", "assessment_pending") not in {
-        "assessment_pending",
-        "assessment_required",
-    }:
+    elif application.status not in {"assessment_pending", "assessment_required"}:
         raise HTTPException(
             status_code=409, detail="Application is not awaiting assessment"
         )
