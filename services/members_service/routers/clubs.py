@@ -871,7 +871,11 @@ async def review_club_video_feedback(
     assessment = await db.scalar(select(ClubReadinessAssessment).where(
         ClubReadinessAssessment.application_id == application_id))
     report = dict(assessment.self_report or {}) if assessment else {}
-    if report.get("assessment_method") != "video" or report.get("video_review_status") != "submitted":
+    if (
+        report.get("assessment_method") != "video"
+        or report.get("video_review_status")
+        not in {"submitted", "request_another_video"}
+    ):
         raise HTTPException(status_code=409, detail="No video submission awaiting review")
     report["video_review_status"] = body.decision
     report["video_feedback"] = body.notes
@@ -992,6 +996,19 @@ async def complete_observed_club_assessment(
         assessment.self_report = report
     elif application.status not in {"assessment_pending", "assessment_required"}:
         raise HTTPException(status_code=409, detail="Application is not awaiting assessment")
+    else:
+        if (
+            report.get("assessment_method") == "video"
+            and report.get("video_review_status")
+            in {"submitted", "request_another_video"}
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Finish video review or request an in-person assessment first",
+            )
+        report["assessment_method"] = "in_person"
+        report["first_session_check_required"] = False
+        assessment.self_report = report
     for field, value in body.model_dump(
         exclude={"send_result_email", *commercial_fields}
     ).items():
