@@ -838,6 +838,22 @@ async def review_club_video_feedback(
     report["video_feedback"] = body.notes
     assessment.self_report = report
     await db.commit()
+    member = await db.get(Member, application.member_id)
+    if member:
+        try:
+            await get_email_client().send_template(
+                template_type="club_assessment_video_feedback",
+                to_email=member.email,
+                template_data={
+                    "member_name": member.first_name,
+                    "application_id": str(application_id),
+                    "decision": body.decision,
+                    "notes": body.notes,
+                },
+            )
+        except (httpx.HTTPError, RuntimeError):
+            # The recorded review remains authoritative even if email is unavailable.
+            pass
     await db.refresh(application)
     return await _application_out(application, db)
 
