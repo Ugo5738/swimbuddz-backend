@@ -56,6 +56,7 @@ from services.members_service.schemas import (
     ClubApplicationReservationResponse,
     ClubCreate,
     ClubObservedAssessmentUpdate,
+    ClubAssessmentMethodChoice,
     ClubVideoAssessmentSubmit,
     ClubVideoAssessmentFeedback,
     ClubFirstSessionVerification,
@@ -782,6 +783,39 @@ async def _verify_club_video(media_id, application_id, current_user):
         raise HTTPException(status_code=503, detail="Video verification unavailable")
 
 
+@router.put("/applications/{application_id}/assessment-method", response_model=ClubApplicationResponse)
+async def choose_club_assessment_method(
+    application_id: uuid.UUID,
+    body: ClubAssessmentMethodChoice,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    member = await _member_for_user(current_user, db)
+    application = await db.get(ClubApplication, application_id)
+    if application is None or application.member_id != member.id:
+        raise HTTPException(status_code=404, detail="Club application not found")
+    if application.status not in {"assessment_pending", "assessment_required"}:
+        raise HTTPException(status_code=409, detail="Assessment method can no longer change")
+    assessment = await db.scalar(select(ClubReadinessAssessment).where(
+        ClubReadinessAssessment.application_id == application_id
+    ))
+    if assessment is None or "can_swim_25m_continuously" not in (assessment.self_report or {}):
+        raise HTTPException(status_code=409, detail="Complete Club readiness first")
+    report = dict(assessment.self_report or {})
+    if report.get("video_review_status") in {"submitted", "reviewed"}:
+        raise HTTPException(status_code=409, detail="Video assessment is already under review")
+    if report.get("video_review_status") == "in_person_required" and body.method != "in_person":
+        raise HTTPException(status_code=409, detail="An assessor has required an in-pool assessment")
+    report["assessment_method"] = body.method
+    if body.method == "in_person":
+        report["in_person_requested_at"] = utc_now().isoformat()
+    assessment.self_report = report
+    application.status = "assessment_pending"
+    await db.commit()
+    await db.refresh(application)
+    return await _application_out(application, db)
+
+
 @router.post("/applications/{application_id}/video-assessment", response_model=ClubApplicationResponse)
 async def submit_club_video_assessment(
     application_id: uuid.UUID,
@@ -795,6 +829,11 @@ async def submit_club_video_assessment(
         raise HTTPException(status_code=404, detail="Club application not found")
     if application.status not in {"assessment_pending", "assessment_required"}:
         raise HTTPException(status_code=409, detail="Application is no longer accepting videos")
+    existing = await db.scalar(select(ClubReadinessAssessment).where(
+        ClubReadinessAssessment.application_id == application_id
+    ))
+    if existing and (existing.self_report or {}).get("video_review_status") == "in_person_required":
+        raise HTTPException(status_code=409, detail="An assessor has required an in-pool assessment")
     for media_id in (body.swim_video_media_id, body.tread_video_media_id):
         await _verify_club_video(media_id, application_id, current_user)
     assessment = await db.scalar(select(ClubReadinessAssessment).where(
