@@ -177,7 +177,9 @@ class ClubVideoAssessmentSubmit(BaseModel):
     @model_validator(mode="after")
     def evidence_declarations(self):
         if not self.recorded_in_supervised_pool or not self.authentic_uncut_footage:
-            raise ValueError("Confirm the recording was safe and the footage is authentic")
+            raise ValueError(
+                "Confirm the recording was safe and the footage is authentic"
+            )
         if self.swim_video_media_id == self.tread_video_media_id:
             raise ValueError("Upload distinct swimming and treading clips")
         return self

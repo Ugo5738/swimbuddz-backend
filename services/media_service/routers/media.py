@@ -108,7 +108,12 @@ def _require_original_access(
     metadata = item.metadata_info or {}
     # The path check protects older receipts created before purpose metadata
     # was persisted. Never issue a signed private receipt URL anonymously.
-    restricted_purposes = {"payment_proof", "milestone_evidence", "milestone_video", "club_assessment_video"}
+    restricted_purposes = {
+        "payment_proof",
+        "milestone_evidence",
+        "milestone_video",
+        "club_assessment_video",
+    }
     is_receipt = metadata.get("purpose") in restricted_purposes
     is_receipt = is_receipt or "/payment-proofs/" in (item.file_url or "")
     if not metadata.get("presentation_original") and not is_receipt:
@@ -834,7 +839,12 @@ async def list_media(
     )
     query = query.where(
         func.coalesce(MediaItem.metadata_info["purpose"].astext, "").notin_(
-            ("payment_proof", "milestone_evidence", "milestone_video", "club_assessment_video")
+            (
+                "payment_proof",
+                "milestone_evidence",
+                "milestone_video",
+                "club_assessment_video",
+            )
         ),
         MediaItem.file_url.not_like("%/payment-proofs/%"),
     )

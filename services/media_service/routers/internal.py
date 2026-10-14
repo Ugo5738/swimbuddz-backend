@@ -98,7 +98,9 @@ async def verify_club_assessment_video(
     media_type = (
         item.media_type.value
         if item and isinstance(item.media_type, MediaType)
-        else item.media_type if item else None
+        else item.media_type
+        if item
+        else None
     )
     meta = (item.metadata_info or {}) if item else {}
     if (
