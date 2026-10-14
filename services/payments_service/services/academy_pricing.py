@@ -49,7 +49,18 @@ async def academy_payment_context(
         )
 
     enrollment_status = str(enrollment.get("status") or "").lower()
-    if enrollment_status not in {"pending_approval", "enrolled"}:
+    program = enrollment.get("program") or {}
+    cohort = enrollment.get("cohort") or {}
+    installments = sorted(
+        enrollment.get("installments") or [],
+        key=lambda item: item.get("installment_number", 0),
+    )
+    # A pending dropout is a payment-recoverable state. Academy's installment
+    # sync already restores ENROLLED after missed obligations are cured; do not
+    # prevent the learner from reaching that existing recovery path. Never
+    # generate a new installment plan for a dropout-pending enrollment.
+    recovering = enrollment_status == "dropout_pending" and bool(installments)
+    if enrollment_status not in {"pending_approval", "enrolled"} and not recovering:
         detail = (
             "This Academy enrollment is waitlisted and cannot be paid until "
             "a place becomes available."
@@ -60,13 +71,6 @@ async def academy_payment_context(
             status_code=status.HTTP_409_CONFLICT,
             detail=detail,
         )
-
-    program = enrollment.get("program") or {}
-    cohort = enrollment.get("cohort") or {}
-    installments = sorted(
-        enrollment.get("installments") or [],
-        key=lambda item: item.get("installment_number", 0),
-    )
     next_installment = next(
         (
             item
@@ -87,6 +91,14 @@ async def academy_payment_context(
             )
         )
     else:
+        # A frozen schedule is authoritative, even if its aggregate enrollment
+        # payment_status is stale. Never fall back to the original tuition and
+        # sell the same fully settled obligation a second time.
+        if installments:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All required Academy installments are already settled",
+            )
         snapshot_amount_kobo = enrollment.get("price_snapshot_amount")
         if snapshot_amount_kobo is not None:
             academy_amount_kobo = int(snapshot_amount_kobo)
