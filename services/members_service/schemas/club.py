@@ -163,6 +163,10 @@ class ClubPreAssessmentUpsert(BaseModel):
     notes: Optional[str] = Field(default=None, max_length=2000)
 
 
+class ClubAssessmentMethodChoice(BaseModel):
+    method: Literal["in_person", "video"]
+
+
 class ClubVideoAssessmentSubmit(BaseModel):
     swim_video_media_id: uuid.UUID
     tread_video_media_id: uuid.UUID
