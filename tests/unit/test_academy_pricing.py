@@ -221,7 +221,9 @@ async def test_full_payment_clears_remaining_schedule_and_preview_is_read_only(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("use_installments,expected", [(True, 5_000_000), (False, 10_000_000)])
+@pytest.mark.parametrize(
+    "use_installments,expected", [(True, 5_000_000), (False, 10_000_000)]
+)
 async def test_dropout_review_can_pay_existing_missed_installments(
     monkeypatch, use_installments, expected
 ):
@@ -261,17 +263,27 @@ async def test_dropout_review_can_pay_existing_missed_installments(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("status", ["dropout_pending", "dropped", "waitlist", "graduated"])
+@pytest.mark.parametrize(
+    "status", ["dropout_pending", "dropped", "waitlist", "graduated"]
+)
 async def test_ineligible_enrollments_cannot_create_or_reprice_debt(
     monkeypatch, status
 ):
     enrollment = _enrollment_payload(
         status=status,
         payment_status="failed",
-        installments=[] if status == "dropout_pending" else [{
-            "id": str(uuid4()), "installment_number": 1,
-            "status": "missed", "amount": 5_000_000,
-        }],
+        installments=(
+            []
+            if status == "dropout_pending"
+            else [
+                {
+                    "id": str(uuid4()),
+                    "installment_number": 1,
+                    "status": "missed",
+                    "amount": 5_000_000,
+                }
+            ]
+        ),
     )
     client = _AsyncClientContext(_Response(enrollment))
     monkeypatch.setattr(academy_pricing.httpx, "AsyncClient", lambda **_: client)
@@ -282,7 +294,8 @@ async def test_ineligible_enrollments_cannot_create_or_reprice_debt(
     )
     with pytest.raises(HTTPException) as exc_info:
         await academy_pricing.academy_payment_context(
-            enrollment_id=uuid4(), member_auth_id="learner-auth",
+            enrollment_id=uuid4(),
+            member_auth_id="learner-auth",
             use_installments=True,
         )
     assert exc_info.value.status_code == 409
@@ -297,22 +310,33 @@ async def test_settled_schedule_never_falls_back_to_full_tuition(
     enrollment = _enrollment_payload(
         payment_status=payment_status,
         installments=[
-            {"id": str(uuid4()), "installment_number": 1,
-             "status": "paid", "amount": 5_000_000},
-            {"id": str(uuid4()), "installment_number": 2,
-             "status": "waived", "amount": 5_000_000},
+            {
+                "id": str(uuid4()),
+                "installment_number": 1,
+                "status": "paid",
+                "amount": 5_000_000,
+            },
+            {
+                "id": str(uuid4()),
+                "installment_number": 2,
+                "status": "waived",
+                "amount": 5_000_000,
+            },
         ],
     )
     client = _AsyncClientContext(_Response(enrollment))
     monkeypatch.setattr(academy_pricing.httpx, "AsyncClient", lambda **_: client)
     monkeypatch.setattr(
-        academy_pricing, "get_member_by_auth_id",
+        academy_pricing,
+        "get_member_by_auth_id",
         AsyncMock(return_value={"id": enrollment["member_id"]}),
     )
     with pytest.raises(HTTPException) as exc_info:
         await academy_pricing.academy_payment_context(
-            enrollment_id=uuid4(), member_auth_id="learner-auth",
-            use_installments=False, preview_only=True,
+            enrollment_id=uuid4(),
+            member_auth_id="learner-auth",
+            use_installments=False,
+            preview_only=True,
         )
     assert exc_info.value.status_code == 400
     assert "already paid or waived" in exc_info.value.detail
