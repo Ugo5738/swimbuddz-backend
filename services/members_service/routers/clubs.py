@@ -1034,7 +1034,7 @@ async def complete_observed_club_assessment(
         "approved_payment_modes",
         "transition_expires_at",
     }
-    report = dict(assessment.self_report or {})
+    report = dict(getattr(assessment, "self_report", None) or {})
     if body.assessment_method == "video":
         if (
             application.status != "assessment_pending"
