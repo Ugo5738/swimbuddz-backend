@@ -108,7 +108,7 @@ def _require_original_access(
     metadata = item.metadata_info or {}
     # The path check protects older receipts created before purpose metadata
     # was persisted. Never issue a signed private receipt URL anonymously.
-    restricted_purposes = {"payment_proof", "milestone_evidence", "milestone_video"}
+    restricted_purposes = {"payment_proof", "milestone_evidence", "milestone_video", "club_assessment_video"}
     is_receipt = metadata.get("purpose") in restricted_purposes
     is_receipt = is_receipt or "/payment-proofs/" in (item.file_url or "")
     if not metadata.get("presentation_original") and not is_receipt:
@@ -135,6 +135,7 @@ MAX_UPLOAD_SIZES: dict[str, int] = {
     # Videos: 2 GB (iPhone ProRes/4K can exceed 500MB for short clips;
     # the transcoding worker compresses to web-friendly H.264)
     "milestone_video": 2 * 1024 * 1024 * 1024,
+    "club_assessment_video": 1024 * 1024 * 1024,
     "milestone_evidence": 2 * 1024 * 1024 * 1024,
     "product_video": 2 * 1024 * 1024 * 1024,
     # Challenges: example demos and proof-of-attempt videos can be long;
@@ -350,6 +351,7 @@ async def upload_file(
         "payment_proof",
         "milestone_evidence",
         "milestone_video",
+        "club_assessment_video",
         "general",
         "profile_photo",
         "cover_image",
@@ -382,6 +384,12 @@ async def upload_file(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File must be an image or video",
+            )
+    elif purpose == "club_assessment_video":
+        if not is_video:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Club assessment evidence must be a video",
             )
     elif purpose == "milestone_video":
         if not (is_image or is_video):
@@ -443,6 +451,9 @@ async def upload_file(
         "milestone_video": (
             f"milestone-videos/{linked_id}" if linked_id else "milestone-videos"
         ),
+        "club_assessment_video": (
+            f"club-assessments/{linked_id}" if linked_id else "club-assessments"
+        ),
         "profile_photo": "profile-photos",
         "cover_image": "cover-images",
         "content_image": "content-images",
@@ -466,12 +477,12 @@ async def upload_file(
     # Supabase's legacy generic upload targets a public bucket regardless of
     # purpose. Never silently publish private swimmer evidence to that bucket.
     if (
-        purpose in {"milestone_evidence", "milestone_video"}
+        purpose in {"milestone_evidence", "milestone_video", "club_assessment_video"}
         and storage_service.backend != "s3"
     ):
         raise HTTPException(
             status_code=503,
-            detail="Private milestone video upload requires configured private S3 storage",
+            detail="Private swimmer evidence upload requires configured private S3 storage",
         )
 
     # Determine which bucket to use based on purpose
@@ -823,7 +834,7 @@ async def list_media(
     )
     query = query.where(
         func.coalesce(MediaItem.metadata_info["purpose"].astext, "").notin_(
-            ("payment_proof", "milestone_evidence", "milestone_video")
+            ("payment_proof", "milestone_evidence", "milestone_video", "club_assessment_video")
         ),
         MediaItem.file_url.not_like("%/payment-proofs/%"),
     )

@@ -79,6 +79,7 @@ PURPOSE_BUCKET_MAP = {
     "payment_proof": BucketType.PRIVATE,
     "milestone_evidence": BucketType.PRIVATE,
     "milestone_video": BucketType.PRIVATE,
+    "club_assessment_video": BucketType.PRIVATE,
     "strokelab_original": BucketType.PRIVATE,
     "strokelab_annotated": BucketType.PRIVATE,
     "strokelab_evidence": BucketType.PRIVATE,
