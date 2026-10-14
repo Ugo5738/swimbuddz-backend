@@ -5112,6 +5112,238 @@
         }
       }
     },
+    "/api/v1/clubs/applications/{application_id}/assessment-method": {
+      "put": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Choose Club Assessment Method",
+        "operationId": "choose_club_assessment_method_clubs_applications__application_id__assessment_method_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubAssessmentMethodChoice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubApplicationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/applications/{application_id}/video-assessment": {
+      "post": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Submit Club Video Assessment",
+        "operationId": "submit_club_video_assessment_clubs_applications__application_id__video_assessment_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubVideoAssessmentSubmit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubApplicationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/applications/{application_id}/video-feedback": {
+      "put": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Review Club Video Feedback",
+        "operationId": "review_club_video_feedback_clubs_admin_applications__application_id__video_feedback_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubVideoAssessmentFeedback"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubApplicationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/applications/{application_id}/first-session-verification": {
+      "put": {
+        "tags": [
+          "clubs"
+        ],
+        "summary": "Verify Club First Session",
+        "operationId": "verify_club_first_session_clubs_admin_applications__application_id__first_session_verification_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubFirstSessionVerification"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubApplicationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/clubs/admin/applications": {
       "get": {
         "tags": [
@@ -29971,7 +30203,7 @@
           "email"
         ],
         "summary": "Send Templated Email",
-        "description": "Send a templated email using predefined templates.\n\nTemplate types:\n- enrollment_confirmation: Academy enrollment confirmed\n- enrollment_reminder: Reminder before cohort starts\n- waitlist_promotion: Student moved off waitlist\n- progress_report: Student progress report\n- certificate: Course completion certificate\n- attendance_summary: Weekly attendance summary for coach\n- coach_assignment: Coach assigned to a cohort\n- low_attendance_alert: Alert about student low attendance\n- coach_agreement_signed: Coach agreement signing confirmation\n- coach_grade_change: Coach grade promotion/update notification\n- shadow_assignment: Shadow coach assignment notification\n- coach_readiness: Coach readiness assessment result\n- coach_application_approved: Coach application approved\n- coach_application_rejected: Coach application rejected\n- coach_application_more_info: More info requested from coach applicant\n- member_approved: Member application approved\n- club_assessment_result: Club approval or Academy recommendation with next steps\n- member_rejected: Member application rejected\n- payment_approved: Payment was approved\n- session_confirmation: Session booking confirmed\n- store_order_confirmation: Store order confirmed\n- store_order_ready: Store order ready for pickup/shipped\n- password_reset: Password reset link\n\nRequires service role authentication (internal service-to-service calls).",
+        "description": "Send a templated email using predefined templates.\n\nTemplate types:\n- enrollment_confirmation: Academy enrollment confirmed\n- enrollment_reminder: Reminder before cohort starts\n- waitlist_promotion: Student moved off waitlist\n- progress_report: Student progress report\n- certificate: Course completion certificate\n- attendance_summary: Weekly attendance summary for coach\n- coach_assignment: Coach assigned to a cohort\n- low_attendance_alert: Alert about student low attendance\n- coach_agreement_signed: Coach agreement signing confirmation\n- coach_grade_change: Coach grade promotion/update notification\n- shadow_assignment: Shadow coach assignment notification\n- coach_readiness: Coach readiness assessment result\n- coach_application_approved: Coach application approved\n- coach_application_rejected: Coach application rejected\n- coach_application_more_info: More info requested from coach applicant\n- member_approved: Member application approved\n- club_assessment_result: Club approval or Academy recommendation with next steps\n- club_assessment_video_feedback: Request clearer evidence or an in-person assessment\n- member_rejected: Member application rejected\n- payment_approved: Payment was approved\n- session_confirmation: Session booking confirmed\n- store_order_confirmation: Store order confirmed\n- store_order_ready: Store order ready for pickup/shipped\n- password_reset: Password reset link\n\nRequires service role authentication (internal service-to-service calls).",
         "operationId": "send_templated_email_email_template_post",
         "requestBody": {
           "content": {
@@ -53762,6 +53994,79 @@
         }
       }
     },
+    "/api/v1/internal/media/club-assessments/{media_id}/verify": {
+      "get": {
+        "tags": [
+          "media-internal"
+        ],
+        "summary": "Verify Club Assessment Video",
+        "description": "Verify purpose, upload ownership and application binding without sharing URLs.",
+        "operationId": "verify_club_assessment_video_internal_media_club_assessments__media_id__verify_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "media_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Id"
+            }
+          },
+          {
+            "name": "owner_auth_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Owner Auth Id"
+            }
+          },
+          {
+            "name": "application_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Verify Club Assessment Video Internal Media Club Assessments  Media Id  Verify Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/media/alumni-evidence/{media_id}": {
       "get": {
         "tags": [
@@ -65408,6 +65713,23 @@
         ],
         "title": "ClubApplicationResponse"
       },
+      "ClubAssessmentMethodChoice": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "in_person",
+              "video"
+            ],
+            "title": "Method"
+          }
+        },
+        "type": "object",
+        "required": [
+          "method"
+        ],
+        "title": "ClubAssessmentMethodChoice"
+      },
       "ClubAssessmentResponse": {
         "properties": {
           "id": {
@@ -66566,6 +66888,26 @@
         ],
         "title": "ClubCreate"
       },
+      "ClubFirstSessionVerification": {
+        "properties": {
+          "verified": {
+            "type": "boolean",
+            "title": "Verified"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 5,
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "verified",
+          "notes"
+        ],
+        "title": "ClubFirstSessionVerification"
+      },
       "ClubLocationTransferPreview": {
         "properties": {
           "source_enrollment_id": {
@@ -66942,6 +67284,15 @@
             "title": "Send Result Email",
             "default": true
           },
+          "assessment_method": {
+            "type": "string",
+            "enum": [
+              "in_person",
+              "video"
+            ],
+            "title": "Assessment Method",
+            "default": "in_person"
+          },
           "approved_payment_modes": {
             "items": {
               "type": "string",
@@ -66952,7 +67303,7 @@
             },
             "type": "array",
             "maxItems": 2,
-            "minItems": 1,
+            "minItems": 0,
             "title": "Approved Payment Modes"
           },
           "transition_expires_at": {
@@ -67972,6 +68323,72 @@
         "type": "object",
         "title": "ClubUpdate",
         "description": "All fields optional. slug accepts the same format if provided."
+      },
+      "ClubVideoAssessmentFeedback": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "request_another_video",
+              "in_person_required"
+            ],
+            "title": "Decision"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 5,
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision",
+          "notes"
+        ],
+        "title": "ClubVideoAssessmentFeedback"
+      },
+      "ClubVideoAssessmentSubmit": {
+        "properties": {
+          "swim_video_media_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Swim Video Media Id"
+          },
+          "tread_video_media_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tread Video Media Id"
+          },
+          "recorded_in_supervised_pool": {
+            "type": "boolean",
+            "title": "Recorded In Supervised Pool"
+          },
+          "authentic_uncut_footage": {
+            "type": "boolean",
+            "title": "Authentic Uncut Footage"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "swim_video_media_id",
+          "tread_video_media_id",
+          "recorded_in_supervised_pool",
+          "authentic_uncut_footage"
+        ],
+        "title": "ClubVideoAssessmentSubmit"
       },
       "CoachAgreementHistoryItem": {
         "properties": {

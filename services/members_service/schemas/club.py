@@ -163,6 +163,38 @@ class ClubPreAssessmentUpsert(BaseModel):
     notes: Optional[str] = Field(default=None, max_length=2000)
 
 
+class ClubAssessmentMethodChoice(BaseModel):
+    method: Literal["in_person", "video"]
+
+
+class ClubVideoAssessmentSubmit(BaseModel):
+    swim_video_media_id: uuid.UUID
+    tread_video_media_id: uuid.UUID
+    recorded_in_supervised_pool: bool
+    authentic_uncut_footage: bool
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def evidence_declarations(self):
+        if not self.recorded_in_supervised_pool or not self.authentic_uncut_footage:
+            raise ValueError(
+                "Confirm the recording was safe and the footage is authentic"
+            )
+        if self.swim_video_media_id == self.tread_video_media_id:
+            raise ValueError("Upload distinct swimming and treading clips")
+        return self
+
+
+class ClubVideoAssessmentFeedback(BaseModel):
+    decision: Literal["request_another_video", "in_person_required"]
+    notes: str = Field(min_length=5, max_length=2000)
+
+
+class ClubFirstSessionVerification(BaseModel):
+    verified: bool
+    notes: str = Field(min_length=5, max_length=2000)
+
+
 class ClubObservedAssessmentUpdate(BaseModel):
     outcome: Literal["club_ready", "club_ready_modified", "academy_first"]
     observed_checks: dict[str, Any] = Field(default_factory=dict)
@@ -172,9 +204,10 @@ class ClubObservedAssessmentUpdate(BaseModel):
     first_club_milestone: Optional[str] = Field(default=None, max_length=2000)
     assessor_notes: Optional[str] = Field(default=None, max_length=4000)
     send_result_email: bool = True
+    assessment_method: Literal["in_person", "video"] = "in_person"
     approved_payment_modes: list[
         Literal["quarterly_prepaid", "transition_per_session"]
-    ] = Field(default_factory=lambda: ["quarterly_prepaid"], min_length=1, max_length=2)
+    ] = Field(default_factory=lambda: ["quarterly_prepaid"], min_length=0, max_length=2)
     transition_expires_at: Optional[date] = None
 
     @model_validator(mode="after")
@@ -182,6 +215,8 @@ class ClubObservedAssessmentUpdate(BaseModel):
         self.approved_payment_modes = list(dict.fromkeys(self.approved_payment_modes))
         if self.outcome == "academy_first":
             return self
+        if not self.approved_payment_modes:
+            raise ValueError("Approve at least one Club payment arrangement")
         if "transition_per_session" in self.approved_payment_modes:
             if (
                 self.transition_expires_at is not None

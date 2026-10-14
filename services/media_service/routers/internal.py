@@ -85,6 +85,39 @@ def _bucket_type(raw: str) -> BucketType:
         raise HTTPException(status_code=400, detail="Invalid bucket_type") from exc
 
 
+@router.get("/club-assessments/{media_id}/verify")
+async def verify_club_assessment_video(
+    media_id: uuid.UUID,
+    owner_auth_id: uuid.UUID,
+    application_id: uuid.UUID,
+    _current_user: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict[str, bool]:
+    """Verify purpose, upload ownership and application binding without sharing URLs."""
+    item = await db.scalar(select(MediaItem).where(MediaItem.id == media_id))
+    media_type = (
+        item.media_type.value
+        if item and isinstance(item.media_type, MediaType)
+        else item.media_type
+        if item
+        else None
+    )
+    meta = (item.metadata_info or {}) if item else {}
+    if (
+        item is None
+        or str(item.uploaded_by) != str(owner_auth_id)
+        or media_type != "VIDEO"
+        or meta.get("purpose") != "club_assessment_video"
+        or meta.get("linked_id") != str(application_id)
+        or item.vault_id is not None
+        or storage_service.backend != "s3"
+        or not item.file_url
+        or storage_service.bucket_private not in item.file_url
+    ):
+        raise HTTPException(status_code=404, detail="Club video not found")
+    return {"valid": True}
+
+
 @router.get("/alumni-evidence/{media_id}")
 async def validate_alumni_evidence(
     media_id: uuid.UUID,

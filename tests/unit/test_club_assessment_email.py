@@ -131,8 +131,13 @@ async def test_branded_result_has_safe_coaching_details_and_correct_cta(
 async def test_assessment_sends_template_without_internal_notes(
     monkeypatch, outcome, send_result
 ):
-    application = SimpleNamespace(id=uuid4(), member_id=uuid4(), club_id=uuid4())
-    assessment = SimpleNamespace(result_email_sent_at=None)
+    application = SimpleNamespace(
+        id=uuid4(),
+        member_id=uuid4(),
+        club_id=uuid4(),
+        status="assessment_pending",
+    )
+    assessment = SimpleNamespace(result_email_sent_at=None, self_report={})
     member = SimpleNamespace(first_name="AY", email="ay@example.com")
     db = SimpleNamespace(
         get=AsyncMock(side_effect=[application, member, SimpleNamespace(name="Yaba")]),
