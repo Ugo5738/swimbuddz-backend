@@ -1339,6 +1339,7 @@ async def my_session_videos(
                 session_title=sessions.get(str(item.source_session_id or session_id), {}).get("title"),
                 session_starts_at=sessions.get(str(item.source_session_id or session_id), {}).get("starts_at"),
                 location_name=sessions.get(str(item.source_session_id or session_id), {}).get("location_name"),
+                session_type=sessions.get(str(item.source_session_id or session_id), {}).get("session_type"),
             )
             for item, title, capture_date, session_id in recordings
         ],
