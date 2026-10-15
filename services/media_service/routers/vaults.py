@@ -41,6 +41,7 @@ from services.media_service.models import (
     MediaVault,
     MediaVaultExport,
     MediaVaultGrant,
+    MediaVaultClip,
     MediaVaultGuestLink,
 )
 from services.media_service.schemas import (
@@ -63,6 +64,9 @@ from services.media_service.schemas import (
     MemberVideoShareResponse,
     MemberVideoItem,
     MemberVideosResponse,
+    SessionMediaPolicyUpdate,
+    ClipCreate,
+    ClipResponse,
     PublishRequest,
     ReviewUpdate,
     TakedownCreate,
@@ -299,6 +303,8 @@ async def _media_response(item: MediaItem) -> VaultMediaResponse:
             "thumbnail_url": thumbnail_url,
             "preview_status": preview_status,
             "labels": list(item.vault_labels or []),
+            "session_visibility": item.session_visibility,
+            "allow_member_clips": bool(item.allow_member_clips),
         }
     )
 
