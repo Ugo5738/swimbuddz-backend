@@ -1233,6 +1233,9 @@ async def get_or_create_my_swim_vault(
         vault = MediaVault(
             owner_member_id=actor.member_id,
             title="My Swim Uploads",
+            max_file_bytes=2 * 1024**3,
+            max_total_bytes=20 * 1024**3,
+            retention_days=730,
             description="Private member uploads awaiting SwimBuddz review",
             capture_date=now.date(),
             upload_opens_at=now - timedelta(minutes=1),
