@@ -351,6 +351,9 @@ class MemberVideoItem(BaseModel):
     vault_title: str
     capture_date: date
     session_id: Optional[uuid.UUID]
+    session_title: Optional[str] = None
+    session_starts_at: Optional[datetime] = None
+    location_name: Optional[str] = None
 
 
 class MemberVideosResponse(BaseModel):
