@@ -7,6 +7,10 @@ on:
     paths:
       - .github/workflows/temp-session-media-contracts-20261015.yml
 
+env:
+  DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+  DATABASE_SESSION_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+
 permissions:
   contents: write
 
