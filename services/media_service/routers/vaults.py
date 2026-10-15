@@ -1112,6 +1112,38 @@ async def _member_can_view_video(
     return False
 
 
+@router.get("/my-swim-uploads", response_model=VaultMediaListResponse)
+async def list_my_swim_uploads(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=24, ge=1, le=60),
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Member's own private videos, including submissions awaiting review."""
+    actor = await resolve_actor(current_user)
+    if not actor.member_id:
+        return VaultMediaListResponse(items=[], total=0, page=page, page_size=page_size)
+    conditions = [
+        MediaVault.owner_member_id == actor.member_id,
+        MediaVault.deleted_at.is_(None),
+        MediaItem.uploaded_by == actor.auth_id,
+        MediaItem.soft_deleted_at.is_(None),
+        MediaItem.processing_status == "ready",
+    ]
+    total = int(await db.scalar(
+        select(func.count(MediaItem.id)).join(MediaVault, MediaVault.id == MediaItem.vault_id).where(*conditions)
+    ) or 0)
+    rows = await db.scalars(
+        select(MediaItem).join(MediaVault, MediaVault.id == MediaItem.vault_id)
+        .where(*conditions).order_by(desc(MediaItem.created_at))
+        .offset((page - 1) * page_size).limit(page_size)
+    )
+    return VaultMediaListResponse(
+        items=[await _media_response(item) for item in rows],
+        total=total, page=page, page_size=page_size,
+    )
+
+
 @router.get("/my-swim-sessions", response_model=list[dict])
 async def list_my_swim_sessions(current_user: AuthUser = Depends(get_current_user)):
     """Sessions the member actually attended; for attributing personal uploads."""
@@ -2386,7 +2418,6 @@ async def request_item_preview(
     """Queue an optional review derivative; never touches the original object."""
     actor = await resolve_actor(current_user)
     vault = await get_vault_or_404(db, vault_id)
-    await require_vault_role(db, vault=vault, actor=actor, minimum="curator")
     item = await db.scalar(
         select(MediaItem).where(
             MediaItem.id == item_id,
@@ -2397,6 +2428,8 @@ async def request_item_preview(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Vault media not found")
+    if not (vault.owner_member_id == actor.member_id and item.uploaded_by == actor.auth_id):
+        await require_vault_role(db, vault=vault, actor=actor, minimum="curator")
     is_video = item.media_type == MediaType.VIDEO
     force = force and is_video
     if not force and (
