@@ -245,6 +245,7 @@ class MultipartInitiateRequest(BaseModel):
     captured_at: Optional[datetime] = None
     client_fingerprint: Optional[str] = Field(default=None, max_length=128)
     checksum_sha256: Optional[str] = Field(default=None, min_length=64, max_length=64)
+    session_id: Optional[uuid.UUID] = None
     labels: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("labels")
@@ -298,6 +299,7 @@ class MultipartCompleteRequest(BaseModel):
 class VaultMediaResponse(BaseModel):
     id: uuid.UUID
     vault_id: uuid.UUID
+    source_session_id: Optional[uuid.UUID] = None
     upload_batch_id: Optional[uuid.UUID]
     media_type: str
     original_filename: Optional[str]
