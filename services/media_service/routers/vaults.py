@@ -1736,6 +1736,51 @@ async def list_vault_items(
     )
 
 
+@router.patch("/{vault_id}/items/visibility", response_model=dict)
+async def change_session_media_visibility(
+    vault_id: uuid.UUID,
+    payload: SessionMediaPolicyUpdate,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Admins decide whether reviewed footage may be seen by attendees."""
+    vault = await get_vault_or_404(db, vault_id)
+    if payload.session_visibility == "session_participants" and not vault.session_id:
+        raise HTTPException(status_code=422, detail="This vault is not linked to a session")
+    ids = set(payload.media_item_ids)
+    items = list((await db.scalars(select(MediaItem).where(
+        MediaItem.vault_id == vault_id,
+        MediaItem.id.in_(ids),
+        MediaItem.soft_deleted_at.is_(None),
+    ))).all())
+    if len(items) != len(ids):
+        raise HTTPException(status_code=404, detail="One or more recordings are unavailable")
+    if payload.session_visibility != "private" and any(
+        item.media_type != MediaType.VIDEO
+        or item.processing_status != "ready"
+        or item.review_status not in {"approved", "published"}
+        or item.consent_status != "cleared"
+        for item in items
+    ):
+        raise HTTPException(status_code=422, detail="Only ready, consent-cleared approved videos can be shared")
+    for item in items:
+        item.session_visibility = payload.session_visibility
+        item.allow_member_clips = (
+            payload.allow_member_clips if payload.session_visibility != "private" else False
+        )
+    await write_audit(
+        db, action="media.vault.visibility.update", actor=current_user,
+        entity_id=vault_id, entity_type="media_vault",
+        new_value={
+            "item_ids": [str(i) for i in ids],
+            "visibility": payload.session_visibility,
+            "allow_member_clips": payload.allow_member_clips,
+        },
+    )
+    await db.commit()
+    return {"updated": len(items)}
+
+
 @router.post("/{vault_id}/items/shares", response_model=MemberVideoShareResponse)
 async def share_vault_videos_with_members(
     vault_id: uuid.UUID,
