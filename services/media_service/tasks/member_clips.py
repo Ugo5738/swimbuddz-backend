@@ -49,6 +49,16 @@ async def build_member_vault_clip(clip_id: str) -> dict:
             )
 
             def render():
+                duration_probe = subprocess.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", source],
+                    capture_output=True, text=True, timeout=45
+                )
+                if duration_probe.returncode:
+                    raise RuntimeError("Unable to inspect video duration")
+                total_seconds = float(duration_probe.stdout.strip())
+                if start >= total_seconds or start + duration > total_seconds + 0.25:
+                    raise ValueError("Requested clip range exceeds source video duration")
                 return subprocess.run(
                     [
                         "ffmpeg",
