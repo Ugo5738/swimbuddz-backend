@@ -2519,3 +2519,50 @@ async def bulk_create_bookings(
             for b in created_rows
         ],
     )
+
+
+@router.get("/financial-obligations/{member_auth_id}")
+async def member_session_financial_obligations(
+    member_auth_id: str,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Service-owned projection of already confirmed, unpaid session fees.
+
+    Uses exactly the member Billing unpaid-booking predicate, including
+    absence of both a linked payment intent and a wallet transaction.
+    """
+    rows = (
+        (
+            await db.execute(
+                select(
+                    SessionBooking.id,
+                    SessionBooking.session_id,
+                    Session.title.label("session_title"),
+                    Session.starts_at.label("session_starts_at"),
+                    SessionBooking.fee_amount_kobo,
+                )
+                .join(Session, Session.id == SessionBooking.session_id)
+                .where(
+                    SessionBooking.member_auth_id == member_auth_id,
+                    SessionBooking.status == SessionBookingStatus.CONFIRMED,
+                    SessionBooking.fee_amount_kobo > 0,
+                    SessionBooking.payment_intent_id.is_(None),
+                    SessionBooking.wallet_transaction_id.is_(None),
+                )
+                .order_by(SessionBooking.booked_at.desc())
+            )
+        )
+        .mappings()
+        .all()
+    )
+    return [
+        {
+            "id": str(row.id),
+            "session_id": str(row.session_id),
+            "name": row.session_title,
+            "amount_kobo": row.fee_amount_kobo,
+            "starts_at": row.session_starts_at.isoformat(),
+        }
+        for row in rows
+    ]
