@@ -2050,11 +2050,17 @@ async def get_my_member_clip(
         raise HTTPException(status_code=410, detail="Clip expired")
     url = None
     if clip.status == "ready" and clip.object_key:
-        url = await storage_service.generate_presigned_url(
-            clip.object_key,
-            BucketType.PRIVATE,
-            settings.MEDIA_VAULT_SIGNED_URL_TTL_SECONDS,
+        url, method = await storage_service.generate_private_download_url(
+            file_key=clip.object_key,
+            expiration=settings.MEDIA_VAULT_SIGNED_URL_TTL_SECONDS,
+            download_name=f"swimbuddz-swim-clip-{clip.id}.mp4",
         )
+        await write_audit(
+            db, action="media.clip.download.authorized",
+            actor=current_user, entity_type="media_vault_clip", entity_id=clip.id,
+            new_value={"media_item_id": str(item.id), "delivery_method": method},
+        )
+        await db.commit()
     return ClipResponse(
         id=clip.id,
         status=clip.status,
