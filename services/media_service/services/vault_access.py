@@ -74,6 +74,8 @@ async def require_vault_role(
     minimum: str,
 ) -> str:
     role = await effective_vault_role(db, vault_id=vault.id, actor=actor)
+    if vault.owner_member_id and actor.member_id == vault.owner_member_id and not role:
+        role = "contributor"
     if not role or ROLE_RANK.get(role, 0) < ROLE_RANK[minimum]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

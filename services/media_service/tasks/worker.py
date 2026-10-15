@@ -68,6 +68,18 @@ async def task_build_vault_preview(
     )
 
 
+async def task_build_member_vault_clip(ctx: dict, clip_id: str):
+    from services.media_service.tasks.member_clips import build_member_vault_clip
+
+    return await build_member_vault_clip(clip_id)
+
+
+async def task_cleanup_member_vault_clips(ctx: dict):
+    from services.media_service.tasks.member_clips import cleanup_expired_member_clips
+
+    return await cleanup_expired_member_clips()
+
+
 async def task_cleanup_vault_exports(ctx: dict):
     """Expire generated ZIPs; never modifies vault originals."""
     from services.media_service.tasks.vault_exports import cleanup_expired_vault_exports
@@ -112,6 +124,8 @@ class WorkerSettings:
         task_apply_audio,
         task_build_vault_export,
         task_build_vault_preview,
+        task_build_member_vault_clip,
+        task_cleanup_member_vault_clips,
         task_cleanup_vault_exports,
         task_reconcile_vault_bandwidth,
         task_sync_session_vaults,
@@ -119,6 +133,7 @@ class WorkerSettings:
 
     cron_jobs = [
         cron(task_cleanup_vault_exports, hour={2}, minute=30),
+        cron(task_cleanup_member_vault_clips, hour={3}, minute=0),
         cron(task_reconcile_vault_bandwidth, minute={0, 15, 30, 45}),
         cron(task_sync_session_vaults, minute=5),
     ]
