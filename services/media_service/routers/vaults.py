@@ -493,6 +493,21 @@ async def _initiate_upload(
             status_code=409, detail="Batch file count is already complete"
         )
 
+    source_session_id = vault.session_id
+    if payload.session_id:
+        if vault.session_id and payload.session_id != vault.session_id:
+            raise HTTPException(status_code=422, detail="Recording must belong to its assigned session")
+        if not vault.session_id:
+            if not batch.uploader_member_id or vault.owner_member_id != batch.uploader_member_id:
+                raise HTTPException(status_code=403, detail="Only your own uploads can be linked to a session")
+            attendance = await get_member_attendance(
+                str(batch.uploader_member_id),
+                session_ids=[str(payload.session_id)], calling_service="media",
+            )
+            if not any(row.get("status", "").lower() in {"present", "late"} for row in attendance):
+                raise HTTPException(status_code=403, detail="Only attended sessions can be linked to a personal upload")
+        source_session_id = payload.session_id
+
     media_type = _media_type_for(payload.content_type, payload.filename)
     filename = _safe_filename(payload.filename)
     media_id = uuid.uuid4()
@@ -530,6 +545,7 @@ async def _initiate_upload(
         thumbnail_url=None,
         uploaded_by=uploader_id,
         vault_id=vault.id,
+        source_session_id=source_session_id,
         upload_batch_id=batch.id,
         object_key=key,
         bucket_type=BucketType.PRIVATE.value,
@@ -1082,9 +1098,10 @@ async def _member_can_view_video(
             MediaItemMemberShare.member_id == member_id,
             MediaItemMemberShare.revoked_at.is_(None),
         )))
-    if item.session_visibility == "session_participants" and vault.session_id:
+    linked_session_id = item.source_session_id or vault.session_id
+    if item.session_visibility == "session_participants" and linked_session_id:
         records = await get_member_attendance(
-            str(member_id), session_ids=[str(vault.session_id)], calling_service="media"
+            str(member_id), session_ids=[str(linked_session_id)], calling_service="media"
         )
         return any(
             r.get("status", "").lower() in {"present", "late"}
@@ -1155,7 +1172,7 @@ async def my_session_videos(
     )
     session_audience = (
         (MediaItem.session_visibility == "session_participants")
-        & (MediaVault.session_id.in_(attended_ids))
+        & (func.coalesce(MediaItem.source_session_id, MediaVault.session_id).in_(attended_ids))
     )
     conditions = [
         or_(personal_share, session_audience),
@@ -1908,8 +1925,6 @@ async def change_session_media_visibility(
 ):
     """Admins decide whether reviewed footage may be seen by attendees."""
     vault = await get_vault_or_404(db, vault_id)
-    if payload.session_visibility == "session_participants" and not vault.session_id:
-        raise HTTPException(status_code=422, detail="This vault is not linked to a session")
     ids = set(payload.media_item_ids)
     items = list((await db.scalars(select(MediaItem).where(
         MediaItem.vault_id == vault_id,
@@ -1918,6 +1933,10 @@ async def change_session_media_visibility(
     ))).all())
     if len(items) != len(ids):
         raise HTTPException(status_code=404, detail="One or more recordings are unavailable")
+    if payload.session_visibility == "session_participants" and any(
+        not (item.source_session_id or vault.session_id) for item in items
+    ):
+        raise HTTPException(status_code=422, detail="Session participant sharing needs an associated session")
     if payload.session_visibility != "private" and any(
         item.media_type != MediaType.VIDEO
         or item.processing_status != "ready"
