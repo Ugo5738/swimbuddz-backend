@@ -5,7 +5,6 @@ import asyncio
 import subprocess
 import tempfile
 import uuid
-from datetime import timedelta
 from pathlib import Path
 
 from sqlalchemy import select
@@ -14,7 +13,7 @@ from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.config import AsyncSessionLocal
 from services.media_service.models import MediaItem, MediaVaultClip
-from services.media_service.services.storage import BucketType, storage_service
+from services.media_service.services.storage import storage_service
 
 logger = get_logger(__name__)
 
@@ -92,7 +91,7 @@ async def cleanup_expired_member_clips() -> dict:
         count = 0
         for clip in clips:
             try:
-                await storage_service.delete_file(clip.object_key, BucketType.PRIVATE)
+                await asyncio.to_thread(storage_service.s3_client.delete_object, Bucket=storage_service.bucket_private, Key=clip.object_key)
                 clip.object_key = None
                 clip.status = "expired"
                 count += 1
