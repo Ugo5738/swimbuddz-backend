@@ -907,3 +907,70 @@ async def get_academy_quarter_summary_internal(
         ),
         by_location=by_location,
     )
+
+
+@router.get("/financial-obligations/{member_auth_id}")
+async def member_academy_financial_obligations(
+    member_auth_id: str,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Minimal service-only financial projection, owned by Academy.
+
+    Never accept a member ID directly from a public client; Payments derives it
+    from the authenticated JWT before requesting this service-role endpoint.
+    Existing frozen schedules take precedence over cohort pricing.
+    """
+    enrollments = (
+        (
+            await db.execute(
+                select(Enrollment)
+                .where(Enrollment.member_auth_id == member_auth_id)
+                .where(
+                    Enrollment.status.in_(
+                        [
+                            EnrollmentStatus.ENROLLED,
+                            EnrollmentStatus.PENDING_APPROVAL,
+                            EnrollmentStatus.DROPOUT_PENDING,
+                        ]
+                    )
+                )
+                .options(
+                    selectinload(Enrollment.cohort),
+                    selectinload(Enrollment.installments),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for enrollment in enrollments:
+        await _sync_installment_state_for_enrollment(db, enrollment)
+    await db.commit()
+    return [
+        {
+            "id": str(enrollment.id),
+            "cohort_id": str(enrollment.cohort_id) if enrollment.cohort_id else None,
+            "cohort_name": (
+                enrollment.cohort.name if enrollment.cohort else "Academy programme"
+            ),
+            "status": enrollment.status.value,
+            "payment_status": enrollment.payment_status.value,
+            "uses_installments": enrollment.uses_installments,
+            "total_installments": enrollment.total_installments,
+            "currency": enrollment.currency_snapshot or "NGN",
+            "installments": [
+                {
+                    "id": str(item.id),
+                    "number": item.installment_number,
+                    "amount_kobo": item.amount,
+                    "due_at": item.due_at.isoformat(),
+                    "status": item.status.value,
+                }
+                for item in sorted(
+                    enrollment.installments, key=lambda value: value.installment_number
+                )
+            ],
+        }
+        for enrollment in enrollments
+    ]

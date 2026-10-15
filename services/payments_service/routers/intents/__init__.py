@@ -66,6 +66,7 @@ from . import admin as _admin
 from . import completion as _completion
 from . import intent_creation as _intent_creation
 from . import member_payments as _member_payments
+from . import obligations as _obligations
 from . import pricing as _pricing
 from services.payments_service.routers.academy_receipts import (
     router as academy_receipts_router,
@@ -100,6 +101,7 @@ router = APIRouter(prefix="/payments", tags=["payments"])
 router.include_router(_pricing.router)
 router.include_router(_intent_creation.router)
 router.include_router(_member_payments.router)
+router.include_router(_obligations.router)
 router.include_router(_completion.router)
 router.include_router(_admin.router)
 router.include_router(reconciliation_router)

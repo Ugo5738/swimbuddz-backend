@@ -16095,6 +16095,52 @@
         ]
       }
     },
+    "/api/v1/internal/sessions/financial-obligations/{member_auth_id}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Member Session Financial Obligations",
+        "description": "Service-owned projection of already confirmed, unpaid session fees.\n\nUses exactly the member Billing unpaid-booking predicate, including\nabsence of both a linked payment intent and a wallet transaction.",
+        "operationId": "member_session_financial_obligations_internal_sessions_financial_obligations__member_auth_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/attendance/sessions/{session_id}/sign-in": {
       "post": {
         "tags": [
@@ -22333,6 +22379,52 @@
         }
       }
     },
+    "/api/v1/internal/academy/financial-obligations/{member_auth_id}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Member Academy Financial Obligations",
+        "description": "Minimal service-only financial projection, owned by Academy.\n\nNever accept a member ID directly from a public client; Payments derives it\nfrom the authenticated JWT before requesting this service-role endpoint.\nExisting frozen schedules take precedence over cohort pricing.",
+        "operationId": "member_academy_financial_obligations_internal_academy_financial_obligations__member_auth_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/extension-requests/cohorts/{cohort_id}": {
       "post": {
         "tags": [
@@ -23954,6 +24046,31 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/payments/me/obligations": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "My Financial Obligations",
+        "description": "A summary, not a payment initiation endpoint or universal receivables ledger.",
+        "operationId": "my_financial_obligations_payments_me_obligations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/payments/{reference}/complete": {
@@ -50744,6 +50861,52 @@
                 "schema": {
                   "$ref": "#/components/schemas/MemberStoreSummary"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/store/financial-obligations/{member_auth_id}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Member Store Unfinished Orders",
+        "description": "Unfinished orders are OPTIONAL checkouts, not automatically member debt.",
+        "operationId": "member_store_unfinished_orders_internal_store_financial_obligations__member_auth_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
