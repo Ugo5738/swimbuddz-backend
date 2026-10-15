@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace as NS
 from uuid import uuid4
 
-from libs.common.session_access import evaluate_session_access, SessionAccessDecision
+from libs.common.session_access import evaluate_session_access
 from services.members_service.routers.club_commercial_terms import ClubTermsApproval
 from services.sessions_service.services.commercial import apply_explicit_rate
 
