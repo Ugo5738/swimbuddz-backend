@@ -127,3 +127,51 @@ async def approve_club_terms(
     db.add(row)
     await db.commit()
     return {"adjustment_id": str(row.id), "idempotent": False}
+
+
+@router.get("/commercial-terms/report")
+async def club_commercial_terms_report(
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Approved Club concessions, not inferred future billing or ledger revenue.
+
+    A transition member owes nothing for an unbooked swim. Only an actual
+    booking freezes the agreed rate into an obligation/payment attempt.
+    """
+    from services.members_service.models import Club
+    rows = (await db.execute(
+        select(ClubCommercialAdjustment, ClubEnrollment, Club)
+        .join(ClubEnrollment, ClubEnrollment.id == ClubCommercialAdjustment.enrollment_id)
+        .join(Club, Club.id == ClubEnrollment.club_id)
+        .order_by(ClubCommercialAdjustment.created_at.desc())
+    )).all()
+    items = []
+    for adjustment, enrollment, club in rows:
+        baseline = adjustment.original_terms.get("standard_session_fee_kobo")
+        agreed = adjustment.session_fee_kobo
+        items.append({
+            "adjustment_id": str(adjustment.id),
+            "member_id": str(enrollment.member_id),
+            "enrollment_id": str(enrollment.id),
+            "club_name": club.name,
+            "standard_session_fee_kobo": baseline,
+            "agreed_session_fee_kobo": agreed,
+            "potential_concession_per_swim_kobo": (
+                max(0, int(baseline) - agreed) if baseline is not None else None
+            ),
+            "valid_from": adjustment.valid_from,
+            "valid_until": adjustment.valid_until,
+            "reason": adjustment.reason,
+            "approved_by": adjustment.actor_auth_id,
+        })
+    return {
+        "items": items,
+        "count": len(items),
+        "note": (
+            "This is the approved commercial terms register. It does not imply "
+            "that every future swim has been booked or billed. Realized concession "
+            "and receivables must be derived from immutable SessionBooking quotes "
+            "and actual payment settlement; accounting income remains Ledger-owned."
+        ),
+    }
