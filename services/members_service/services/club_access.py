@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.members_service.models import (
     Club,
     ClubEnrollment,
+    ClubCommercialAdjustment,
     ClubPlanVersion,
     MemberMembership,
     Pod,
