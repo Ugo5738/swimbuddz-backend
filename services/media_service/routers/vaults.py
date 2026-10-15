@@ -917,11 +917,16 @@ async def list_vaults(
     if not actor.is_admin:
         if not actor.member_id:
             return VaultListResponse(items=[], total=0)
-        query = query.join(MediaVaultGrant).where(
-            MediaVaultGrant.member_id == actor.member_id,
-            MediaVaultGrant.revoked_at.is_(None),
-            MediaVaultGrant.starts_at <= utc_now(),
-            MediaVaultGrant.expires_at >= utc_now(),
+        query = query.outerjoin(MediaVaultGrant).where(
+            or_(
+                MediaVault.owner_member_id == actor.member_id,
+                and_(
+                    MediaVaultGrant.member_id == actor.member_id,
+                    MediaVaultGrant.revoked_at.is_(None),
+                    MediaVaultGrant.starts_at <= utc_now(),
+                    MediaVaultGrant.expires_at >= utc_now(),
+                ),
+            )
         )
     if capture_from:
         query = query.where(MediaVault.capture_date >= capture_from.date())
@@ -1087,6 +1092,40 @@ async def _member_can_view_video(
             for r in records
         )
     return False
+
+
+@router.post("/my-swim-vault", response_model=VaultResponse)
+async def get_or_create_my_swim_vault(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Private member-owned collection for unsolicited swim progress uploads."""
+    actor = await resolve_actor(current_user)
+    if not actor.member_id:
+        raise HTTPException(status_code=403, detail="A SwimBuddz member profile is required")
+    vault = await db.scalar(
+        select(MediaVault).where(
+            MediaVault.owner_member_id == actor.member_id,
+            MediaVault.deleted_at.is_(None),
+        ).with_for_update()
+    )
+    if vault is None:
+        now = utc_now()
+        vault = MediaVault(
+            owner_member_id=actor.member_id,
+            title="My Swim Uploads",
+            description="Private member uploads awaiting SwimBuddz review",
+            capture_date=now.date(),
+            upload_opens_at=now - timedelta(minutes=1),
+            upload_closes_at=now + timedelta(days=3650),
+            status="open",
+            created_by=actor.auth_id,
+            settings_json={"member_self_upload": True},
+        )
+        db.add(vault)
+        await db.commit()
+        await db.refresh(vault)
+    return await _vault_response(db, vault, actor)
 
 
 @router.get("/my-videos", response_model=MemberVideosResponse)
