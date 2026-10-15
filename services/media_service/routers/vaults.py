@@ -1062,6 +1062,33 @@ async def list_media_tags(
     return sorted(set(DEFAULT_VAULT_TAGS) | set(rows.scalars()), key=str.casefold)
 
 
+async def _member_can_view_video(
+    db: AsyncSession, *, member_id: uuid.UUID, item: MediaItem, vault: MediaVault,
+) -> bool:
+    if (item.media_type != MediaType.VIDEO or item.processing_status != "ready"):
+        return False
+    if item.soft_deleted_at or vault.deleted_at or vault.status == "archived":
+        return False
+    if item.review_status not in {"approved", "published"} or item.consent_status != "cleared":
+        return False
+    if item.session_visibility == "selected_members":
+        return bool(await db.scalar(select(MediaItemMemberShare.id).where(
+            MediaItemMemberShare.media_item_id == item.id,
+            MediaItemMemberShare.member_id == member_id,
+            MediaItemMemberShare.revoked_at.is_(None),
+        )))
+    if item.session_visibility == "session_participants" and vault.session_id:
+        records = await get_member_attendance(
+            str(member_id), session_ids=[str(vault.session_id)], calling_service="media"
+        )
+        return any(
+            r.get("status", "").lower() in {"present", "late"}
+            and r.get("role", "swimmer").lower() == "swimmer"
+            for r in records
+        )
+    return False
+
+
 @router.get("/my-videos", response_model=MemberVideosResponse)
 async def my_session_videos(
     page: int = Query(default=1, ge=1),
