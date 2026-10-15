@@ -146,7 +146,7 @@ class _RowsResult:
 
 class _AccessDb:
     def __init__(self, memberships, enrollments):
-        self.results = iter([_RowsResult(memberships), _RowsResult(enrollments)])
+        self.results = iter([_RowsResult(memberships), _RowsResult(enrollments), _RowsResult([])])
 
     async def execute(self, _statement):
         return next(self.results)
