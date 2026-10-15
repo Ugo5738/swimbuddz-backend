@@ -2533,25 +2533,29 @@ async def member_session_financial_obligations(
     absence of both a linked payment intent and a wallet transaction.
     """
     rows = (
-        await db.execute(
-            select(
-                SessionBooking.id,
-                SessionBooking.session_id,
-                Session.title.label("session_title"),
-                Session.starts_at.label("session_starts_at"),
-                SessionBooking.fee_amount_kobo,
+        (
+            await db.execute(
+                select(
+                    SessionBooking.id,
+                    SessionBooking.session_id,
+                    Session.title.label("session_title"),
+                    Session.starts_at.label("session_starts_at"),
+                    SessionBooking.fee_amount_kobo,
+                )
+                .join(Session, Session.id == SessionBooking.session_id)
+                .where(
+                    SessionBooking.member_auth_id == member_auth_id,
+                    SessionBooking.status == SessionBookingStatus.CONFIRMED,
+                    SessionBooking.fee_amount_kobo > 0,
+                    SessionBooking.payment_intent_id.is_(None),
+                    SessionBooking.wallet_transaction_id.is_(None),
+                )
+                .order_by(SessionBooking.booked_at.desc())
             )
-            .join(Session, Session.id == SessionBooking.session_id)
-            .where(
-                SessionBooking.member_auth_id == member_auth_id,
-                SessionBooking.status == SessionBookingStatus.CONFIRMED,
-                SessionBooking.fee_amount_kobo > 0,
-                SessionBooking.payment_intent_id.is_(None),
-                SessionBooking.wallet_transaction_id.is_(None),
-            )
-            .order_by(SessionBooking.booked_at.desc())
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return [
         {
             "id": str(row.id),
