@@ -69,10 +69,11 @@ jobs:
           git fetch origin feature/commercial-terms-and-club-admin-ux
           git switch -C ci-format origin/feature/commercial-terms-and-club-admin-ux
           ruff format libs/common/session_access.py services/academy_service/routers/enrollments/commercial_terms.py services/members_service/models/__init__.py services/members_service/models/commercial_adjustment.py services/members_service/routers/__init__.py services/members_service/routers/club_commercial_terms.py services/members_service/services/club_access.py tests/unit/test_club_commercial_terms.py tests/unit/test_club_capacity_and_guest_holds.py
+          python scripts/api/generate-openapi.py > openapi.json
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add libs/common/session_access.py services/academy_service/routers/enrollments/commercial_terms.py services/members_service/models/__init__.py services/members_service/models/commercial_adjustment.py services/members_service/routers/__init__.py services/members_service/routers/club_commercial_terms.py services/members_service/services/club_access.py tests/unit/test_club_commercial_terms.py tests/unit/test_club_capacity_and_guest_holds.py
+            git add openapi.json libs/common/session_access.py services/academy_service/routers/enrollments/commercial_terms.py services/members_service/models/__init__.py services/members_service/models/commercial_adjustment.py services/members_service/routers/__init__.py services/members_service/routers/club_commercial_terms.py services/members_service/services/club_access.py tests/unit/test_club_commercial_terms.py tests/unit/test_club_capacity_and_guest_holds.py
             git commit -m "style: normalize commercial terms code"
             git push origin HEAD:feature/commercial-terms-and-club-admin-ux
           fi
