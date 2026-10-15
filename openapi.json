@@ -4527,6 +4527,131 @@
         }
       }
     },
+    "/api/v1/clubs/admin/enrollments/{enrollment_id}/commercial-terms": {
+      "get": {
+        "tags": [
+          "clubs-admin-commercial-terms"
+        ],
+        "summary": "List Club Terms",
+        "operationId": "list_club_terms_clubs_admin_enrollments__enrollment_id__commercial_terms_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "clubs-admin-commercial-terms"
+        ],
+        "summary": "Approve Club Terms",
+        "operationId": "approve_club_terms_clubs_admin_enrollments__enrollment_id__commercial_terms_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubTermsApproval"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clubs/admin/commercial-terms/report": {
+      "get": {
+        "tags": [
+          "clubs-admin-commercial-terms"
+        ],
+        "summary": "Club Commercial Terms Report",
+        "description": "Approved Club concessions, not inferred future billing or ledger revenue.\n\nA transition member owes nothing for an unbooked swim. Only an actual\nbooking freezes the agreed rate into an obligation/payment attempt.",
+        "operationId": "club_commercial_terms_report_clubs_admin_commercial_terms_report_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/clubs/admin/members/{member_id}/enrollments": {
       "get": {
         "tags": [
@@ -19154,6 +19279,60 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/finance/academy-contracts": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Academy Contract Summary",
+        "description": "Operational contract value, not cash collected or recognized revenue.\n\nList value is based on the enrollment's first frozen tuition before later\ncommercial amendments. The most recent approved amendment determines its\ncash contract. Discounted checkout attempts not yet reconciled into an\napproved contract must not be silently called cash or receivables.",
+        "operationId": "academy_contract_summary_academy_admin_finance_academy_contracts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cohort Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -68361,6 +68540,51 @@
           "updated_at"
         ],
         "title": "ClubResponse"
+      },
+      "ClubTermsApproval": {
+        "properties": {
+          "adjustment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Adjustment Id"
+          },
+          "agreed_session_fee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Agreed Session Fee Kobo"
+          },
+          "standard_session_fee_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Standard Session Fee Kobo"
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Valid From"
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Valid Until"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "adjustment_id",
+          "agreed_session_fee_kobo",
+          "standard_session_fee_kobo",
+          "valid_from",
+          "valid_until",
+          "reason"
+        ],
+        "title": "ClubTermsApproval"
       },
       "ClubUpdate": {
         "properties": {
