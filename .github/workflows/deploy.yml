@@ -64,6 +64,10 @@ jobs:
       - name: Normalize feature branch formatting
         if: github.event_name == 'pull_request' && github.head_ref == 'feature/commercial-terms-and-club-admin-ux'
         run: |
+          # PR checkouts use a synthetic merge commit. Re-base formatting onto
+          # the actual feature head so pushing never creates unrelated history.
+          git fetch origin feature/commercial-terms-and-club-admin-ux
+          git switch -C ci-format origin/feature/commercial-terms-and-club-admin-ux
           ruff format libs/common/session_access.py services/academy_service/routers/enrollments/commercial_terms.py services/members_service/models/__init__.py services/members_service/models/commercial_adjustment.py services/members_service/routers/__init__.py services/members_service/routers/club_commercial_terms.py services/members_service/services/club_access.py tests/unit/test_club_commercial_terms.py
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
