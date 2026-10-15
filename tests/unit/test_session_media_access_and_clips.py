@@ -93,3 +93,54 @@ async def test_only_actual_swimmers_can_see_participant_video(monkeypatch):
 def test_clip_worker_and_cleanup_are_registered():
     assert task_build_member_vault_clip in WorkerSettings.functions
     assert task_cleanup_member_vault_clips in WorkerSettings.functions
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_share_unapproved_session_video(monkeypatch):
+    item_id = uuid.uuid4()
+    vault_id = uuid.uuid4()
+    item = SimpleNamespace(
+        id=item_id, source_session_id=uuid.uuid4(), media_type=vaults.MediaType.VIDEO,
+        review_status="unreviewed", consent_status="unreviewed",
+        processing_status="ready", soft_deleted_at=None,
+    )
+    db = SimpleNamespace(scalars=AsyncMock(return_value=[item]))
+    monkeypatch.setattr(
+        vaults, "get_vault_or_404",
+        AsyncMock(return_value=SimpleNamespace(id=vault_id, session_id=None))
+    )
+    with pytest.raises(vaults.HTTPException) as exc:
+        await vaults.change_session_media_visibility(
+            vault_id,
+            SessionMediaPolicyUpdate(
+                media_item_ids=[item_id], session_visibility="session_participants",
+                allow_member_clips=True,
+            ),
+            current_user=SimpleNamespace(user_id=str(uuid.uuid4())),
+            db=db,
+        )
+    assert exc.value.status_code == 422
+    assert "consent" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_member_cannot_clip_unshared_recording(monkeypatch):
+    member_id = uuid.uuid4()
+    video = SimpleNamespace(
+        id=uuid.uuid4(), vault_id=uuid.uuid4(), allow_member_clips=False
+    )
+    db = SimpleNamespace(get=AsyncMock(return_value=video))
+    monkeypatch.setattr(
+        vaults, "resolve_actor",
+        AsyncMock(return_value=SimpleNamespace(member_id=member_id))
+    )
+    monkeypatch.setattr(
+        vaults, "get_vault_or_404",
+        AsyncMock(return_value=SimpleNamespace(id=video.vault_id))
+    )
+    with pytest.raises(vaults.HTTPException) as exc:
+        await vaults.request_member_clip(
+            video.id, ClipCreate(start_ms=0, end_ms=10000),
+            current_user=SimpleNamespace(), db=db,
+        )
+    assert exc.value.status_code == 403
