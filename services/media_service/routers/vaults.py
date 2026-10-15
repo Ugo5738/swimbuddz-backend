@@ -24,6 +24,7 @@ from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import (
     dispatch_notification,
+    get_member_attendance,
 )
 from libs.db.session import get_async_db
 from services.media_service.models import (
@@ -1073,9 +1074,25 @@ async def my_session_videos(
     if not actor.member_id:
         return MemberVideosResponse(items=[], total=0, page=page, page_size=page_size)
 
+    # Attendance is resolved by the owning attendance service, not guessed
+    # from a confirmed booking. Absentees must not see session-only footage.
+    attendance = await get_member_attendance(str(actor.member_id), calling_service="media")
+    attended_ids = [
+        uuid.UUID(str(row["session_id"])) for row in attendance
+        if row.get("status", "").lower() in {"present", "late"}
+        and row.get("role", "swimmer").lower() == "swimmer"
+    ]
+    personal_share = (
+        (MediaItem.session_visibility == "selected_members")
+        & (MediaItemMemberShare.member_id == actor.member_id)
+        & (MediaItemMemberShare.revoked_at.is_(None))
+    )
+    session_audience = (
+        (MediaItem.session_visibility == "session_participants")
+        & (MediaVault.session_id.in_(attended_ids))
+    )
     conditions = [
-        MediaItemMemberShare.member_id == actor.member_id,
-        MediaItemMemberShare.revoked_at.is_(None),
+        or_(personal_share, session_audience),
         MediaItem.soft_deleted_at.is_(None),
         MediaItem.processing_status == "ready",
         MediaItem.media_type == MediaType.VIDEO,
@@ -1085,18 +1102,20 @@ async def my_session_videos(
         MediaVault.status != "archived",
     ]
     total = await db.scalar(
-        select(func.count(MediaItem.id))
-        .join(MediaItemMemberShare, MediaItemMemberShare.media_item_id == MediaItem.id)
+        select(func.count(func.distinct(MediaItem.id)))
         .join(MediaVault, MediaVault.id == MediaItem.vault_id)
+        .outerjoin(MediaItemMemberShare, MediaItemMemberShare.media_item_id == MediaItem.id)
         .where(*conditions)
+        .distinct()
     )
     results = await db.execute(
         select(
             MediaItem, MediaVault.title, MediaVault.capture_date, MediaVault.session_id
         )
-        .join(MediaItemMemberShare, MediaItemMemberShare.media_item_id == MediaItem.id)
         .join(MediaVault, MediaVault.id == MediaItem.vault_id)
+        .outerjoin(MediaItemMemberShare, MediaItemMemberShare.media_item_id == MediaItem.id)
         .where(*conditions)
+        .distinct()
         .order_by(
             desc(MediaVault.capture_date),
             desc(MediaItem.created_at),
