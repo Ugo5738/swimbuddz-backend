@@ -58,3 +58,42 @@ async def get_member_store_summary(
         orders_placed=row.count or 0,
         total_spent=int(row.total or 0),
     )
+
+
+@router.get("/financial-obligations/{member_auth_id}")
+async def member_store_unfinished_orders(
+    member_auth_id: str,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Unfinished orders are OPTIONAL checkouts, not automatically member debt."""
+    from services.store_service.models import Order, OrderStatus
+
+    orders = (
+        (
+            await db.execute(
+                select(Order)
+                .where(Order.member_auth_id == member_auth_id)
+                .where(
+                    Order.status.in_(
+                        [OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_FAILED]
+                    )
+                )
+                .order_by(Order.created_at.desc())
+                .limit(50)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "id": str(order.id),
+            "order_number": order.order_number,
+            "title": f"Store order {order.order_number}",
+            "amount_kobo": int(order.total_ngn * 100),
+            "status": order.status.value,
+            "created_at": order.created_at.isoformat(),
+        }
+        for order in orders
+    ]
