@@ -2178,6 +2178,13 @@ async def share_vault_videos_with_members(
             status_code=404, detail="One or more media items were not found"
         )
     if payload.action == "grant" and any(
+        item.session_visibility != "selected_members" for item in items
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Switch visibility to Selected Members before granting individual access",
+        )
+    if payload.action == "grant" and any(
         item.media_type != MediaType.VIDEO
         or item.processing_status != "ready"
         or item.review_status not in {"approved", "published"}
