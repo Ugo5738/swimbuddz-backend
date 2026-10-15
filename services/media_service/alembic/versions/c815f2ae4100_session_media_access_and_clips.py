@@ -18,6 +18,8 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column("media_vaults", sa.Column("owner_member_id", postgresql.UUID(as_uuid=True), nullable=True))
     op.create_index("ix_media_vaults_owner_member_id", "media_vaults", ["owner_member_id"])
+    op.add_column("media_items", sa.Column("source_session_id", postgresql.UUID(as_uuid=True), nullable=True))
+    op.create_index("ix_media_items_source_session_id", "media_items", ["source_session_id"])
     op.add_column("media_items", sa.Column("session_visibility", sa.String(24), nullable=False, server_default="selected_members"))
     op.add_column("media_items", sa.Column("allow_member_clips", sa.Boolean(), nullable=False, server_default=sa.false()))
     op.create_index("ix_media_items_session_visibility", "media_items", ["session_visibility"])
@@ -47,5 +49,7 @@ def downgrade() -> None:
     op.drop_index("ix_media_items_session_visibility", table_name="media_items")
     op.drop_column("media_items", "allow_member_clips")
     op.drop_column("media_items", "session_visibility")
+    op.drop_index("ix_media_items_source_session_id", table_name="media_items")
+    op.drop_column("media_items", "source_session_id")
     op.drop_index("ix_media_vaults_owner_member_id", table_name="media_vaults")
     op.drop_column("media_vaults", "owner_member_id")
