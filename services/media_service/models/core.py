@@ -115,6 +115,9 @@ class MediaItem(Base):
         nullable=True,
         index=True,
     )
+    source_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     upload_batch_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("media_upload_batches.id", ondelete="SET NULL"),
