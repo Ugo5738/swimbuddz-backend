@@ -40,6 +40,7 @@ class MediaVault(Base):
     __table_args__ = (
         UniqueConstraint("session_id", name="uq_media_vaults_session_id"),
         UniqueConstraint("event_id", name="uq_media_vaults_event_id"),
+        UniqueConstraint("owner_member_id", name="uq_media_vaults_owner_member_id"),
         Index("ix_media_vaults_capture_date_status", "capture_date", "status"),
     )
 
