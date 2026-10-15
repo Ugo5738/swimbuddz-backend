@@ -1,4 +1,5 @@
 """Short, private member clip derivatives rendered from playback proxies."""
+
 from __future__ import annotations
 
 import asyncio
@@ -42,16 +43,41 @@ async def build_member_vault_clip(clip_id: str) -> dict:
             target = str(Path(folder) / "clip.mp4")
             await asyncio.to_thread(
                 storage_service.s3_client.download_file,
-                storage_service.bucket_private, source_key, source
+                storage_service.bucket_private,
+                source_key,
+                source,
             )
+
             def render():
                 return subprocess.run(
-                    ["ffmpeg", "-y", "-ss", str(start), "-i", source,
-                     "-t", str(duration), "-c:v", "libx264", "-preset", "veryfast",
-                     "-crf", "26", "-c:a", "aac", "-b:a", "96k", "-movflags",
-                     "+faststart", target],
-                    capture_output=True, text=True, timeout=600,
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-ss",
+                        str(start),
+                        "-i",
+                        source,
+                        "-t",
+                        str(duration),
+                        "-c:v",
+                        "libx264",
+                        "-preset",
+                        "veryfast",
+                        "-crf",
+                        "26",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "96k",
+                        "-movflags",
+                        "+faststart",
+                        target,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
                 )
+
             result = await asyncio.to_thread(render)
             if result.returncode:
                 raise RuntimeError(result.stderr[-500:])
@@ -82,16 +108,26 @@ async def build_member_vault_clip(clip_id: str) -> dict:
 async def cleanup_expired_member_clips() -> dict:
     """Remove expired derivatives, leaving source recordings unchanged."""
     async with AsyncSessionLocal() as db:
-        clips = list((await db.scalars(
-            select(MediaVaultClip).where(
-                MediaVaultClip.expires_at < utc_now(),
-                MediaVaultClip.object_key.is_not(None),
-            ).limit(100)
-        )).all())
+        clips = list(
+            (
+                await db.scalars(
+                    select(MediaVaultClip)
+                    .where(
+                        MediaVaultClip.expires_at < utc_now(),
+                        MediaVaultClip.object_key.is_not(None),
+                    )
+                    .limit(100)
+                )
+            ).all()
+        )
         count = 0
         for clip in clips:
             try:
-                await asyncio.to_thread(storage_service.s3_client.delete_object, Bucket=storage_service.bucket_private, Key=clip.object_key)
+                await asyncio.to_thread(
+                    storage_service.s3_client.delete_object,
+                    Bucket=storage_service.bucket_private,
+                    Key=clip.object_key,
+                )
                 clip.object_key = None
                 clip.status = "expired"
                 count += 1

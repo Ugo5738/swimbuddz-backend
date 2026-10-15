@@ -497,16 +497,31 @@ async def _initiate_upload(
     source_session_id = vault.session_id
     if payload.session_id:
         if vault.session_id and payload.session_id != vault.session_id:
-            raise HTTPException(status_code=422, detail="Recording must belong to its assigned session")
+            raise HTTPException(
+                status_code=422, detail="Recording must belong to its assigned session"
+            )
         if not vault.session_id:
-            if not batch.uploader_member_id or vault.owner_member_id != batch.uploader_member_id:
-                raise HTTPException(status_code=403, detail="Only your own uploads can be linked to a session")
+            if (
+                not batch.uploader_member_id
+                or vault.owner_member_id != batch.uploader_member_id
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Only your own uploads can be linked to a session",
+                )
             attendance = await get_member_attendance(
                 str(batch.uploader_member_id),
-                session_ids=[str(payload.session_id)], calling_service="media",
+                session_ids=[str(payload.session_id)],
+                calling_service="media",
             )
-            if not any(row.get("status", "").lower() in {"present", "late"} for row in attendance):
-                raise HTTPException(status_code=403, detail="Only attended sessions can be linked to a personal upload")
+            if not any(
+                row.get("status", "").lower() in {"present", "late"}
+                for row in attendance
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Only attended sessions can be linked to a personal upload",
+                )
         source_session_id = payload.session_id
 
     media_type = _media_type_for(payload.content_type, payload.filename)
@@ -1085,24 +1100,37 @@ async def list_media_tags(
 
 
 async def _member_can_view_video(
-    db: AsyncSession, *, member_id: uuid.UUID, item: MediaItem, vault: MediaVault,
+    db: AsyncSession,
+    *,
+    member_id: uuid.UUID,
+    item: MediaItem,
+    vault: MediaVault,
 ) -> bool:
-    if (item.media_type != MediaType.VIDEO or item.processing_status != "ready"):
+    if item.media_type != MediaType.VIDEO or item.processing_status != "ready":
         return False
     if item.soft_deleted_at or vault.deleted_at or vault.status == "archived":
         return False
-    if item.review_status not in {"approved", "published"} or item.consent_status != "cleared":
+    if (
+        item.review_status not in {"approved", "published"}
+        or item.consent_status != "cleared"
+    ):
         return False
     if item.session_visibility == "selected_members":
-        return bool(await db.scalar(select(MediaItemMemberShare.id).where(
-            MediaItemMemberShare.media_item_id == item.id,
-            MediaItemMemberShare.member_id == member_id,
-            MediaItemMemberShare.revoked_at.is_(None),
-        )))
+        return bool(
+            await db.scalar(
+                select(MediaItemMemberShare.id).where(
+                    MediaItemMemberShare.media_item_id == item.id,
+                    MediaItemMemberShare.member_id == member_id,
+                    MediaItemMemberShare.revoked_at.is_(None),
+                )
+            )
+        )
     linked_session_id = item.source_session_id or vault.session_id
     if item.session_visibility == "session_participants" and linked_session_id:
         records = await get_member_attendance(
-            str(member_id), session_ids=[str(linked_session_id)], calling_service="media"
+            str(member_id),
+            session_ids=[str(linked_session_id)],
+            calling_service="media",
         )
         return any(
             r.get("status", "").lower() in {"present", "late"}
@@ -1130,17 +1158,27 @@ async def list_my_swim_uploads(
         MediaItem.soft_deleted_at.is_(None),
         MediaItem.processing_status == "ready",
     ]
-    total = int(await db.scalar(
-        select(func.count(MediaItem.id)).join(MediaVault, MediaVault.id == MediaItem.vault_id).where(*conditions)
-    ) or 0)
+    total = int(
+        await db.scalar(
+            select(func.count(MediaItem.id))
+            .join(MediaVault, MediaVault.id == MediaItem.vault_id)
+            .where(*conditions)
+        )
+        or 0
+    )
     rows = await db.scalars(
-        select(MediaItem).join(MediaVault, MediaVault.id == MediaItem.vault_id)
-        .where(*conditions).order_by(desc(MediaItem.created_at))
-        .offset((page - 1) * page_size).limit(page_size)
+        select(MediaItem)
+        .join(MediaVault, MediaVault.id == MediaItem.vault_id)
+        .where(*conditions)
+        .order_by(desc(MediaItem.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     )
     return VaultMediaListResponse(
         items=[await _media_response(item) for item in rows],
-        total=total, page=page, page_size=page_size,
+        total=total,
+        page=page,
+        page_size=page_size,
     )
 
 
@@ -1150,17 +1188,24 @@ async def list_my_swim_sessions(current_user: AuthUser = Depends(get_current_use
     actor = await resolve_actor(current_user)
     if not actor.member_id:
         return []
-    attendance = await get_member_attendance(str(actor.member_id), calling_service="media")
-    session_ids = list(dict.fromkeys(
-        str(row["session_id"]) for row in attendance
-        if row.get("status", "").lower() in {"present", "late"}
-        and row.get("role", "swimmer").lower() == "swimmer"
-    ))[:200]
+    attendance = await get_member_attendance(
+        str(actor.member_id), calling_service="media"
+    )
+    session_ids = list(
+        dict.fromkeys(
+            str(row["session_id"])
+            for row in attendance
+            if row.get("status", "").lower() in {"present", "late"}
+            and row.get("role", "swimmer").lower() == "swimmer"
+        )
+    )[:200]
     result = []
     for offset in range(0, len(session_ids), 100):
-        result.extend(await get_sessions_by_ids(
-            session_ids[offset:offset + 100], calling_service="media"
-        ))
+        result.extend(
+            await get_sessions_by_ids(
+                session_ids[offset : offset + 100], calling_service="media"
+            )
+        )
     return sorted(result, key=lambda value: value.get("starts_at") or "", reverse=True)
 
 
@@ -1172,12 +1217,16 @@ async def get_or_create_my_swim_vault(
     """Private member-owned collection for unsolicited swim progress uploads."""
     actor = await resolve_actor(current_user)
     if not actor.member_id:
-        raise HTTPException(status_code=403, detail="A SwimBuddz member profile is required")
+        raise HTTPException(
+            status_code=403, detail="A SwimBuddz member profile is required"
+        )
     vault = await db.scalar(
-        select(MediaVault).where(
+        select(MediaVault)
+        .where(
             MediaVault.owner_member_id == actor.member_id,
             MediaVault.deleted_at.is_(None),
-        ).with_for_update()
+        )
+        .with_for_update()
     )
     if vault is None:
         now = utc_now()
@@ -1212,9 +1261,12 @@ async def my_session_videos(
 
     # Attendance is resolved by the owning attendance service, not guessed
     # from a confirmed booking. Absentees must not see session-only footage.
-    attendance = await get_member_attendance(str(actor.member_id), calling_service="media")
+    attendance = await get_member_attendance(
+        str(actor.member_id), calling_service="media"
+    )
     attended_ids = [
-        uuid.UUID(str(row["session_id"])) for row in attendance
+        uuid.UUID(str(row["session_id"]))
+        for row in attendance
         if row.get("status", "").lower() in {"present", "late"}
         and row.get("role", "swimmer").lower() == "swimmer"
     ]
@@ -1223,9 +1275,10 @@ async def my_session_videos(
         & (MediaItemMemberShare.member_id == actor.member_id)
         & (MediaItemMemberShare.revoked_at.is_(None))
     )
-    session_audience = (
-        (MediaItem.session_visibility == "session_participants")
-        & (func.coalesce(MediaItem.source_session_id, MediaVault.session_id).in_(attended_ids))
+    session_audience = (MediaItem.session_visibility == "session_participants") & (
+        func.coalesce(MediaItem.source_session_id, MediaVault.session_id).in_(
+            attended_ids
+        )
     )
     conditions = [
         or_(personal_share, session_audience),
@@ -1240,7 +1293,9 @@ async def my_session_videos(
     total = await db.scalar(
         select(func.count(func.distinct(MediaItem.id)))
         .join(MediaVault, MediaVault.id == MediaItem.vault_id)
-        .outerjoin(MediaItemMemberShare, MediaItemMemberShare.media_item_id == MediaItem.id)
+        .outerjoin(
+            MediaItemMemberShare, MediaItemMemberShare.media_item_id == MediaItem.id
+        )
         .where(*conditions)
         .distinct()
     )
@@ -1249,7 +1304,9 @@ async def my_session_videos(
             MediaItem, MediaVault.title, MediaVault.capture_date, MediaVault.session_id
         )
         .join(MediaVault, MediaVault.id == MediaItem.vault_id)
-        .outerjoin(MediaItemMemberShare, MediaItemMemberShare.media_item_id == MediaItem.id)
+        .outerjoin(
+            MediaItemMemberShare, MediaItemMemberShare.media_item_id == MediaItem.id
+        )
         .where(*conditions)
         .distinct()
         .order_by(
@@ -1891,7 +1948,9 @@ async def list_vault_items(
     )
 
 
-@router.post("/my-videos/{media_item_id}/clips", response_model=ClipResponse, status_code=202)
+@router.post(
+    "/my-videos/{media_item_id}/clips", response_model=ClipResponse, status_code=202
+)
 async def request_member_clip(
     media_item_id: uuid.UUID,
     payload: ClipCreate,
@@ -1909,34 +1968,45 @@ async def request_member_clip(
     if not item.allow_member_clips or not await _member_can_view_video(
         db, member_id=actor.member_id, item=item, vault=vault
     ):
-        raise HTTPException(status_code=403, detail="Clipping is not permitted for this recording")
+        raise HTTPException(
+            status_code=403, detail="Clipping is not permitted for this recording"
+        )
     if not item.proxy_object_key:
         raise HTTPException(status_code=409, detail="Playback preview is not ready yet")
     since = utc_now() - timedelta(days=1)
-    clip_count = await db.scalar(select(func.count(MediaVaultClip.id)).where(
-        MediaVaultClip.member_id == actor.member_id,
-        MediaVaultClip.created_at >= since,
-    ))
+    clip_count = await db.scalar(
+        select(func.count(MediaVaultClip.id)).where(
+            MediaVaultClip.member_id == actor.member_id,
+            MediaVaultClip.created_at >= since,
+        )
+    )
     if int(clip_count or 0) >= 5:
         raise HTTPException(status_code=429, detail="Daily clip limit reached")
     clip = MediaVaultClip(
-        media_item_id=item.id, member_id=actor.member_id,
-        start_ms=payload.start_ms, end_ms=payload.end_ms,
+        media_item_id=item.id,
+        member_id=actor.member_id,
+        start_ms=payload.start_ms,
+        end_ms=payload.end_ms,
         expires_at=utc_now() + timedelta(hours=24),
     )
     db.add(clip)
     await db.commit()
     try:
         pool = await _get_redis_pool()
-        await pool.enqueue_job("task_build_member_vault_clip", str(clip.id), _queue_name="arq:media")
+        await pool.enqueue_job(
+            "task_build_member_vault_clip", str(clip.id), _queue_name="arq:media"
+        )
     except Exception:
         clip.status = "failed"
         clip.error_message = "Clip processing queue unavailable; try again"
         await db.commit()
         raise HTTPException(status_code=503, detail=clip.error_message)
     return ClipResponse(
-        id=clip.id, status=clip.status, start_ms=clip.start_ms,
-        end_ms=clip.end_ms, expires_at=clip.expires_at
+        id=clip.id,
+        status=clip.status,
+        start_ms=clip.start_ms,
+        end_ms=clip.end_ms,
+        expires_at=clip.expires_at,
     )
 
 
@@ -1952,8 +2022,13 @@ async def get_my_member_clip(
         raise HTTPException(status_code=404, detail="Clip not found")
     item = await db.get(MediaItem, clip.media_item_id)
     vault = await db.get(MediaVault, item.vault_id) if item else None
-    if not item or not vault or not item.allow_member_clips or not await _member_can_view_video(
-        db, member_id=actor.member_id, item=item, vault=vault
+    if (
+        not item
+        or not vault
+        or not item.allow_member_clips
+        or not await _member_can_view_video(
+            db, member_id=actor.member_id, item=item, vault=vault
+        )
     ):
         raise HTTPException(status_code=403, detail="Recording access was revoked")
     if clip.expires_at <= utc_now():
@@ -1961,11 +2036,17 @@ async def get_my_member_clip(
     url = None
     if clip.status == "ready" and clip.object_key:
         url = await storage_service.generate_presigned_url(
-            clip.object_key, BucketType.PRIVATE, settings.MEDIA_VAULT_SIGNED_URL_TTL_SECONDS
+            clip.object_key,
+            BucketType.PRIVATE,
+            settings.MEDIA_VAULT_SIGNED_URL_TTL_SECONDS,
         )
     return ClipResponse(
-        id=clip.id, status=clip.status, start_ms=clip.start_ms,
-        end_ms=clip.end_ms, expires_at=clip.expires_at, download_url=url
+        id=clip.id,
+        status=clip.status,
+        start_ms=clip.start_ms,
+        end_ms=clip.end_ms,
+        expires_at=clip.expires_at,
+        download_url=url,
     )
 
 
@@ -1979,17 +2060,28 @@ async def change_session_media_visibility(
     """Admins decide whether reviewed footage may be seen by attendees."""
     vault = await get_vault_or_404(db, vault_id)
     ids = set(payload.media_item_ids)
-    items = list((await db.scalars(select(MediaItem).where(
-        MediaItem.vault_id == vault_id,
-        MediaItem.id.in_(ids),
-        MediaItem.soft_deleted_at.is_(None),
-    ))).all())
+    items = list(
+        (
+            await db.scalars(
+                select(MediaItem).where(
+                    MediaItem.vault_id == vault_id,
+                    MediaItem.id.in_(ids),
+                    MediaItem.soft_deleted_at.is_(None),
+                )
+            )
+        ).all()
+    )
     if len(items) != len(ids):
-        raise HTTPException(status_code=404, detail="One or more recordings are unavailable")
+        raise HTTPException(
+            status_code=404, detail="One or more recordings are unavailable"
+        )
     if payload.session_visibility == "session_participants" and any(
         not (item.source_session_id or vault.session_id) for item in items
     ):
-        raise HTTPException(status_code=422, detail="Session participant sharing needs an associated session")
+        raise HTTPException(
+            status_code=422,
+            detail="Session participant sharing needs an associated session",
+        )
     if payload.session_visibility != "private" and any(
         item.media_type != MediaType.VIDEO
         or item.processing_status != "ready"
@@ -1997,15 +2089,23 @@ async def change_session_media_visibility(
         or item.consent_status != "cleared"
         for item in items
     ):
-        raise HTTPException(status_code=422, detail="Only ready, consent-cleared approved videos can be shared")
+        raise HTTPException(
+            status_code=422,
+            detail="Only ready, consent-cleared approved videos can be shared",
+        )
     for item in items:
         item.session_visibility = payload.session_visibility
         item.allow_member_clips = (
-            payload.allow_member_clips if payload.session_visibility != "private" else False
+            payload.allow_member_clips
+            if payload.session_visibility != "private"
+            else False
         )
     await write_audit(
-        db, action="media.vault.visibility.update", actor=current_user,
-        entity_id=vault_id, entity_type="media_vault",
+        db,
+        action="media.vault.visibility.update",
+        actor=current_user,
+        entity_id=vault_id,
+        entity_type="media_vault",
         new_value={
             "item_ids": [str(i) for i in ids],
             "visibility": payload.session_visibility,
@@ -2428,7 +2528,9 @@ async def request_item_preview(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Vault media not found")
-    if not (vault.owner_member_id == actor.member_id and item.uploaded_by == actor.auth_id):
+    if not (
+        vault.owner_member_id == actor.member_id and item.uploaded_by == actor.auth_id
+    ):
         await require_vault_role(db, vault=vault, actor=actor, minimum="curator")
     is_video = item.media_type == MediaType.VIDEO
     force = force and is_video
