@@ -284,3 +284,161 @@ async def approve_commercial_terms(
         "agreed_cash_total_kobo": payload.agreed_cash_total_kobo,
         "remaining_cash_kobo": sum(payload.unpaid_installment_amounts_kobo),
     }
+
+
+@router.get("/admin/finance/academy-contracts")
+async def academy_contract_summary(
+    cohort_id: uuid.UUID | None = None,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Operational contract value, not cash collected or recognized revenue.
+
+    List value is based on the enrollment's first frozen tuition before later
+    commercial amendments. The most recent approved amendment determines its
+    cash contract. Discounted checkout attempts not yet reconciled into an
+    approved contract must not be silently called cash or receivables.
+    """
+    query = (
+        select(Enrollment)
+        .where(
+            Enrollment.status.in_(
+                {EnrollmentStatus.ENROLLED, EnrollmentStatus.PENDING_APPROVAL}
+            )
+        )
+        .options(selectinload(Enrollment.installments))
+    )
+    if cohort_id is not None:
+        query = query.where(Enrollment.cohort_id == cohort_id)
+    enrollments = (await db.execute(query)).scalars().unique().all()
+    ids = [row.id for row in enrollments]
+    adjustment_rows = (
+        (
+            await db.execute(
+                select(AcademyCommercialAdjustment)
+                .where(AcademyCommercialAdjustment.enrollment_id.in_(ids))
+                .order_by(AcademyCommercialAdjustment.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+        if ids
+        else []
+    )
+    # Keep the very first list amount and the latest approved obligation.
+    first_by_enrollment: dict[uuid.UUID, AcademyCommercialAdjustment] = {}
+    latest_by_enrollment: dict[uuid.UUID, AcademyCommercialAdjustment] = {}
+    for adjustment in adjustment_rows:
+        latest_by_enrollment.setdefault(adjustment.enrollment_id, adjustment)
+        first_by_enrollment[adjustment.enrollment_id] = adjustment
+
+    # Payment allocations, not nominal installment statuses, establish actual
+    # money received. A failed Payments lookup is unknown, never zero.
+    import asyncio
+
+    semaphore = asyncio.Semaphore(10)
+
+    async def paid_state(enrollment_id: uuid.UUID):
+        async with semaphore:
+            try:
+                return await financial_state(enrollment_id)
+            except HTTPException:
+                return None
+
+    payment_states = await asyncio.gather(*(paid_state(row.id) for row in enrollments))
+    active_credits = (
+        (
+            await db.execute(
+                select(AcademyFinancialCredit).where(
+                    AcademyFinancialCredit.enrollment_id.in_(ids),
+                    AcademyFinancialCredit.state == "active",
+                )
+            )
+        )
+        .scalars()
+        .all()
+        if ids
+        else []
+    )
+    credits_by_enrollment: dict[uuid.UUID, int] = {}
+    for credit in active_credits:
+        credits_by_enrollment[credit.enrollment_id] = credits_by_enrollment.get(
+            credit.enrollment_id, 0
+        ) + int(credit.amount_kobo)
+
+    items = []
+    for enrollment, paid in zip(enrollments, payment_states):
+        oldest = first_by_enrollment.get(enrollment.id)
+        amendment = latest_by_enrollment.get(enrollment.id)
+        original = (
+            int(oldest.original_terms.get("price_snapshot_kobo") or 0)
+            if oldest
+            else int(enrollment.price_snapshot_amount or 0)
+        )
+        nominal = int(enrollment.price_snapshot_amount or 0)
+        contracted = (
+            int(amendment.approved_terms["agreed_cash_total_kobo"])
+            if amendment and "agreed_cash_total_kobo" in amendment.approved_terms
+            else nominal
+        )
+        cash = (
+            int(paid.get("verified_paid_tuition_kobo") or 0)
+            if paid is not None
+            else None
+        )
+        credit_applied = credits_by_enrollment.get(enrollment.id, 0)
+        outstanding = (
+            max(0, contracted - cash - credit_applied) if cash is not None else None
+        )
+        review = (
+            enrollment.price_snapshot_amount is None
+            or paid is None
+            or bool((paid or {}).get("blocked_references"))
+            or (cash is not None and cash + credit_applied > contracted)
+        )
+        items.append(
+            {
+                "enrollment_id": str(enrollment.id),
+                "cohort_id": str(enrollment.cohort_id)
+                if enrollment.cohort_id
+                else None,
+                "list_value_kobo": original,
+                "nominal_obligation_kobo": nominal,
+                "contracted_cash_value_kobo": contracted,
+                "concession_kobo": max(0, original - contracted),
+                "verified_paid_cash_kobo": cash,
+                "applied_prior_cash_credit_kobo": credit_applied,
+                "outstanding_cash_obligation_kobo": outstanding,
+                "has_approved_adjustment": bool(amendment),
+                "needs_commercial_review": review,
+            }
+        )
+    all_verified = all(item["verified_paid_cash_kobo"] is not None for item in items)
+    return {
+        "cohort_id": str(cohort_id) if cohort_id else None,
+        "enrollments": len(items),
+        "gross_list_value_kobo": sum(x["list_value_kobo"] for x in items),
+        "contracted_cash_value_kobo": sum(
+            x["contracted_cash_value_kobo"] for x in items
+        ),
+        "commercial_concessions_kobo": sum(x["concession_kobo"] for x in items),
+        "items": items,
+        "verified_paid_cash_kobo": (
+            sum(item["verified_paid_cash_kobo"] for item in items)
+            if all_verified
+            else None
+        ),
+        "outstanding_cash_obligations_kobo": (
+            sum(item["outstanding_cash_obligation_kobo"] for item in items)
+            if all_verified
+            else None
+        ),
+        "recognized_revenue_kobo": None,
+        "note": (
+            "Contract and payment-allocation report, not a revenue-recognition statement. "
+            "Verified cash is from Payments; applied credits represent earlier receipts "
+            "and are not new income. Outstanding amounts remain provisional where "
+            "checkout discounts or historical records require reconciliation. "
+            "Use Ledger for accounting revenue and refunds."
+        ),
+    }

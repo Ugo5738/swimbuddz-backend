@@ -214,6 +214,10 @@ def apply_explicit_rate(
     audience = decision.pricing_audience
     if not audience or decision.access_source == "confirmed_booking":
         return decision
+    # Per-enrollment approved commercial terms are more specific than the
+    # session's public/legacy rate card. Never overwrite their quoted amount.
+    if decision.rate_code == "club_transition_terms":
+        return decision
 
     candidates = [
         row

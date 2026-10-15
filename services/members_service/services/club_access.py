@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.members_service.models import (
     Club,
     ClubEnrollment,
+    ClubCommercialAdjustment,
     ClubPlanVersion,
     MemberMembership,
     Pod,
@@ -92,6 +93,35 @@ async def resolve_club_access_checks(
         enrollments_by_member.setdefault(enrollment.member_id, []).append(
             (enrollment, club, plan)
         )
+
+    adjustments = (
+        (
+            await db.execute(
+                select(ClubCommercialAdjustment)
+                .where(
+                    ClubCommercialAdjustment.enrollment_id.in_(
+                        [enrollment.id for enrollment, _, _ in enrollment_rows]
+                    )
+                )
+                .order_by(ClubCommercialAdjustment.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+        if enrollment_rows
+        else []
+    )
+    adjustments_by_enrollment: dict[Any, list[ClubCommercialAdjustment]] = {}
+    for adjustment in adjustments:
+        adjustments_by_enrollment.setdefault(adjustment.enrollment_id, []).append(
+            adjustment
+        )
+
+    def approved_fee(enrollment: ClubEnrollment, at: datetime) -> int | None:
+        for adjustment in adjustments_by_enrollment.get(enrollment.id, []):
+            if _aware(adjustment.valid_from) <= at < _aware(adjustment.valid_until):
+                return adjustment.session_fee_kobo
+        return None
 
     pod_ids = {check.pod_id for check in requested if check.pod_id is not None}
     pod_club_ids: dict[Any, Any] = {}
@@ -219,10 +249,15 @@ async def resolve_club_access_checks(
                     "payment_mode": payment_mode,
                     # Members-service owns dated/location eligibility. The
                     # sessions service owns the current per-session price.
-                    "fee_amount_kobo": 0
-                    if payment_mode == "quarterly_prepaid"
-                    and access_mode != "paid_addon"
-                    else None,
+                    "fee_amount_kobo": (
+                        0
+                        if payment_mode == "quarterly_prepaid"
+                        and access_mode != "paid_addon"
+                        else approved_fee(matched_enrollment, at)
+                        if payment_mode == "transition_per_session"
+                        and access_mode != "paid_addon"
+                        else None
+                    ),
                 }
             )
         elif visiting_enrollment is not None:

@@ -22,6 +22,7 @@ from services.members_service.routers import (
     challenge_router,
     clubs_router,
     club_transfers_router,
+    club_commercial_terms_router,
     community_experiences_router,
     coach_agreements_admin_router,
     coach_agreements_router,
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
     app.include_router(community_experiences_router)
     app.include_router(club_plan_admin_router)
     # Static admin transfer routes must precede /clubs/{club_id}.
+    app.include_router(club_commercial_terms_router)
     app.include_router(club_transfers_router)
     app.include_router(clubs_router)
     app.include_router(volunteer_router)
