@@ -313,12 +313,17 @@ async def academy_contract_summary(
     enrollments = (await db.execute(query)).scalars().unique().all()
     ids = [row.id for row in enrollments]
     adjustment_rows = (
-        (await db.execute(
-            select(AcademyCommercialAdjustment)
-            .where(AcademyCommercialAdjustment.enrollment_id.in_(ids))
-            .order_by(AcademyCommercialAdjustment.created_at.desc())
-        )).scalars().all()
-        if ids else []
+        (
+            await db.execute(
+                select(AcademyCommercialAdjustment)
+                .where(AcademyCommercialAdjustment.enrollment_id.in_(ids))
+                .order_by(AcademyCommercialAdjustment.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+        if ids
+        else []
     )
     # Keep the very first list amount and the latest approved obligation.
     first_by_enrollment: dict[uuid.UUID, AcademyCommercialAdjustment] = {}
@@ -332,6 +337,7 @@ async def academy_contract_summary(
     import asyncio
 
     semaphore = asyncio.Semaphore(10)
+
     async def paid_state(enrollment_id: uuid.UUID):
         async with semaphore:
             try:
@@ -341,16 +347,24 @@ async def academy_contract_summary(
 
     payment_states = await asyncio.gather(*(paid_state(row.id) for row in enrollments))
     active_credits = (
-        (await db.execute(
-            select(AcademyFinancialCredit).where(
-                AcademyFinancialCredit.enrollment_id.in_(ids),
-                AcademyFinancialCredit.state == "active",
+        (
+            await db.execute(
+                select(AcademyFinancialCredit).where(
+                    AcademyFinancialCredit.enrollment_id.in_(ids),
+                    AcademyFinancialCredit.state == "active",
+                )
             )
-        )).scalars().all() if ids else []
+        )
+        .scalars()
+        .all()
+        if ids
+        else []
     )
     credits_by_enrollment: dict[uuid.UUID, int] = {}
     for credit in active_credits:
-        credits_by_enrollment[credit.enrollment_id] = credits_by_enrollment.get(credit.enrollment_id, 0) + int(credit.amount_kobo)
+        credits_by_enrollment[credit.enrollment_id] = credits_by_enrollment.get(
+            credit.enrollment_id, 0
+        ) + int(credit.amount_kobo)
 
     items = []
     for enrollment, paid in zip(enrollments, payment_states):
@@ -367,42 +381,57 @@ async def academy_contract_summary(
             if amendment and "agreed_cash_total_kobo" in amendment.approved_terms
             else nominal
         )
-        cash = int(paid.get("verified_paid_tuition_kobo") or 0) if paid is not None else None
+        cash = (
+            int(paid.get("verified_paid_tuition_kobo") or 0)
+            if paid is not None
+            else None
+        )
         credit_applied = credits_by_enrollment.get(enrollment.id, 0)
-        outstanding = max(0, contracted - cash - credit_applied) if cash is not None else None
+        outstanding = (
+            max(0, contracted - cash - credit_applied) if cash is not None else None
+        )
         review = (
             enrollment.price_snapshot_amount is None
             or paid is None
             or bool((paid or {}).get("blocked_references"))
             or (cash is not None and cash + credit_applied > contracted)
         )
-        items.append({
-            "enrollment_id": str(enrollment.id),
-            "cohort_id": str(enrollment.cohort_id) if enrollment.cohort_id else None,
-            "list_value_kobo": original,
-            "nominal_obligation_kobo": nominal,
-            "contracted_cash_value_kobo": contracted,
-            "concession_kobo": max(0, original - contracted),
-            "verified_paid_cash_kobo": cash,
-            "applied_prior_cash_credit_kobo": credit_applied,
-            "outstanding_cash_obligation_kobo": outstanding,
-            "has_approved_adjustment": bool(amendment),
-            "needs_commercial_review": review,
-        })
+        items.append(
+            {
+                "enrollment_id": str(enrollment.id),
+                "cohort_id": str(enrollment.cohort_id)
+                if enrollment.cohort_id
+                else None,
+                "list_value_kobo": original,
+                "nominal_obligation_kobo": nominal,
+                "contracted_cash_value_kobo": contracted,
+                "concession_kobo": max(0, original - contracted),
+                "verified_paid_cash_kobo": cash,
+                "applied_prior_cash_credit_kobo": credit_applied,
+                "outstanding_cash_obligation_kobo": outstanding,
+                "has_approved_adjustment": bool(amendment),
+                "needs_commercial_review": review,
+            }
+        )
     all_verified = all(item["verified_paid_cash_kobo"] is not None for item in items)
     return {
         "cohort_id": str(cohort_id) if cohort_id else None,
         "enrollments": len(items),
         "gross_list_value_kobo": sum(x["list_value_kobo"] for x in items),
-        "contracted_cash_value_kobo": sum(x["contracted_cash_value_kobo"] for x in items),
+        "contracted_cash_value_kobo": sum(
+            x["contracted_cash_value_kobo"] for x in items
+        ),
         "commercial_concessions_kobo": sum(x["concession_kobo"] for x in items),
         "items": items,
         "verified_paid_cash_kobo": (
-            sum(item["verified_paid_cash_kobo"] for item in items) if all_verified else None
+            sum(item["verified_paid_cash_kobo"] for item in items)
+            if all_verified
+            else None
         ),
         "outstanding_cash_obligations_kobo": (
             sum(item["outstanding_cash_obligation_kobo"] for item in items)
-            if all_verified else None
+            if all_verified
+            else None
         ),
         "recognized_revenue_kobo": None,
         "note": (

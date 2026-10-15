@@ -20,7 +20,9 @@ from services.members_service.models.experience import (  # noqa: F401
     CommunityExperienceParticipant,
     CommunityExperienceAttendance,
 )
-from services.members_service.models.commercial_adjustment import ClubCommercialAdjustment  # noqa: F401
+from services.members_service.models.commercial_adjustment import (
+    ClubCommercialAdjustment,
+)  # noqa: F401
 from services.members_service.models.club import (  # noqa: F401
     Club,
     ClubApplication,

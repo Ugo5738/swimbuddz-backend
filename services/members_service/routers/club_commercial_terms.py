@@ -3,6 +3,7 @@
 Only future, unquoted regular transition practices are affected. Never mutate
 a paid booking, provider payment, or published Club price.
 """
+
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -53,11 +54,17 @@ async def list_club_terms(
     db: AsyncSession = Depends(get_async_db),
 ):
     enrollment = await _enrollment(db, enrollment_id)
-    rows = (await db.execute(
-        select(ClubCommercialAdjustment)
-        .where(ClubCommercialAdjustment.enrollment_id == enrollment.id)
-        .order_by(ClubCommercialAdjustment.created_at.desc())
-    )).scalars().all()
+    rows = (
+        (
+            await db.execute(
+                select(ClubCommercialAdjustment)
+                .where(ClubCommercialAdjustment.enrollment_id == enrollment.id)
+                .order_by(ClubCommercialAdjustment.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
     return {
         "enrollment_id": str(enrollment.id),
         "payment_mode": enrollment.payment_mode,
@@ -72,7 +79,8 @@ async def list_club_terms(
                 "actor_auth_id": row.actor_auth_id,
                 "original_terms": row.original_terms,
                 "approved_terms": row.approved_terms,
-            } for row in rows
+            }
+            for row in rows
         ],
     }
 
@@ -87,39 +95,62 @@ async def approve_club_terms(
     existing = await db.get(ClubCommercialAdjustment, body.adjustment_id)
     expected = body.model_dump(mode="json")
     if existing is not None:
-        if existing.enrollment_id != enrollment_id or existing.approved_terms.get("request") != expected:
+        if (
+            existing.enrollment_id != enrollment_id
+            or existing.approved_terms.get("request") != expected
+        ):
             raise HTTPException(409, "Adjustment ID already used for different terms")
         return {"adjustment_id": str(existing.id), "idempotent": True}
 
-    enrollment = (await db.execute(
-        select(ClubEnrollment).where(ClubEnrollment.id == enrollment_id).with_for_update()
-    )).scalar_one_or_none()
+    enrollment = (
+        await db.execute(
+            select(ClubEnrollment)
+            .where(ClubEnrollment.id == enrollment_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if enrollment is None:
         raise HTTPException(404, "Club enrollment not found")
-    if enrollment.payment_mode != "transition_per_session" or enrollment.status != "active":
-        raise HTTPException(409, "Only active pay-per-session Club enrollments can be amended")
+    if (
+        enrollment.payment_mode != "transition_per_session"
+        or enrollment.status != "active"
+    ):
+        raise HTTPException(
+            409, "Only active pay-per-session Club enrollments can be amended"
+        )
     now = utc_now()
     start = body.valid_from.astimezone(timezone.utc)
     end = body.valid_until.astimezone(timezone.utc)
     if start < now:
-        raise HTTPException(422, "Commercial terms can only start from the present onward")
-    if start < enrollment.starts_at or end > enrollment.ends_at:
-        raise HTTPException(409, "Agreement dates must fit the active Club enrollment period")
-    if (await db.execute(
-        select(ClubCommercialAdjustment.id).where(
-            ClubCommercialAdjustment.enrollment_id == enrollment.id,
-            ClubCommercialAdjustment.valid_from < end,
-            ClubCommercialAdjustment.valid_until > start,
+        raise HTTPException(
+            422, "Commercial terms can only start from the present onward"
         )
-    )).first() is not None:
-        raise HTTPException(409, "Another approved agreement overlaps these dates; resolve it first")
+    if start < enrollment.starts_at or end > enrollment.ends_at:
+        raise HTTPException(
+            409, "Agreement dates must fit the active Club enrollment period"
+        )
+    if (
+        await db.execute(
+            select(ClubCommercialAdjustment.id).where(
+                ClubCommercialAdjustment.enrollment_id == enrollment.id,
+                ClubCommercialAdjustment.valid_from < end,
+                ClubCommercialAdjustment.valid_until > start,
+            )
+        )
+    ).first() is not None:
+        raise HTTPException(
+            409, "Another approved agreement overlaps these dates; resolve it first"
+        )
     row = ClubCommercialAdjustment(
         id=body.adjustment_id,
         enrollment_id=enrollment.id,
         actor_auth_id=admin.user_id,
         reason=body.reason,
         original_terms={"standard_session_fee_kobo": body.standard_session_fee_kobo},
-        approved_terms={"request": expected, "agreed_session_fee_kobo": body.agreed_session_fee_kobo},
+        approved_terms={
+            "request": expected,
+            "agreed_session_fee_kobo": body.agreed_session_fee_kobo,
+        },
         session_fee_kobo=body.agreed_session_fee_kobo,
         valid_from=start,
         valid_until=end,
@@ -140,31 +171,39 @@ async def club_commercial_terms_report(
     booking freezes the agreed rate into an obligation/payment attempt.
     """
     from services.members_service.models import Club
-    rows = (await db.execute(
-        select(ClubCommercialAdjustment, ClubEnrollment, Club)
-        .join(ClubEnrollment, ClubEnrollment.id == ClubCommercialAdjustment.enrollment_id)
-        .join(Club, Club.id == ClubEnrollment.club_id)
-        .order_by(ClubCommercialAdjustment.created_at.desc())
-    )).all()
+
+    rows = (
+        await db.execute(
+            select(ClubCommercialAdjustment, ClubEnrollment, Club)
+            .join(
+                ClubEnrollment,
+                ClubEnrollment.id == ClubCommercialAdjustment.enrollment_id,
+            )
+            .join(Club, Club.id == ClubEnrollment.club_id)
+            .order_by(ClubCommercialAdjustment.created_at.desc())
+        )
+    ).all()
     items = []
     for adjustment, enrollment, club in rows:
         baseline = adjustment.original_terms.get("standard_session_fee_kobo")
         agreed = adjustment.session_fee_kobo
-        items.append({
-            "adjustment_id": str(adjustment.id),
-            "member_id": str(enrollment.member_id),
-            "enrollment_id": str(enrollment.id),
-            "club_name": club.name,
-            "standard_session_fee_kobo": baseline,
-            "agreed_session_fee_kobo": agreed,
-            "potential_concession_per_swim_kobo": (
-                max(0, int(baseline) - agreed) if baseline is not None else None
-            ),
-            "valid_from": adjustment.valid_from,
-            "valid_until": adjustment.valid_until,
-            "reason": adjustment.reason,
-            "approved_by": adjustment.actor_auth_id,
-        })
+        items.append(
+            {
+                "adjustment_id": str(adjustment.id),
+                "member_id": str(enrollment.member_id),
+                "enrollment_id": str(enrollment.id),
+                "club_name": club.name,
+                "standard_session_fee_kobo": baseline,
+                "agreed_session_fee_kobo": agreed,
+                "potential_concession_per_swim_kobo": (
+                    max(0, int(baseline) - agreed) if baseline is not None else None
+                ),
+                "valid_from": adjustment.valid_from,
+                "valid_until": adjustment.valid_until,
+                "reason": adjustment.reason,
+                "approved_by": adjustment.actor_auth_id,
+            }
+        )
     return {
         "items": items,
         "count": len(items),
