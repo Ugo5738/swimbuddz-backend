@@ -55537,6 +55537,127 @@
         ]
       }
     },
+    "/api/v1/media/vaults/my-swim-uploads": {
+      "get": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "List My Swim Uploads",
+        "description": "Member's own private videos, including submissions awaiting review.",
+        "operationId": "list_my_swim_uploads_media_vaults_my_swim_uploads_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 60,
+              "minimum": 1,
+              "default": 24,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultMediaListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/my-swim-sessions": {
+      "get": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "List My Swim Sessions",
+        "description": "Sessions the member actually attended; for attributing personal uploads.",
+        "operationId": "list_my_swim_sessions_media_vaults_my_swim_sessions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response List My Swim Sessions Media Vaults My Swim Sessions Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/media/vaults/my-swim-vault": {
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Get Or Create My Swim Vault",
+        "description": "Private member-owned collection for unsolicited swim progress uploads.",
+        "operationId": "get_or_create_my_swim_vault_media_vaults_my_swim_vault_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/media/vaults/my-videos": {
       "get": {
         "tags": [
@@ -56781,6 +56902,174 @@
                     "$ref": "#/components/schemas/VaultMediaResponse"
                   },
                   "title": "Response Bulk Review Items Media Vaults  Vault Id  Items Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/my-videos/{media_item_id}/clips": {
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Request Member Clip",
+        "description": "Queue a short derivative from an existing private playback proxy.",
+        "operationId": "request_member_clip_media_vaults_my_videos__media_item_id__clips_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "media_item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClipCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClipResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/my-videos/clips/{clip_id}": {
+      "get": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Get My Member Clip",
+        "operationId": "get_my_member_clip_media_vaults_my_videos_clips__clip_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "clip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Clip Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClipResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/{vault_id}/items/visibility": {
+      "patch": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Change Session Media Visibility",
+        "description": "Admins decide whether reviewed footage may be seen by attendees.",
+        "operationId": "change_session_media_visibility_media_vaults__vault_id__items_visibility_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vault_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vault Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionMediaPolicyUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Change Session Media Visibility Media Vaults  Vault Id  Items Visibility Patch"
                 }
               }
             }
@@ -130000,6 +130289,72 @@
         ],
         "title": "BulkVaultGrantResponse"
       },
+      "ClipCreate": {
+        "properties": {
+          "start_ms": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start Ms"
+          },
+          "end_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "End Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start_ms",
+          "end_ms"
+        ],
+        "title": "ClipCreate"
+      },
+      "ClipResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "start_ms": {
+            "type": "integer",
+            "title": "Start Ms"
+          },
+          "end_ms": {
+            "type": "integer",
+            "title": "End Ms"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "download_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "start_ms",
+          "end_ms",
+          "expires_at"
+        ],
+        "title": "ClipResponse"
+      },
       "CompletedPart": {
         "properties": {
           "part_number": {
@@ -130912,6 +131267,51 @@
               }
             ],
             "title": "Session Id"
+          },
+          "session_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Title"
+          },
+          "session_starts_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Starts At"
+          },
+          "location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Name"
+          },
+          "session_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Type"
           }
         },
         "type": "object",
@@ -131081,6 +131481,18 @@
               }
             ],
             "title": "Checksum Sha256"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
           },
           "labels": {
             "items": {
@@ -131317,6 +131729,40 @@
         },
         "type": "object",
         "title": "ReviewUpdate"
+      },
+      "SessionMediaPolicyUpdate": {
+        "properties": {
+          "media_item_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Media Item Ids"
+          },
+          "session_visibility": {
+            "type": "string",
+            "enum": [
+              "private",
+              "selected_members",
+              "session_participants"
+            ],
+            "title": "Session Visibility"
+          },
+          "allow_member_clips": {
+            "type": "boolean",
+            "title": "Allow Member Clips",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "media_item_ids",
+          "session_visibility"
+        ],
+        "title": "SessionMediaPolicyUpdate"
       },
       "SignedUploadPart": {
         "properties": {
@@ -132151,6 +132597,18 @@
             "format": "uuid",
             "title": "Vault Id"
           },
+          "source_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Session Id"
+          },
           "upload_batch_id": {
             "anyOf": [
               {
@@ -132263,6 +132721,16 @@
             },
             "type": "array",
             "title": "Labels"
+          },
+          "session_visibility": {
+            "type": "string",
+            "title": "Session Visibility",
+            "default": "selected_members"
+          },
+          "allow_member_clips": {
+            "type": "boolean",
+            "title": "Allow Member Clips",
+            "default": false
           },
           "duplicate_of_id": {
             "anyOf": [
@@ -132392,6 +132860,18 @@
               }
             ],
             "title": "Event Id"
+          },
+          "owner_member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Member Id"
           },
           "title": {
             "type": "string",

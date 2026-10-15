@@ -71,6 +71,7 @@ class VaultResponse(BaseModel):
     id: uuid.UUID
     session_id: Optional[uuid.UUID]
     event_id: Optional[uuid.UUID]
+    owner_member_id: Optional[uuid.UUID] = None
     title: str
     description: Optional[str]
     capture_date: date
@@ -244,6 +245,7 @@ class MultipartInitiateRequest(BaseModel):
     captured_at: Optional[datetime] = None
     client_fingerprint: Optional[str] = Field(default=None, max_length=128)
     checksum_sha256: Optional[str] = Field(default=None, min_length=64, max_length=64)
+    session_id: Optional[uuid.UUID] = None
     labels: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("labels")
@@ -297,6 +299,7 @@ class MultipartCompleteRequest(BaseModel):
 class VaultMediaResponse(BaseModel):
     id: uuid.UUID
     vault_id: uuid.UUID
+    source_session_id: Optional[uuid.UUID] = None
     upload_batch_id: Optional[uuid.UUID]
     media_type: str
     original_filename: Optional[str]
@@ -310,6 +313,8 @@ class VaultMediaResponse(BaseModel):
     review_notes: Optional[str]
     rejection_reason: Optional[str]
     labels: list[str] = Field(default_factory=list)
+    session_visibility: str = "selected_members"
+    allow_member_clips: bool = False
     duplicate_of_id: Optional[uuid.UUID]
     published_media_id: Optional[uuid.UUID]
     published_at: Optional[datetime]
@@ -346,6 +351,10 @@ class MemberVideoItem(BaseModel):
     vault_title: str
     capture_date: date
     session_id: Optional[uuid.UUID]
+    session_title: Optional[str] = None
+    session_starts_at: Optional[datetime] = None
+    location_name: Optional[str] = None
+    session_type: Optional[str] = None
 
 
 class MemberVideosResponse(BaseModel):
@@ -353,6 +362,32 @@ class MemberVideosResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class SessionMediaPolicyUpdate(BaseModel):
+    media_item_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    session_visibility: Literal["private", "selected_members", "session_participants"]
+    allow_member_clips: bool = False
+
+
+class ClipCreate(BaseModel):
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validate_clip(self):
+        if self.end_ms - self.start_ms < 1000 or self.end_ms - self.start_ms > 90000:
+            raise ValueError("Clip must be between 1 and 90 seconds")
+        return self
+
+
+class ClipResponse(BaseModel):
+    id: uuid.UUID
+    status: str
+    start_ms: int
+    end_ms: int
+    expires_at: datetime
+    download_url: Optional[str] = None
 
 
 class ReviewUpdate(BaseModel):

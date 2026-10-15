@@ -115,6 +115,9 @@ class MediaItem(Base):
         nullable=True,
         index=True,
     )
+    source_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     upload_batch_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("media_upload_batches.id", ondelete="SET NULL"),
@@ -147,6 +150,14 @@ class MediaItem(Base):
     review_notes: Mapped[str] = mapped_column(Text, nullable=True)
     rejection_reason: Mapped[str] = mapped_column(Text, nullable=True)
     vault_labels: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    # Audience is independent of labels: privacy remains deny-by-default.
+    # "selected_members" continues to honour existing explicit shares.
+    session_visibility: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="selected_members", index=True
+    )
+    allow_member_clips: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     reviewed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     reviewed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=True
