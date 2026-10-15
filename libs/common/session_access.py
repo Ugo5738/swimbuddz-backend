@@ -355,10 +355,19 @@ def evaluate_session_access(
                     # Transition is an eligibility/payment mode, not a price.
                     # Resolve the session's current Admin-set price now; the
                     # booking/payment layer snapshots the resulting amount.
-                    fee_amount_kobo = int(_value(session, "pool_fee", 0) or 0)
-                    price_label = "2026 transition session price"
+                    approved_fee = club_access_result.get("fee_amount_kobo") if club_access_result else None
+                    fee_amount_kobo = (
+                        int(approved_fee)
+                        if approved_fee is not None
+                        else int(_value(session, "pool_fee", 0) or 0)
+                    )
+                    price_label = (
+                        "Approved Club commercial terms"
+                        if approved_fee is not None
+                        else "2026 transition session price"
+                    )
                     pricing_audience = CLUB
-                    rate_code = "club_transition"
+                    rate_code = "club_transition_terms" if approved_fee is not None else "club_transition"
                 elif source == "club_visit":
                     # A member remains enrolled at their home Club and buys
                     # access to the host location for this swim only. Paid
