@@ -1,4 +1,5 @@
 name: Temporary Session Media Contract Regeneration
+# Final formatting and API synchronization pass
 
 on:
   push:
