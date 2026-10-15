@@ -104,7 +104,7 @@ async def test_admin_cannot_share_unapproved_session_video(monkeypatch):
         review_status="unreviewed", consent_status="unreviewed",
         processing_status="ready", soft_deleted_at=None,
     )
-    db = SimpleNamespace(scalars=AsyncMock(return_value=[item]))
+    db = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [item])))
     monkeypatch.setattr(
         vaults, "get_vault_or_404",
         AsyncMock(return_value=SimpleNamespace(id=vault_id, session_id=None))
