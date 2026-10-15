@@ -1317,15 +1317,30 @@ async def my_session_videos(
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
+    recordings = list(results)
+    linked_ids = list({
+        str(item.source_session_id or session_id)
+        for item, _title, _capture_date, session_id in recordings
+        if (item.source_session_id or session_id)
+    })
+    session_rows = []
+    for offset in range(0, len(linked_ids), 100):
+        session_rows.extend(await get_sessions_by_ids(
+            linked_ids[offset:offset + 100], calling_service="media"
+        ))
+    sessions = {row["id"]: row for row in session_rows}
     return MemberVideosResponse(
         items=[
             MemberVideoItem(
                 media=await _media_response(item),
                 vault_title=title,
                 capture_date=capture_date,
-                session_id=session_id,
+                session_id=item.source_session_id or session_id,
+                session_title=sessions.get(str(item.source_session_id or session_id), {}).get("title"),
+                session_starts_at=sessions.get(str(item.source_session_id or session_id), {}).get("starts_at"),
+                location_name=sessions.get(str(item.source_session_id or session_id), {}).get("location_name"),
             )
-            for item, title, capture_date, session_id in results
+            for item, title, capture_date, session_id in recordings
         ],
         total=int(total or 0),
         page=page,
