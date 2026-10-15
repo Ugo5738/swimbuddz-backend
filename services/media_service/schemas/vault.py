@@ -354,6 +354,7 @@ class MemberVideoItem(BaseModel):
     session_title: Optional[str] = None
     session_starts_at: Optional[datetime] = None
     location_name: Optional[str] = None
+    session_type: Optional[str] = None
 
 
 class MemberVideosResponse(BaseModel):
