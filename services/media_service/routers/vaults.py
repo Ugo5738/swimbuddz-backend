@@ -2108,6 +2108,7 @@ async def change_session_media_visibility(
             status_code=422,
             detail="Only ready, consent-cleared approved videos can be shared",
         )
+    preview_jobs: list[uuid.UUID] = []
     for item in items:
         item.session_visibility = payload.session_visibility
         item.allow_member_clips = (
@@ -2115,6 +2116,12 @@ async def change_session_media_visibility(
             if payload.session_visibility != "private"
             else False
         )
+        if payload.session_visibility != "private" and not item.proxy_object_key:
+            metadata = dict(item.metadata_info or {})
+            if metadata.get("proxy_status") not in {"pending", "processing"}:
+                metadata["proxy_status"] = "pending"
+                item.metadata_info = metadata
+                preview_jobs.append(item.id)
     await write_audit(
         db,
         action="media.vault.visibility.update",
@@ -2128,6 +2135,15 @@ async def change_session_media_visibility(
         },
     )
     await db.commit()
+    for item_id in preview_jobs:
+        try:
+            pool = await _get_redis_pool()
+            await pool.enqueue_job(
+                "task_build_vault_preview", str(item_id), True, False,
+                _queue_name="arq:media"
+            )
+        except Exception:
+            logger.exception("Could not schedule shared recording preview %s", item_id)
     return {"updated": len(items)}
 
 
