@@ -25,6 +25,7 @@ from libs.common.logging import get_logger
 from libs.common.service_client import (
     dispatch_notification,
     get_member_attendance,
+    get_sessions_by_ids,
 )
 from libs.db.session import get_async_db
 from services.media_service.models import (
@@ -1109,6 +1110,26 @@ async def _member_can_view_video(
             for r in records
         )
     return False
+
+
+@router.get("/my-swim-sessions", response_model=list[dict])
+async def list_my_swim_sessions(current_user: AuthUser = Depends(get_current_user)):
+    """Sessions the member actually attended; for attributing personal uploads."""
+    actor = await resolve_actor(current_user)
+    if not actor.member_id:
+        return []
+    attendance = await get_member_attendance(str(actor.member_id), calling_service="media")
+    session_ids = list(dict.fromkeys(
+        str(row["session_id"]) for row in attendance
+        if row.get("status", "").lower() in {"present", "late"}
+        and row.get("role", "swimmer").lower() == "swimmer"
+    ))[:200]
+    result = []
+    for offset in range(0, len(session_ids), 100):
+        result.extend(await get_sessions_by_ids(
+            session_ids[offset:offset + 100], calling_service="media"
+        ))
+    return sorted(result, key=lambda value: value.get("starts_at") or "", reverse=True)
 
 
 @router.post("/my-swim-vault", response_model=VaultResponse)
