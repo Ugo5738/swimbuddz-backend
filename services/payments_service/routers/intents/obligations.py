@@ -202,7 +202,11 @@ async def my_financial_obligations(
     payments = (
         (
             await db.execute(
-                select(Payment).where(Payment.member_auth_id == user.user_id)
+                select(Payment).where(
+                    Payment.member_auth_id == user.user_id,
+                    Payment.status == PaymentStatus.PENDING_REVIEW,
+                    Payment.payment_method == "manual_transfer",
+                )
             )
         )
         .scalars()
