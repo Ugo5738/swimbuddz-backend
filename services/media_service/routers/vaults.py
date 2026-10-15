@@ -1318,16 +1318,20 @@ async def my_session_videos(
         .limit(page_size)
     )
     recordings = list(results)
-    linked_ids = list({
-        str(item.source_session_id or session_id)
-        for item, _title, _capture_date, session_id in recordings
-        if (item.source_session_id or session_id)
-    })
+    linked_ids = list(
+        {
+            str(item.source_session_id or session_id)
+            for item, _title, _capture_date, session_id in recordings
+            if (item.source_session_id or session_id)
+        }
+    )
     session_rows = []
     for offset in range(0, len(linked_ids), 100):
-        session_rows.extend(await get_sessions_by_ids(
-            linked_ids[offset:offset + 100], calling_service="media"
-        ))
+        session_rows.extend(
+            await get_sessions_by_ids(
+                linked_ids[offset : offset + 100], calling_service="media"
+            )
+        )
     sessions = {row["id"]: row for row in session_rows}
     return MemberVideosResponse(
         items=[
@@ -1336,10 +1340,18 @@ async def my_session_videos(
                 vault_title=title,
                 capture_date=capture_date,
                 session_id=item.source_session_id or session_id,
-                session_title=sessions.get(str(item.source_session_id or session_id), {}).get("title"),
-                session_starts_at=sessions.get(str(item.source_session_id or session_id), {}).get("starts_at"),
-                location_name=sessions.get(str(item.source_session_id or session_id), {}).get("location_name"),
-                session_type=sessions.get(str(item.source_session_id or session_id), {}).get("session_type"),
+                session_title=sessions.get(
+                    str(item.source_session_id or session_id), {}
+                ).get("title"),
+                session_starts_at=sessions.get(
+                    str(item.source_session_id or session_id), {}
+                ).get("starts_at"),
+                location_name=sessions.get(
+                    str(item.source_session_id or session_id), {}
+                ).get("location_name"),
+                session_type=sessions.get(
+                    str(item.source_session_id or session_id), {}
+                ).get("session_type"),
             )
             for item, title, capture_date, session_id in recordings
         ],
@@ -2057,8 +2069,11 @@ async def get_my_member_clip(
             download_name=f"swimbuddz-swim-clip-{clip.id}.mp4",
         )
         await write_audit(
-            db, action="media.clip.download.authorized",
-            actor=current_user, entity_type="media_vault_clip", entity_id=clip.id,
+            db,
+            action="media.clip.download.authorized",
+            actor=current_user,
+            entity_type="media_vault_clip",
+            entity_id=clip.id,
             new_value={"media_item_id": str(item.id), "delivery_method": method},
         )
         await db.commit()
@@ -2146,8 +2161,11 @@ async def change_session_media_visibility(
         try:
             pool = await _get_redis_pool()
             await pool.enqueue_job(
-                "task_build_vault_preview", str(item_id), True, False,
-                _queue_name="arq:media"
+                "task_build_vault_preview",
+                str(item_id),
+                True,
+                False,
+                _queue_name="arq:media",
             )
         except Exception:
             logger.exception("Could not schedule shared recording preview %s", item_id)
