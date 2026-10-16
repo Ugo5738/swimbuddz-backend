@@ -1353,7 +1353,9 @@ async def my_session_videos(
                 )
             )
         except Exception:
-            logger.exception("Could not load optional swim session labels for media gallery")
+            logger.exception(
+                "Could not load optional swim session labels for media gallery"
+            )
     sessions = {row["id"]: row for row in session_rows}
     return MemberVideosResponse(
         items=[
@@ -2234,7 +2236,8 @@ async def change_session_media_visibility(
         item.session_visibility = payload.session_visibility
         item.allow_member_clips = (
             payload.allow_member_clips
-            if payload.session_visibility != "private" and item.media_type == MediaType.VIDEO
+            if payload.session_visibility != "private"
+            and item.media_type == MediaType.VIDEO
             else False
         )
         item.allow_member_downloads = (
@@ -2244,7 +2247,9 @@ async def change_session_media_visibility(
         )
         if payload.session_visibility != "private":
             is_video = item.media_type == MediaType.VIDEO
-            derivative_key = item.proxy_object_key if is_video else item.thumbnail_object_key
+            derivative_key = (
+                item.proxy_object_key if is_video else item.thumbnail_object_key
+            )
             status_key = "proxy_status" if is_video else "thumbnail_status"
             if not derivative_key:
                 metadata = dict(item.metadata_info or {})
@@ -2391,7 +2396,9 @@ async def assign_media_to_swimmers_or_session(
     preview_jobs: list[tuple[uuid.UUID, bool]] = []
     if payload.grant_access_to_featured:
         if not targets:
-            raise HTTPException(status_code=422, detail="Select a swimmer before granting access")
+            raise HTTPException(
+                status_code=422, detail="Select a swimmer before granting access"
+            )
         if any(
             item.processing_status != "ready"
             or item.review_status not in {"approved", "published"}
@@ -2404,10 +2411,12 @@ async def assign_media_to_swimmers_or_session(
                 status_code=422,
                 detail="Sharing requires approved, consent-cleared media with Private or Selected Members visibility",
             )
-        shares = await db.scalars(select(MediaItemMemberShare).where(
-            MediaItemMemberShare.media_item_id.in_(ids),
-            MediaItemMemberShare.member_id.in_(targets),
-        ))
+        shares = await db.scalars(
+            select(MediaItemMemberShare).where(
+                MediaItemMemberShare.media_item_id.in_(ids),
+                MediaItemMemberShare.member_id.in_(targets),
+            )
+        )
         existing_shares = {(row.media_item_id, row.member_id): row for row in shares}
     if payload.replace_featured:
         for row in existing:
@@ -2434,11 +2443,13 @@ async def assign_media_to_swimmers_or_session(
                 if share:
                     share.revoked_at = None
                 else:
-                    db.add(MediaItemMemberShare(
-                        media_item_id=item.id,
-                        member_id=member_id,
-                        created_by=uuid.UUID(str(current_user.user_id)),
-                    ))
+                    db.add(
+                        MediaItemMemberShare(
+                            media_item_id=item.id,
+                            member_id=member_id,
+                            created_by=uuid.UUID(str(current_user.user_id)),
+                        )
+                    )
             if (item.id, member_id) not in existing_pairs:
                 db.add(
                     MediaItemFeaturedMember(
@@ -2465,11 +2476,16 @@ async def assign_media_to_swimmers_or_session(
         try:
             pool = await _get_redis_pool()
             await pool.enqueue_job(
-                "task_build_vault_preview", str(item_id), is_video, False,
+                "task_build_vault_preview",
+                str(item_id),
+                is_video,
+                False,
                 _queue_name="arq:media",
             )
         except Exception:
-            logger.exception("Could not queue newly shared media derivative %s", item_id)
+            logger.exception(
+                "Could not queue newly shared media derivative %s", item_id
+            )
     return MediaAssignmentResponse(updated_count=len(items))
 
 

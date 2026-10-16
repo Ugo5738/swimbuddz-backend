@@ -57140,7 +57140,7 @@
           "media-vaults"
         ],
         "summary": "Assign Media To Swimmers Or Session",
-        "description": "Associate existing media without reuploading it or changing access grants.",
+        "description": "Associate existing media; optionally grant explicitly approved access.",
         "operationId": "assign_media_to_swimmers_or_session_media_vaults__vault_id__items_assignment_patch",
         "security": [
           {
@@ -131187,6 +131187,11 @@
           "replace_featured": {
             "type": "boolean",
             "title": "Replace Featured",
+            "default": false
+          },
+          "grant_access_to_featured": {
+            "type": "boolean",
+            "title": "Grant Access To Featured",
             "default": false
           }
         },

@@ -92,26 +92,27 @@ async def test_cannot_assign_and_share_unreviewed_video(monkeypatch):
     media_id = uuid.uuid4()
     vault_id = uuid.uuid4()
     video = SimpleNamespace(
-        id=media_id, review_status="unreviewed",
-        processing_status="ready", consent_status="cleared",
-        media_type=vaults.MediaType.VIDEO, session_visibility="selected_members",
+        id=media_id,
+        review_status="unreviewed",
+        processing_status="ready",
+        consent_status="cleared",
+        media_type=vaults.MediaType.VIDEO,
+        session_visibility="selected_members",
     )
     monkeypatch.setattr(
-        vaults, "get_vault_or_404",
-        AsyncMock(return_value=SimpleNamespace(id=vault_id))
+        vaults, "get_vault_or_404", AsyncMock(return_value=SimpleNamespace(id=vault_id))
     )
     query_result = SimpleNamespace(all=lambda: [video])
     db = SimpleNamespace(
-        scalars=AsyncMock(side_effect=[
-            query_result, SimpleNamespace(all=lambda: [])
-        ]),
+        scalars=AsyncMock(side_effect=[query_result, SimpleNamespace(all=lambda: [])]),
         commit=AsyncMock(),
     )
     with pytest.raises(vaults.HTTPException) as exc:
         await vaults.assign_media_to_swimmers_or_session(
             vault_id,
             vaults.MediaAssignmentRequest(
-                media_item_ids=[media_id], member_ids=[uuid.uuid4()],
+                media_item_ids=[media_id],
+                member_ids=[uuid.uuid4()],
                 grant_access_to_featured=True,
             ),
             current_user=SimpleNamespace(user_id=str(uuid.uuid4())),
@@ -126,11 +127,16 @@ async def test_approved_image_can_be_shared_in_selected_member_policy(monkeypatc
     media_id = uuid.uuid4()
     vault_id = uuid.uuid4()
     image = SimpleNamespace(
-        id=media_id, media_type=vaults.MediaType.IMAGE,
-        processing_status="ready", review_status="approved",
-        consent_status="cleared", session_visibility="private",
-        allow_member_clips=False, allow_member_downloads=False,
-        source_session_id=None, thumbnail_object_key="private/thumb.jpg",
+        id=media_id,
+        media_type=vaults.MediaType.IMAGE,
+        processing_status="ready",
+        review_status="approved",
+        consent_status="cleared",
+        session_visibility="private",
+        allow_member_clips=False,
+        allow_member_downloads=False,
+        source_session_id=None,
+        thumbnail_object_key="private/thumb.jpg",
         proxy_object_key=None,
     )
     monkeypatch.setattr(
@@ -144,7 +150,8 @@ async def test_approved_image_can_be_shared_in_selected_member_policy(monkeypatc
     result = await vaults.change_session_media_visibility(
         vault_id,
         vaults.SessionMediaPolicyUpdate(
-            media_item_ids=[media_id], session_visibility="selected_members",
+            media_item_ids=[media_id],
+            session_visibility="selected_members",
             allow_member_clips=True,
         ),
         current_user=SimpleNamespace(user_id=str(uuid.uuid4())),
