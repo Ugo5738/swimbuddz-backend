@@ -36,6 +36,7 @@ from services.media_service.models import (
     MediaAccessLogObject,
     MediaItem,
     MediaItemMemberShare,
+    MediaItemFeaturedMember,
     MediaTakedownRequest,
     MediaTransferLog,
     MediaType,
@@ -63,6 +64,8 @@ from services.media_service.schemas import (
     MultipartSignPartsRequest,
     MultipartSignPartsResponse,
     MemberVideoShareRequest,
+    MediaAssignmentRequest,
+    MediaAssignmentResponse,
     MemberVideoShareResponse,
     MemberVideoItem,
     MemberVideosResponse,
@@ -1110,7 +1113,10 @@ async def _member_can_view_video(
     item: MediaItem,
     vault: MediaVault,
 ) -> bool:
-    if item.media_type != MediaType.VIDEO or item.processing_status != "ready":
+    if (
+        item.media_type not in {MediaType.VIDEO, MediaType.IMAGE}
+        or item.processing_status != "ready"
+    ):
         return False
     if item.soft_deleted_at or vault.deleted_at or vault.status == "archived":
         return False
@@ -1268,9 +1274,15 @@ async def my_session_videos(
 
     # Attendance is resolved by the owning attendance service, not guessed
     # from a confirmed booking. Absentees must not see session-only footage.
-    attendance = await get_member_attendance(
-        str(actor.member_id), calling_service="media"
-    )
+    try:
+        attendance = await get_member_attendance(
+            str(actor.member_id), calling_service="media"
+        )
+    except Exception:
+        # Explicit per-member grants remain valid if the attendance service
+        # is temporarily unavailable. Never assume attendance in this case.
+        logger.exception("Attendance lookup failed for personal media gallery")
+        attendance = []
     attended_ids = [
         uuid.UUID(str(row["session_id"]))
         for row in attendance
@@ -1291,7 +1303,7 @@ async def my_session_videos(
         or_(personal_share, session_audience),
         MediaItem.soft_deleted_at.is_(None),
         MediaItem.processing_status == "ready",
-        MediaItem.media_type == MediaType.VIDEO,
+        MediaItem.media_type.in_([MediaType.VIDEO, MediaType.IMAGE]),
         MediaItem.consent_status == "cleared",
         MediaItem.review_status.in_(["approved", "published"]),
         MediaVault.deleted_at.is_(None),
@@ -1334,11 +1346,16 @@ async def my_session_videos(
     )
     session_rows = []
     for offset in range(0, len(linked_ids), 100):
-        session_rows.extend(
-            await get_sessions_by_ids(
-                linked_ids[offset : offset + 100], calling_service="media"
+        try:
+            session_rows.extend(
+                await get_sessions_by_ids(
+                    linked_ids[offset : offset + 100], calling_service="media"
+                )
             )
-        )
+        except Exception:
+            logger.exception(
+                "Could not load optional swim session labels for media gallery"
+            )
     sessions = {row["id"]: row for row in session_rows}
     return MemberVideosResponse(
         items=[
@@ -2204,7 +2221,7 @@ async def change_session_media_visibility(
             detail="Session participant sharing needs an associated session",
         )
     if payload.session_visibility != "private" and any(
-        item.media_type != MediaType.VIDEO
+        item.media_type not in {MediaType.VIDEO, MediaType.IMAGE}
         or item.processing_status != "ready"
         or item.review_status not in {"approved", "published"}
         or item.consent_status != "cleared"
@@ -2212,14 +2229,15 @@ async def change_session_media_visibility(
     ):
         raise HTTPException(
             status_code=422,
-            detail="Only ready, consent-cleared approved videos can be shared",
+            detail="Only ready, consent-cleared approved videos or photos can be shared",
         )
-    preview_jobs: list[uuid.UUID] = []
+    preview_jobs: list[tuple[uuid.UUID, bool]] = []
     for item in items:
         item.session_visibility = payload.session_visibility
         item.allow_member_clips = (
             payload.allow_member_clips
             if payload.session_visibility != "private"
+            and item.media_type == MediaType.VIDEO
             else False
         )
         item.allow_member_downloads = (
@@ -2227,12 +2245,18 @@ async def change_session_media_visibility(
             if payload.session_visibility != "private"
             else False
         )
-        if payload.session_visibility != "private" and not item.proxy_object_key:
-            metadata = dict(item.metadata_info or {})
-            if metadata.get("proxy_status") not in {"pending", "processing"}:
-                metadata["proxy_status"] = "pending"
-                item.metadata_info = metadata
-                preview_jobs.append(item.id)
+        if payload.session_visibility != "private":
+            is_video = item.media_type == MediaType.VIDEO
+            derivative_key = (
+                item.proxy_object_key if is_video else item.thumbnail_object_key
+            )
+            status_key = "proxy_status" if is_video else "thumbnail_status"
+            if not derivative_key:
+                metadata = dict(item.metadata_info or {})
+                if metadata.get(status_key) not in {"pending", "processing"}:
+                    metadata[status_key] = "pending"
+                    item.metadata_info = metadata
+                    preview_jobs.append((item.id, is_video))
     await write_audit(
         db,
         action="media.vault.visibility.update",
@@ -2247,19 +2271,231 @@ async def change_session_media_visibility(
         },
     )
     await db.commit()
-    for item_id in preview_jobs:
+    for item_id, is_video in preview_jobs:
         try:
             pool = await _get_redis_pool()
             await pool.enqueue_job(
                 "task_build_vault_preview",
                 str(item_id),
-                True,
+                is_video,
                 False,
                 _queue_name="arq:media",
             )
         except Exception:
             logger.exception("Could not schedule shared recording preview %s", item_id)
     return {"updated": len(items)}
+
+
+@router.post("/my-media/{media_item_id}/preview", status_code=202)
+async def request_my_shared_preview(
+    media_item_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Allow an authorised member to retry playback preparation, once per window."""
+    actor = await resolve_actor(current_user)
+    item = await db.get(MediaItem, media_item_id)
+    vault = await db.get(MediaVault, item.vault_id) if item else None
+    if (
+        not actor.member_id
+        or not item
+        or not vault
+        or not await _member_can_view_video(
+            db, member_id=actor.member_id, item=item, vault=vault
+        )
+    ):
+        raise HTTPException(status_code=403, detail="This media is not shared with you")
+    if item.media_type == MediaType.VIDEO and item.proxy_object_key:
+        return {"status": "ready"}
+    if item.media_type == MediaType.IMAGE and item.thumbnail_object_key:
+        return {"status": "ready"}
+    metadata = dict(item.metadata_info or {})
+    now = utc_now()
+    last_request = metadata.get("member_preview_requested_at")
+    if last_request:
+        try:
+            from datetime import datetime as _dt
+
+            elapsed = now - _dt.fromisoformat(last_request)
+            if elapsed < timedelta(minutes=5):
+                return {"status": str(metadata.get("proxy_status") or "pending")}
+        except (ValueError, TypeError):
+            pass
+    status_key = (
+        "proxy_status" if item.media_type == MediaType.VIDEO else "thumbnail_status"
+    )
+    metadata[status_key] = "pending"
+    metadata["member_preview_requested_at"] = now.isoformat()
+    item.metadata_info = metadata
+    await db.commit()
+    try:
+        pool = await _get_redis_pool()
+        await pool.enqueue_job(
+            "task_build_vault_preview",
+            str(item.id),
+            item.media_type == MediaType.VIDEO,
+            False,
+            _queue_name="arq:media",
+        )
+    except Exception:
+        logger.exception("Failed to enqueue private member media preview %s", item.id)
+        metadata[status_key] = "failed"
+        item.metadata_info = metadata
+        await db.commit()
+        raise HTTPException(
+            status_code=503, detail="Preview service unavailable; retry shortly"
+        )
+    return {"status": "pending"}
+
+
+@router.patch("/{vault_id}/items/assignment", response_model=MediaAssignmentResponse)
+async def assign_media_to_swimmers_or_session(
+    vault_id: uuid.UUID,
+    payload: MediaAssignmentRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Associate existing media; optionally grant explicitly approved access."""
+    vault = await get_vault_or_404(db, vault_id)
+    ids = set(payload.media_item_ids)
+    items = list(
+        (
+            await db.scalars(
+                select(MediaItem).where(
+                    MediaItem.vault_id == vault.id,
+                    MediaItem.id.in_(ids),
+                    MediaItem.soft_deleted_at.is_(None),
+                )
+            )
+        ).all()
+    )
+    if len(items) != len(ids):
+        raise HTTPException(
+            status_code=404, detail="One or more media items were not found"
+        )
+    if (
+        payload.session_id
+        and vault.session_id
+        and vault.session_id != payload.session_id
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Media in a session-specific Vault cannot be reassigned to an unrelated session",
+        )
+    if payload.session_id:
+        sessions = await get_sessions_by_ids(
+            [str(payload.session_id)], calling_service="media"
+        )
+        if not any(str(row["id"]) == str(payload.session_id) for row in sessions):
+            raise HTTPException(
+                status_code=422, detail="Selected session does not exist"
+            )
+    existing = list(
+        (
+            await db.scalars(
+                select(MediaItemFeaturedMember).where(
+                    MediaItemFeaturedMember.media_item_id.in_(ids),
+                )
+            )
+        ).all()
+    )
+    existing_pairs = {(row.media_item_id, row.member_id) for row in existing}
+    targets = set(payload.member_ids)
+    existing_shares = {}
+    preview_jobs: list[tuple[uuid.UUID, bool]] = []
+    if payload.grant_access_to_featured:
+        if not targets:
+            raise HTTPException(
+                status_code=422, detail="Select a swimmer before granting access"
+            )
+        if any(
+            item.processing_status != "ready"
+            or item.review_status not in {"approved", "published"}
+            or item.consent_status != "cleared"
+            or item.media_type not in {MediaType.IMAGE, MediaType.VIDEO}
+            or item.session_visibility == "session_participants"
+            for item in items
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Sharing requires approved, consent-cleared media with Private or Selected Members visibility",
+            )
+        shares = await db.scalars(
+            select(MediaItemMemberShare).where(
+                MediaItemMemberShare.media_item_id.in_(ids),
+                MediaItemMemberShare.member_id.in_(targets),
+            )
+        )
+        existing_shares = {(row.media_item_id, row.member_id): row for row in shares}
+    if payload.replace_featured:
+        for row in existing:
+            if row.member_id not in targets:
+                await db.delete(row)
+    for item in items:
+        if payload.session_id:
+            item.source_session_id = payload.session_id
+            if item.session_visibility == "session_participants":
+                # Changing a session must never silently expose this recording
+                # to an entirely different audience.
+                item.session_visibility = "private"
+                item.allow_member_clips = False
+                item.allow_member_downloads = False
+        if payload.grant_access_to_featured:
+            item.session_visibility = "selected_members"
+            if item.media_type == MediaType.VIDEO and not item.proxy_object_key:
+                preview_jobs.append((item.id, True))
+            if item.media_type == MediaType.IMAGE and not item.thumbnail_object_key:
+                preview_jobs.append((item.id, False))
+        for member_id in targets:
+            if payload.grant_access_to_featured:
+                share = existing_shares.get((item.id, member_id))
+                if share:
+                    share.revoked_at = None
+                else:
+                    db.add(
+                        MediaItemMemberShare(
+                            media_item_id=item.id,
+                            member_id=member_id,
+                            created_by=uuid.UUID(str(current_user.user_id)),
+                        )
+                    )
+            if (item.id, member_id) not in existing_pairs:
+                db.add(
+                    MediaItemFeaturedMember(
+                        media_item_id=item.id,
+                        member_id=member_id,
+                        created_by=uuid.UUID(str(current_user.user_id)),
+                    )
+                )
+    await write_audit(
+        db,
+        action="media.vault.assignment.updated",
+        actor=current_user,
+        entity_type="media_vault",
+        entity_id=vault_id,
+        new_value={
+            "media_item_ids": [str(x) for x in ids],
+            "member_ids": [str(x) for x in targets],
+            "session_id": str(payload.session_id) if payload.session_id else None,
+            "grant_access_to_featured": payload.grant_access_to_featured,
+        },
+    )
+    await db.commit()
+    for item_id, is_video in preview_jobs:
+        try:
+            pool = await _get_redis_pool()
+            await pool.enqueue_job(
+                "task_build_vault_preview",
+                str(item_id),
+                is_video,
+                False,
+                _queue_name="arq:media",
+            )
+        except Exception:
+            logger.exception(
+                "Could not queue newly shared media derivative %s", item_id
+            )
+    return MediaAssignmentResponse(updated_count=len(items))
 
 
 @router.post("/{vault_id}/items/shares", response_model=MemberVideoShareResponse)
@@ -2293,7 +2529,7 @@ async def share_vault_videos_with_members(
             detail="Switch visibility to Selected Members before granting individual access",
         )
     if payload.action == "grant" and any(
-        item.media_type != MediaType.VIDEO
+        item.media_type not in {MediaType.VIDEO, MediaType.IMAGE}
         or item.processing_status != "ready"
         or item.review_status not in {"approved", "published"}
         or item.consent_status != "cleared"
@@ -2334,16 +2570,20 @@ async def share_vault_videos_with_members(
                     )
                 )
                 changed += 1
-    preview_jobs: list[uuid.UUID] = []
+    preview_jobs: list[tuple[uuid.UUID, bool]] = []
     if payload.action == "grant":
         for item in items:
-            if item.proxy_object_key:
+            is_video = item.media_type == MediaType.VIDEO
+            if (is_video and item.proxy_object_key) or (
+                not is_video and item.thumbnail_object_key
+            ):
                 continue
+            key = "proxy_status" if is_video else "thumbnail_status"
             metadata = dict(item.metadata_info or {})
-            if metadata.get("proxy_status") not in {"pending", "processing"}:
-                metadata["proxy_status"] = "pending"
+            if metadata.get(key) not in {"pending", "processing"}:
+                metadata[key] = "pending"
                 item.metadata_info = metadata
-                preview_jobs.append(item.id)
+                preview_jobs.append((item.id, is_video))
     await write_audit(
         db,
         action=f"media.vault.member_share.{payload.action}",
@@ -2360,13 +2600,13 @@ async def share_vault_videos_with_members(
     # Video derivatives are prepared in the existing worker. Member sharing
     # never changes the original or publishes it, and a queue outage should
     # not roll back a successfully saved access grant.
-    for media_item_id in preview_jobs:
+    for media_item_id, is_video in preview_jobs:
         try:
             pool = await _get_redis_pool()
             await pool.enqueue_job(
                 "task_build_vault_preview",
                 str(media_item_id),
-                True,
+                is_video,
                 False,
                 _queue_name="arq:media",
             )

@@ -212,6 +212,33 @@ class MediaItemMemberShare(Base):
     )
 
 
+class MediaItemFeaturedMember(Base):
+    """Identifies swimmers featured in media, independent of viewing permission."""
+
+    __tablename__ = "media_vault_featured_members"
+    __table_args__ = (
+        UniqueConstraint("media_item_id", "member_id", name="uq_vault_featured_member"),
+        Index("ix_vault_featured_members_member", "member_id", "media_item_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    media_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+    )
+
+
 class MediaVaultClip(Base):
     """Expiring, member-bound derivative of a review proxy, never the original."""
 

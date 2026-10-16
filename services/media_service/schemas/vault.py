@@ -359,6 +359,18 @@ class VaultMediaListResponse(BaseModel):
     page_size: int
 
 
+class MediaAssignmentRequest(BaseModel):
+    media_item_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    member_ids: list[uuid.UUID] = Field(default_factory=list, max_length=100)
+    session_id: Optional[uuid.UUID] = None
+    replace_featured: bool = False
+    grant_access_to_featured: bool = False
+
+
+class MediaAssignmentResponse(BaseModel):
+    updated_count: int
+
+
 class MemberVideoShareRequest(BaseModel):
     """Only administrators can give or revoke a member's personal media access."""
 

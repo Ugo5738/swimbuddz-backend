@@ -57087,6 +57087,112 @@
         }
       }
     },
+    "/api/v1/media/vaults/my-media/{media_item_id}/preview": {
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Request My Shared Preview",
+        "description": "Allow an authorised member to retry playback preparation, once per window.",
+        "operationId": "request_my_shared_preview_media_vaults_my_media__media_item_id__preview_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "media_item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/{vault_id}/items/assignment": {
+      "patch": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Assign Media To Swimmers Or Session",
+        "description": "Associate existing media; optionally grant explicitly approved access.",
+        "operationId": "assign_media_to_swimmers_or_session_media_vaults__vault_id__items_assignment_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vault_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vault Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaAssignmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaAssignmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/media/vaults/{vault_id}/items/shares": {
       "post": {
         "tags": [
@@ -131044,6 +131150,69 @@
         },
         "type": "object",
         "title": "InternalVaultGrantSyncRequest"
+      },
+      "MediaAssignmentRequest": {
+        "properties": {
+          "media_item_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Media Item Ids"
+          },
+          "member_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Member Ids"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "replace_featured": {
+            "type": "boolean",
+            "title": "Replace Featured",
+            "default": false
+          },
+          "grant_access_to_featured": {
+            "type": "boolean",
+            "title": "Grant Access To Featured",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "media_item_ids"
+        ],
+        "title": "MediaAssignmentRequest"
+      },
+      "MediaAssignmentResponse": {
+        "properties": {
+          "updated_count": {
+            "type": "integer",
+            "title": "Updated Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "updated_count"
+        ],
+        "title": "MediaAssignmentResponse"
       },
       "MediaDownloadResponse": {
         "properties": {
