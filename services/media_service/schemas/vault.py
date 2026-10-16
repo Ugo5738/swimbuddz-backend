@@ -364,6 +364,7 @@ class MediaAssignmentRequest(BaseModel):
     member_ids: list[uuid.UUID] = Field(default_factory=list, max_length=100)
     session_id: Optional[uuid.UUID] = None
     replace_featured: bool = False
+    grant_access_to_featured: bool = False
 
 
 class MediaAssignmentResponse(BaseModel):
