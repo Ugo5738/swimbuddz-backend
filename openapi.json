@@ -65666,52 +65666,6 @@
               }
             ],
             "title": "Revoke Note"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "challenge_id",
-          "member_id"
-        ],
-        "title": "ChallengeSubmissionResponse",
-        "description": "Submission as returned to admins / the submitter themselves."
-      },
-      "ChallengeSubmissionReview": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "approved",
-              "rejected"
-            ],
-            "title": "Status"
-          },
-          "review_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Review Note"
-          }
-        },
-        "type": "object",
-        "required": [
-          "status"
-        ],
-        "title": "ChallengeSubmissionReview",
-        "description": "Admin-only payload to approve or reject a submission."
-      },
-      "ChallengeSubmissionRevokeRequest": {
-        "properties": {
-          "revoke_note": {
-            "type": "string",
-            "minLength": 5,
-            "title": "Revoke Note"
           },
           "rewards_distributed_at": {
             "anyOf": [
@@ -65764,9 +65718,55 @@
         },
         "type": "object",
         "required": [
-          "revoke_note",
+          "id",
+          "challenge_id",
+          "member_id",
           "completed_at",
           "created_at"
+        ],
+        "title": "ChallengeSubmissionResponse",
+        "description": "Submission as returned to admins / the submitter themselves."
+      },
+      "ChallengeSubmissionReview": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Status"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ChallengeSubmissionReview",
+        "description": "Admin-only payload to approve or reject a submission."
+      },
+      "ChallengeSubmissionRevokeRequest": {
+        "properties": {
+          "revoke_note": {
+            "type": "string",
+            "minLength": 5,
+            "title": "Revoke Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "revoke_note"
         ],
         "title": "ChallengeSubmissionRevokeRequest",
         "description": "Admin payload to revoke a previously-approved submission.\n\nA note is required so the member always sees a human reason \u2014 and so\nHQ has a clear paper trail when spot-checking Pod Lead approvals."
