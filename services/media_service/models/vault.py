@@ -98,6 +98,15 @@ class MediaVault(Base):
     settings_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
     )
+    default_session_visibility: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="selected_members"
+    )
+    default_allow_member_clips: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    default_allow_member_downloads: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     published_album_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )

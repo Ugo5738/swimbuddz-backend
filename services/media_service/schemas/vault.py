@@ -35,11 +35,26 @@ class VaultCreate(BaseModel):
     retention_days: int = Field(default=730, ge=1, le=3650)
     consent_notice: Optional[str] = None
     shot_checklist: list[str] = Field(default_factory=list)
+    default_session_visibility: Literal[
+        "private", "selected_members", "session_participants"
+    ] = "selected_members"
+    default_allow_member_clips: bool = False
+    default_allow_member_downloads: bool = False
 
     @model_validator(mode="after")
     def validate_dates_and_link(self):
         if self.session_id and self.event_id:
             raise ValueError("Use either session_id or event_id, not both")
+        if (
+            self.default_session_visibility == "session_participants"
+            and not self.session_id
+        ):
+            raise ValueError(
+                "Session participant visibility requires a linked scheduled session"
+            )
+        if self.default_session_visibility == "private":
+            self.default_allow_member_clips = False
+            self.default_allow_member_downloads = False
         if self.upload_closes_at <= self.upload_opens_at:
             raise ValueError("upload_closes_at must be after upload_opens_at")
         return self
@@ -65,6 +80,12 @@ class VaultUpdate(BaseModel):
     opt_out_count: Optional[int] = Field(default=None, ge=0)
     shot_checklist: Optional[list[str]] = None
     settings_json: Optional[dict[str, Any]] = None
+    default_session_visibility: Optional[
+        Literal["private", "selected_members", "session_participants"]
+    ] = None
+    default_allow_member_clips: Optional[bool] = None
+    default_allow_member_downloads: Optional[bool] = None
+    apply_defaults_to_existing: bool = False
 
 
 class VaultResponse(BaseModel):
@@ -91,6 +112,9 @@ class VaultResponse(BaseModel):
     opt_out_count: int
     shot_checklist: list[str]
     settings_json: dict[str, Any]
+    default_session_visibility: str = "selected_members"
+    default_allow_member_clips: bool = False
+    default_allow_member_downloads: bool = False
     published_album_id: Optional[uuid.UUID]
     created_at: datetime
     updated_at: datetime
@@ -315,6 +339,7 @@ class VaultMediaResponse(BaseModel):
     labels: list[str] = Field(default_factory=list)
     session_visibility: str = "selected_members"
     allow_member_clips: bool = False
+    allow_member_downloads: bool = False
     duplicate_of_id: Optional[uuid.UUID]
     published_media_id: Optional[uuid.UUID]
     published_at: Optional[datetime]
@@ -368,6 +393,7 @@ class SessionMediaPolicyUpdate(BaseModel):
     media_item_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
     session_visibility: Literal["private", "selected_members", "session_participants"]
     allow_member_clips: bool = False
+    allow_member_downloads: bool = False
 
 
 class ClipCreate(BaseModel):
