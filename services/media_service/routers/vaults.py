@@ -1274,9 +1274,15 @@ async def my_session_videos(
 
     # Attendance is resolved by the owning attendance service, not guessed
     # from a confirmed booking. Absentees must not see session-only footage.
-    attendance = await get_member_attendance(
-        str(actor.member_id), calling_service="media"
-    )
+    try:
+        attendance = await get_member_attendance(
+            str(actor.member_id), calling_service="media"
+        )
+    except Exception:
+        # Explicit per-member grants remain valid if the attendance service
+        # is temporarily unavailable. Never assume attendance in this case.
+        logger.exception("Attendance lookup failed for personal media gallery")
+        attendance = []
     attended_ids = [
         uuid.UUID(str(row["session_id"]))
         for row in attendance
@@ -1340,11 +1346,14 @@ async def my_session_videos(
     )
     session_rows = []
     for offset in range(0, len(linked_ids), 100):
-        session_rows.extend(
-            await get_sessions_by_ids(
-                linked_ids[offset : offset + 100], calling_service="media"
+        try:
+            session_rows.extend(
+                await get_sessions_by_ids(
+                    linked_ids[offset : offset + 100], calling_service="media"
+                )
             )
-        )
+        except Exception:
+            logger.exception("Could not load optional swim session labels for media gallery")
     sessions = {row["id"]: row for row in session_rows}
     return MemberVideosResponse(
         items=[
