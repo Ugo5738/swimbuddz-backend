@@ -307,6 +307,7 @@ async def _media_response(item: MediaItem) -> VaultMediaResponse:
             "labels": list(item.vault_labels or []),
             "session_visibility": item.session_visibility,
             "allow_member_clips": bool(item.allow_member_clips),
+            "allow_member_downloads": bool(item.allow_member_downloads),
         }
     )
 
@@ -576,6 +577,9 @@ async def _initiate_upload(
         review_status="unreviewed",
         consent_status="unreviewed",
         vault_labels=payload.labels,
+        session_visibility=vault.default_session_visibility,
+        allow_member_clips=vault.default_allow_member_clips,
+        allow_member_downloads=vault.default_allow_member_downloads,
         duplicate_of_id=duplicate_id,
         is_processed=True,
         metadata_info={"original_preserved": True, "auto_transcoded": False},
@@ -1515,8 +1519,42 @@ async def update_vault(
     vault = await get_vault_or_404(db, vault_id)
     await require_vault_role(db, vault=vault, actor=actor, minimum="admin")
     values = payload.model_dump(exclude_unset=True)
+    apply_existing = values.pop("apply_defaults_to_existing", False)
+    audience = values.get("default_session_visibility", vault.default_session_visibility)
+    if audience == "session_participants" and not vault.session_id:
+        raise HTTPException(status_code=422, detail="Session participants require a linked session")
+    if audience == "private":
+        values["default_allow_member_clips"] = False
+        values["default_allow_member_downloads"] = False
     for key, value in values.items():
         setattr(vault, key, value)
+    if apply_existing:
+        if not actor.is_admin:
+            raise HTTPException(status_code=403, detail="Only administrators can update existing media permissions")
+        rows = await db.scalars(select(MediaItem).where(
+            MediaItem.vault_id == vault.id,
+            MediaItem.soft_deleted_at.is_(None),
+            MediaItem.processing_status == "ready",
+            MediaItem.media_type == MediaType.VIDEO,
+        ))
+        items = list(rows)
+        if audience != "private" and any(
+            item.review_status not in {"approved", "published"}
+            or item.consent_status != "cleared"
+            for item in items
+        ):
+            raise HTTPException(status_code=422, detail="Review and clear consent for all existing videos first, or use future uploads only")
+        for item in items:
+            item.session_visibility = audience
+            item.allow_member_clips = vault.default_allow_member_clips if audience != "private" else False
+            item.allow_member_downloads = vault.default_allow_member_downloads if audience != "private" else False
+        await write_audit(
+            db, action="media.vault.defaults.apply_existing", actor=current_user,
+            entity_type="media_vault", entity_id=vault.id,
+            new_value={"audience": audience, "updated_count": len(items),
+                       "clips": vault.default_allow_member_clips,
+                       "full_downloads": vault.default_allow_member_downloads},
+        )
     if vault.upload_closes_at <= vault.upload_opens_at:
         raise HTTPException(status_code=422, detail="Invalid upload window")
     await db.commit()
@@ -2141,6 +2179,11 @@ async def change_session_media_visibility(
             if payload.session_visibility != "private"
             else False
         )
+        item.allow_member_downloads = (
+            payload.allow_member_downloads
+            if payload.session_visibility != "private"
+            else False
+        )
         if payload.session_visibility != "private" and not item.proxy_object_key:
             metadata = dict(item.metadata_info or {})
             if metadata.get("proxy_status") not in {"pending", "processing"}:
@@ -2157,6 +2200,7 @@ async def change_session_media_visibility(
             "item_ids": [str(i) for i in ids],
             "visibility": payload.session_visibility,
             "allow_member_clips": payload.allow_member_clips,
+            "allow_member_downloads": payload.allow_member_downloads,
         },
     )
     await db.commit()
