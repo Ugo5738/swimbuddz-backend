@@ -1,0 +1,36 @@
+name: Temporary My Media Formatting and API Contract
+on:
+  push:
+    branches: [feature/member-my-media-playback-links-20261016]
+    paths: [.github/workflows/temp-my-media-format-20261016.yml]
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/member-my-media-playback-links-20261016
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" -c constraints.txt
+      - run: |
+          ruff check . --fix
+          ruff format services/media_service/models/vault.py services/media_service/routers/vaults.py services/media_service/schemas/vault.py services/media_service/alembic/versions/e16a4e8b2970_media_featured_members.py tests/unit/test_member_media_gallery_and_assignments.py
+          python scripts/api/generate-openapi.py > openapi.json
+      - run: |
+          git config user.name "swimbuddz-ci"
+          git config user.email "swimbuddz-ci@users.noreply.github.com"
+          git add openapi.json services/media_service tests/unit/test_member_media_gallery_and_assignments.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Format featured member media changes and regenerate API"
+            git push origin HEAD:feature/member-my-media-playback-links-20261016
+          fi
