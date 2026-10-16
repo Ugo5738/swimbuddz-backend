@@ -2265,6 +2265,54 @@ async def change_session_media_visibility(
     return {"updated": len(items)}
 
 
+@router.post("/my-media/{media_item_id}/preview", status_code=202)
+async def request_my_shared_preview(
+    media_item_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Allow an authorised member to retry playback preparation, once per window."""
+    actor = await resolve_actor(current_user)
+    item = await db.get(MediaItem, media_item_id)
+    vault = await db.get(MediaVault, item.vault_id) if item else None
+    if not actor.member_id or not item or not vault or not await _member_can_view_video(
+        db, member_id=actor.member_id, item=item, vault=vault
+    ):
+        raise HTTPException(status_code=403, detail="This media is not shared with you")
+    if item.media_type != MediaType.VIDEO:
+        return {"status": "ready"}
+    if item.proxy_object_key:
+        return {"status": "ready"}
+    metadata = dict(item.metadata_info or {})
+    now = utc_now()
+    last_request = metadata.get("member_preview_requested_at")
+    if last_request:
+        try:
+            from datetime import datetime as _dt
+            elapsed = now - _dt.fromisoformat(last_request)
+            if elapsed < timedelta(minutes=5):
+                return {"status": str(metadata.get("proxy_status") or "pending")}
+        except (ValueError, TypeError):
+            pass
+    metadata["proxy_status"] = "pending"
+    metadata["member_preview_requested_at"] = now.isoformat()
+    item.metadata_info = metadata
+    await db.commit()
+    try:
+        pool = await _get_redis_pool()
+        await pool.enqueue_job(
+            "task_build_vault_preview", str(item.id), True, False,
+            _queue_name="arq:media",
+        )
+    except Exception:
+        logger.exception("Failed to enqueue private member media preview %s", item.id)
+        metadata["proxy_status"] = "failed"
+        item.metadata_info = metadata
+        await db.commit()
+        raise HTTPException(status_code=503, detail="Preview service unavailable; retry shortly")
+    return {"status": "pending"}
+
+
 @router.patch("/{vault_id}/items/assignment", response_model=MediaAssignmentResponse)
 async def assign_media_to_swimmers_or_session(
     vault_id: uuid.UUID,
