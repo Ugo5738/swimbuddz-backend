@@ -1113,7 +1113,10 @@ async def _member_can_view_video(
     item: MediaItem,
     vault: MediaVault,
 ) -> bool:
-    if item.media_type not in {MediaType.VIDEO, MediaType.IMAGE} or item.processing_status != "ready":
+    if (
+        item.media_type not in {MediaType.VIDEO, MediaType.IMAGE}
+        or item.processing_status != "ready"
+    ):
         return False
     if item.soft_deleted_at or vault.deleted_at or vault.status == "archived":
         return False
@@ -2275,8 +2278,13 @@ async def request_my_shared_preview(
     actor = await resolve_actor(current_user)
     item = await db.get(MediaItem, media_item_id)
     vault = await db.get(MediaVault, item.vault_id) if item else None
-    if not actor.member_id or not item or not vault or not await _member_can_view_video(
-        db, member_id=actor.member_id, item=item, vault=vault
+    if (
+        not actor.member_id
+        or not item
+        or not vault
+        or not await _member_can_view_video(
+            db, member_id=actor.member_id, item=item, vault=vault
+        )
     ):
         raise HTTPException(status_code=403, detail="This media is not shared with you")
     if item.media_type == MediaType.VIDEO and item.proxy_object_key:
@@ -2289,12 +2297,15 @@ async def request_my_shared_preview(
     if last_request:
         try:
             from datetime import datetime as _dt
+
             elapsed = now - _dt.fromisoformat(last_request)
             if elapsed < timedelta(minutes=5):
                 return {"status": str(metadata.get("proxy_status") or "pending")}
         except (ValueError, TypeError):
             pass
-    status_key = "proxy_status" if item.media_type == MediaType.VIDEO else "thumbnail_status"
+    status_key = (
+        "proxy_status" if item.media_type == MediaType.VIDEO else "thumbnail_status"
+    )
     metadata[status_key] = "pending"
     metadata["member_preview_requested_at"] = now.isoformat()
     item.metadata_info = metadata
@@ -2302,7 +2313,10 @@ async def request_my_shared_preview(
     try:
         pool = await _get_redis_pool()
         await pool.enqueue_job(
-            "task_build_vault_preview", str(item.id), item.media_type == MediaType.VIDEO, False,
+            "task_build_vault_preview",
+            str(item.id),
+            item.media_type == MediaType.VIDEO,
+            False,
             _queue_name="arq:media",
         )
     except Exception:
@@ -2310,7 +2324,9 @@ async def request_my_shared_preview(
         metadata[status_key] = "failed"
         item.metadata_info = metadata
         await db.commit()
-        raise HTTPException(status_code=503, detail="Preview service unavailable; retry shortly")
+        raise HTTPException(
+            status_code=503, detail="Preview service unavailable; retry shortly"
+        )
     return {"status": "pending"}
 
 
@@ -2324,20 +2340,38 @@ async def assign_media_to_swimmers_or_session(
     """Associate existing media without reuploading it or changing access grants."""
     vault = await get_vault_or_404(db, vault_id)
     ids = set(payload.media_item_ids)
-    items = list((await db.scalars(select(MediaItem).where(
-        MediaItem.vault_id == vault.id,
-        MediaItem.id.in_(ids),
-        MediaItem.soft_deleted_at.is_(None),
-    ))).all())
+    items = list(
+        (
+            await db.scalars(
+                select(MediaItem).where(
+                    MediaItem.vault_id == vault.id,
+                    MediaItem.id.in_(ids),
+                    MediaItem.soft_deleted_at.is_(None),
+                )
+            )
+        ).all()
+    )
     if len(items) != len(ids):
-        raise HTTPException(status_code=404, detail="One or more media items were not found")
+        raise HTTPException(
+            status_code=404, detail="One or more media items were not found"
+        )
     if payload.session_id:
-        sessions = await get_sessions_by_ids([str(payload.session_id)], calling_service="media")
+        sessions = await get_sessions_by_ids(
+            [str(payload.session_id)], calling_service="media"
+        )
         if not any(str(row["id"]) == str(payload.session_id) for row in sessions):
-            raise HTTPException(status_code=422, detail="Selected session does not exist")
-    existing = list((await db.scalars(select(MediaItemFeaturedMember).where(
-        MediaItemFeaturedMember.media_item_id.in_(ids),
-    ))).all())
+            raise HTTPException(
+                status_code=422, detail="Selected session does not exist"
+            )
+    existing = list(
+        (
+            await db.scalars(
+                select(MediaItemFeaturedMember).where(
+                    MediaItemFeaturedMember.media_item_id.in_(ids),
+                )
+            )
+        ).all()
+    )
     existing_pairs = {(row.media_item_id, row.member_id) for row in existing}
     targets = set(payload.member_ids)
     if payload.replace_featured:
@@ -2355,16 +2389,24 @@ async def assign_media_to_swimmers_or_session(
                 item.allow_member_downloads = False
         for member_id in targets:
             if (item.id, member_id) not in existing_pairs:
-                db.add(MediaItemFeaturedMember(
-                    media_item_id=item.id, member_id=member_id,
-                    created_by=uuid.UUID(str(current_user.user_id)),
-                ))
+                db.add(
+                    MediaItemFeaturedMember(
+                        media_item_id=item.id,
+                        member_id=member_id,
+                        created_by=uuid.UUID(str(current_user.user_id)),
+                    )
+                )
     await write_audit(
-        db, action="media.vault.assignment.updated", actor=current_user,
-        entity_type="media_vault", entity_id=vault_id,
-        new_value={"media_item_ids": [str(x) for x in ids],
-                   "member_ids": [str(x) for x in targets],
-                   "session_id": str(payload.session_id) if payload.session_id else None},
+        db,
+        action="media.vault.assignment.updated",
+        actor=current_user,
+        entity_type="media_vault",
+        entity_id=vault_id,
+        new_value={
+            "media_item_ids": [str(x) for x in ids],
+            "member_ids": [str(x) for x in targets],
+            "session_id": str(payload.session_id) if payload.session_id else None,
+        },
     )
     await db.commit()
     return MediaAssignmentResponse(updated_count=len(items))
