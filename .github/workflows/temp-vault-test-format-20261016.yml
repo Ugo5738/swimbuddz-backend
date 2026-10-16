@@ -1,0 +1,26 @@
+name: Temporary Vault Unit Test Format
+on:
+  push:
+    branches: [feature/vault-access-defaults-and-member-originals-20261016]
+    paths: [.github/workflows/temp-vault-test-format-20261016.yml]
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/vault-access-defaults-and-member-originals-20261016
+          fetch-depth: 0
+      - run: |
+          python -m pip install ruff==0.4.10
+          ruff format tests/unit/test_vault_media_permission_defaults.py
+      - run: |
+          git config user.name "swimbuddz-ci"
+          git config user.email "swimbuddz-ci@users.noreply.github.com"
+          git add tests/unit/test_vault_media_permission_defaults.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Format vault permission regression tests"
+            git push origin HEAD:feature/vault-access-defaults-and-member-originals-20261016
+          fi
