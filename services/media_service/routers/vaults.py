@@ -2346,7 +2346,7 @@ async def assign_media_to_swimmers_or_session(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Associate existing media without reuploading it or changing access grants."""
+    """Associate existing media; optionally grant explicitly approved access."""
     vault = await get_vault_or_404(db, vault_id)
     ids = set(payload.media_item_ids)
     items = list(
@@ -2383,6 +2383,28 @@ async def assign_media_to_swimmers_or_session(
     )
     existing_pairs = {(row.media_item_id, row.member_id) for row in existing}
     targets = set(payload.member_ids)
+    existing_shares = {}
+    preview_jobs: list[tuple[uuid.UUID, bool]] = []
+    if payload.grant_access_to_featured:
+        if not targets:
+            raise HTTPException(status_code=422, detail="Select a swimmer before granting access")
+        if any(
+            item.processing_status != "ready"
+            or item.review_status not in {"approved", "published"}
+            or item.consent_status != "cleared"
+            or item.media_type not in {MediaType.IMAGE, MediaType.VIDEO}
+            or item.session_visibility == "session_participants"
+            for item in items
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Sharing requires approved, consent-cleared media with Private or Selected Members visibility",
+            )
+        shares = await db.scalars(select(MediaItemMemberShare).where(
+            MediaItemMemberShare.media_item_id.in_(ids),
+            MediaItemMemberShare.member_id.in_(targets),
+        ))
+        existing_shares = {(row.media_item_id, row.member_id): row for row in shares}
     if payload.replace_featured:
         for row in existing:
             if row.member_id not in targets:
@@ -2396,7 +2418,23 @@ async def assign_media_to_swimmers_or_session(
                 item.session_visibility = "private"
                 item.allow_member_clips = False
                 item.allow_member_downloads = False
+        if payload.grant_access_to_featured:
+            item.session_visibility = "selected_members"
+            if item.media_type == MediaType.VIDEO and not item.proxy_object_key:
+                preview_jobs.append((item.id, True))
+            if item.media_type == MediaType.IMAGE and not item.thumbnail_object_key:
+                preview_jobs.append((item.id, False))
         for member_id in targets:
+            if payload.grant_access_to_featured:
+                share = existing_shares.get((item.id, member_id))
+                if share:
+                    share.revoked_at = None
+                else:
+                    db.add(MediaItemMemberShare(
+                        media_item_id=item.id,
+                        member_id=member_id,
+                        created_by=uuid.UUID(str(current_user.user_id)),
+                    ))
             if (item.id, member_id) not in existing_pairs:
                 db.add(
                     MediaItemFeaturedMember(
@@ -2415,9 +2453,19 @@ async def assign_media_to_swimmers_or_session(
             "media_item_ids": [str(x) for x in ids],
             "member_ids": [str(x) for x in targets],
             "session_id": str(payload.session_id) if payload.session_id else None,
+            "grant_access_to_featured": payload.grant_access_to_featured,
         },
     )
     await db.commit()
+    for item_id, is_video in preview_jobs:
+        try:
+            pool = await _get_redis_pool()
+            await pool.enqueue_job(
+                "task_build_vault_preview", str(item_id), is_video, False,
+                _queue_name="arq:media",
+            )
+        except Exception:
+            logger.exception("Could not queue newly shared media derivative %s", item_id)
     return MediaAssignmentResponse(updated_count=len(items))
 
 
