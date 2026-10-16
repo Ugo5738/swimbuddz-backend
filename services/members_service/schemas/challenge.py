@@ -293,6 +293,14 @@ class ChallengeSubmissionResponse(BaseModel):
     revoked_at: Optional[datetime] = None
     revoked_by: Optional[uuid.UUID] = None
     revoke_note: Optional[str] = None
+    rewards_distributed_at: Optional[datetime] = None
+    completed_at: datetime
+    result_data: Optional[dict] = None
+    proof_media: List[ChallengeSubmissionMediaResponse] = Field(default_factory=list)
+    members: List[ChallengeSubmissionMemberResponse] = Field(default_factory=list)
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChallengeSubmissionRevokeRequest(BaseModel):
@@ -303,14 +311,6 @@ class ChallengeSubmissionRevokeRequest(BaseModel):
     """
 
     revoke_note: str = Field(..., min_length=5)
-    rewards_distributed_at: Optional[datetime] = None
-    completed_at: datetime
-    result_data: Optional[dict] = None
-    proof_media: List[ChallengeSubmissionMediaResponse] = Field(default_factory=list)
-    members: List[ChallengeSubmissionMemberResponse] = Field(default_factory=list)
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 # ===== LEGACY ALIASES (kept so the old route signatures still import) =====

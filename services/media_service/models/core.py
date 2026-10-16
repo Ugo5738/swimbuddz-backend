@@ -158,6 +158,9 @@ class MediaItem(Base):
     allow_member_clips: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    allow_member_downloads: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     reviewed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     reviewed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=True

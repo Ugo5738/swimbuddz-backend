@@ -98,6 +98,15 @@ class MediaVault(Base):
     settings_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
     )
+    default_session_visibility: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="selected_members"
+    )
+    default_allow_member_clips: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    default_allow_member_downloads: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     published_album_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
@@ -200,6 +209,33 @@ class MediaItemMemberShare(Base):
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class MediaItemFeaturedMember(Base):
+    """Identifies swimmers featured in media, independent of viewing permission."""
+
+    __tablename__ = "media_vault_featured_members"
+    __table_args__ = (
+        UniqueConstraint("media_item_id", "member_id", name="uq_vault_featured_member"),
+        Index("ix_vault_featured_members_member", "member_id", "media_item_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    media_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
     )
 
 

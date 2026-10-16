@@ -57087,6 +57087,112 @@
         }
       }
     },
+    "/api/v1/media/vaults/my-media/{media_item_id}/preview": {
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Request My Shared Preview",
+        "description": "Allow an authorised member to retry playback preparation, once per window.",
+        "operationId": "request_my_shared_preview_media_vaults_my_media__media_item_id__preview_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "media_item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/{vault_id}/items/assignment": {
+      "patch": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Assign Media To Swimmers Or Session",
+        "description": "Associate existing media; optionally grant explicitly approved access.",
+        "operationId": "assign_media_to_swimmers_or_session_media_vaults__vault_id__items_assignment_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vault_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vault Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaAssignmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaAssignmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/media/vaults/{vault_id}/items/shares": {
       "post": {
         "tags": [
@@ -57386,6 +57492,55 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/my-videos/{media_item_id}/download": {
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Authorize Member Video Download",
+        "description": "Download only an individually allowed, consent-cleared original recording.",
+        "operationId": "authorize_member_video_download_media_vaults_my_videos__media_item_id__download_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "media_item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadAuthorizationResponse"
+                }
               }
             }
           },
@@ -65666,52 +65821,6 @@
               }
             ],
             "title": "Revoke Note"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "challenge_id",
-          "member_id"
-        ],
-        "title": "ChallengeSubmissionResponse",
-        "description": "Submission as returned to admins / the submitter themselves."
-      },
-      "ChallengeSubmissionReview": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "approved",
-              "rejected"
-            ],
-            "title": "Status"
-          },
-          "review_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Review Note"
-          }
-        },
-        "type": "object",
-        "required": [
-          "status"
-        ],
-        "title": "ChallengeSubmissionReview",
-        "description": "Admin-only payload to approve or reject a submission."
-      },
-      "ChallengeSubmissionRevokeRequest": {
-        "properties": {
-          "revoke_note": {
-            "type": "string",
-            "minLength": 5,
-            "title": "Revoke Note"
           },
           "rewards_distributed_at": {
             "anyOf": [
@@ -65764,9 +65873,55 @@
         },
         "type": "object",
         "required": [
-          "revoke_note",
+          "id",
+          "challenge_id",
+          "member_id",
           "completed_at",
           "created_at"
+        ],
+        "title": "ChallengeSubmissionResponse",
+        "description": "Submission as returned to admins / the submitter themselves."
+      },
+      "ChallengeSubmissionReview": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Status"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ChallengeSubmissionReview",
+        "description": "Admin-only payload to approve or reject a submission."
+      },
+      "ChallengeSubmissionRevokeRequest": {
+        "properties": {
+          "revoke_note": {
+            "type": "string",
+            "minLength": 5,
+            "title": "Revoke Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "revoke_note"
         ],
         "title": "ChallengeSubmissionRevokeRequest",
         "description": "Admin payload to revoke a previously-approved submission.\n\nA note is required so the member always sees a human reason \u2014 and so\nHQ has a clear paper trail when spot-checking Pod Lead approvals."
@@ -130996,6 +131151,69 @@
         "type": "object",
         "title": "InternalVaultGrantSyncRequest"
       },
+      "MediaAssignmentRequest": {
+        "properties": {
+          "media_item_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Media Item Ids"
+          },
+          "member_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Member Ids"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "replace_featured": {
+            "type": "boolean",
+            "title": "Replace Featured",
+            "default": false
+          },
+          "grant_access_to_featured": {
+            "type": "boolean",
+            "title": "Grant Access To Featured",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "media_item_ids"
+        ],
+        "title": "MediaAssignmentRequest"
+      },
+      "MediaAssignmentResponse": {
+        "properties": {
+          "updated_count": {
+            "type": "integer",
+            "title": "Updated Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "updated_count"
+        ],
+        "title": "MediaAssignmentResponse"
+      },
       "MediaDownloadResponse": {
         "properties": {
           "download_url": {
@@ -131755,6 +131973,11 @@
             "type": "boolean",
             "title": "Allow Member Clips",
             "default": false
+          },
+          "allow_member_downloads": {
+            "type": "boolean",
+            "title": "Allow Member Downloads",
+            "default": false
           }
         },
         "type": "object",
@@ -132357,6 +132580,26 @@
             },
             "type": "array",
             "title": "Shot Checklist"
+          },
+          "default_session_visibility": {
+            "type": "string",
+            "enum": [
+              "private",
+              "selected_members",
+              "session_participants"
+            ],
+            "title": "Default Session Visibility",
+            "default": "selected_members"
+          },
+          "default_allow_member_clips": {
+            "type": "boolean",
+            "title": "Default Allow Member Clips",
+            "default": false
+          },
+          "default_allow_member_downloads": {
+            "type": "boolean",
+            "title": "Default Allow Member Downloads",
+            "default": false
           }
         },
         "type": "object",
@@ -132732,6 +132975,11 @@
             "title": "Allow Member Clips",
             "default": false
           },
+          "allow_member_downloads": {
+            "type": "boolean",
+            "title": "Allow Member Downloads",
+            "default": false
+          },
           "duplicate_of_id": {
             "anyOf": [
               {
@@ -132993,6 +133241,21 @@
             "type": "object",
             "title": "Settings Json"
           },
+          "default_session_visibility": {
+            "type": "string",
+            "title": "Default Session Visibility",
+            "default": "selected_members"
+          },
+          "default_allow_member_clips": {
+            "type": "boolean",
+            "title": "Default Allow Member Clips",
+            "default": false
+          },
+          "default_allow_member_downloads": {
+            "type": "boolean",
+            "title": "Default Allow Member Downloads",
+            "default": false
+          },
           "published_album_id": {
             "anyOf": [
               {
@@ -133232,6 +133495,49 @@
               }
             ],
             "title": "Settings Json"
+          },
+          "default_session_visibility": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "private",
+                  "selected_members",
+                  "session_participants"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Session Visibility"
+          },
+          "default_allow_member_clips": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Allow Member Clips"
+          },
+          "default_allow_member_downloads": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Allow Member Downloads"
+          },
+          "apply_defaults_to_existing": {
+            "type": "boolean",
+            "title": "Apply Defaults To Existing",
+            "default": false
           }
         },
         "type": "object",
