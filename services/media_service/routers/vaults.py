@@ -2373,6 +2373,11 @@ async def assign_media_to_swimmers_or_session(
         raise HTTPException(
             status_code=404, detail="One or more media items were not found"
         )
+    if payload.session_id and vault.session_id and vault.session_id != payload.session_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Media in a session-specific Vault cannot be reassigned to an unrelated session",
+        )
     if payload.session_id:
         sessions = await get_sessions_by_ids(
             [str(payload.session_id)], calling_service="media"
@@ -2561,16 +2566,20 @@ async def share_vault_videos_with_members(
                     )
                 )
                 changed += 1
-    preview_jobs: list[uuid.UUID] = []
+    preview_jobs: list[tuple[uuid.UUID, bool]] = []
     if payload.action == "grant":
         for item in items:
-            if item.media_type != MediaType.VIDEO or item.proxy_object_key:
+            is_video = item.media_type == MediaType.VIDEO
+            if (is_video and item.proxy_object_key) or (
+                not is_video and item.thumbnail_object_key
+            ):
                 continue
+            key = "proxy_status" if is_video else "thumbnail_status"
             metadata = dict(item.metadata_info or {})
-            if metadata.get("proxy_status") not in {"pending", "processing"}:
-                metadata["proxy_status"] = "pending"
+            if metadata.get(key) not in {"pending", "processing"}:
+                metadata[key] = "pending"
                 item.metadata_info = metadata
-                preview_jobs.append(item.id)
+                preview_jobs.append((item.id, is_video))
     await write_audit(
         db,
         action=f"media.vault.member_share.{payload.action}",
@@ -2587,13 +2596,13 @@ async def share_vault_videos_with_members(
     # Video derivatives are prepared in the existing worker. Member sharing
     # never changes the original or publishes it, and a queue outage should
     # not roll back a successfully saved access grant.
-    for media_item_id in preview_jobs:
+    for media_item_id, is_video in preview_jobs:
         try:
             pool = await _get_redis_pool()
             await pool.enqueue_job(
                 "task_build_vault_preview",
                 str(media_item_id),
-                True,
+                is_video,
                 False,
                 _queue_name="arq:media",
             )
