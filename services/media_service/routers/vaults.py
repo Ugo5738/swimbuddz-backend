@@ -2279,9 +2279,9 @@ async def request_my_shared_preview(
         db, member_id=actor.member_id, item=item, vault=vault
     ):
         raise HTTPException(status_code=403, detail="This media is not shared with you")
-    if item.media_type != MediaType.VIDEO:
+    if item.media_type == MediaType.VIDEO and item.proxy_object_key:
         return {"status": "ready"}
-    if item.proxy_object_key:
+    if item.media_type == MediaType.IMAGE and item.thumbnail_object_key:
         return {"status": "ready"}
     metadata = dict(item.metadata_info or {})
     now = utc_now()
@@ -2294,19 +2294,20 @@ async def request_my_shared_preview(
                 return {"status": str(metadata.get("proxy_status") or "pending")}
         except (ValueError, TypeError):
             pass
-    metadata["proxy_status"] = "pending"
+    status_key = "proxy_status" if item.media_type == MediaType.VIDEO else "thumbnail_status"
+    metadata[status_key] = "pending"
     metadata["member_preview_requested_at"] = now.isoformat()
     item.metadata_info = metadata
     await db.commit()
     try:
         pool = await _get_redis_pool()
         await pool.enqueue_job(
-            "task_build_vault_preview", str(item.id), True, False,
+            "task_build_vault_preview", str(item.id), item.media_type == MediaType.VIDEO, False,
             _queue_name="arq:media",
         )
     except Exception:
         logger.exception("Failed to enqueue private member media preview %s", item.id)
-        metadata["proxy_status"] = "failed"
+        metadata[status_key] = "failed"
         item.metadata_info = metadata
         await db.commit()
         raise HTTPException(status_code=503, detail="Preview service unavailable; retry shortly")
