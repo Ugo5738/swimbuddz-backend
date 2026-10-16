@@ -1520,9 +1520,13 @@ async def update_vault(
     await require_vault_role(db, vault=vault, actor=actor, minimum="admin")
     values = payload.model_dump(exclude_unset=True)
     apply_existing = values.pop("apply_defaults_to_existing", False)
-    audience = values.get("default_session_visibility", vault.default_session_visibility)
+    audience = values.get(
+        "default_session_visibility", vault.default_session_visibility
+    )
     if audience == "session_participants" and not vault.session_id:
-        raise HTTPException(status_code=422, detail="Session participants require a linked session")
+        raise HTTPException(
+            status_code=422, detail="Session participants require a linked session"
+        )
     if audience == "private":
         values["default_allow_member_clips"] = False
         values["default_allow_member_downloads"] = False
@@ -1531,24 +1535,36 @@ async def update_vault(
     preview_jobs: list[uuid.UUID] = []
     if apply_existing:
         if not actor.is_admin:
-            raise HTTPException(status_code=403, detail="Only administrators can update existing media permissions")
-        rows = await db.scalars(select(MediaItem).where(
-            MediaItem.vault_id == vault.id,
-            MediaItem.soft_deleted_at.is_(None),
-            MediaItem.processing_status == "ready",
-            MediaItem.media_type == MediaType.VIDEO,
-        ))
+            raise HTTPException(
+                status_code=403,
+                detail="Only administrators can update existing media permissions",
+            )
+        rows = await db.scalars(
+            select(MediaItem).where(
+                MediaItem.vault_id == vault.id,
+                MediaItem.soft_deleted_at.is_(None),
+                MediaItem.processing_status == "ready",
+                MediaItem.media_type == MediaType.VIDEO,
+            )
+        )
         items = list(rows)
         if audience != "private" and any(
             item.review_status not in {"approved", "published"}
             or item.consent_status != "cleared"
             for item in items
         ):
-            raise HTTPException(status_code=422, detail="Review and clear consent for all existing videos first, or use future uploads only")
+            raise HTTPException(
+                status_code=422,
+                detail="Review and clear consent for all existing videos first, or use future uploads only",
+            )
         for item in items:
             item.session_visibility = audience
-            item.allow_member_clips = vault.default_allow_member_clips if audience != "private" else False
-            item.allow_member_downloads = vault.default_allow_member_downloads if audience != "private" else False
+            item.allow_member_clips = (
+                vault.default_allow_member_clips if audience != "private" else False
+            )
+            item.allow_member_downloads = (
+                vault.default_allow_member_downloads if audience != "private" else False
+            )
             if audience != "private" and not item.proxy_object_key:
                 metadata = dict(item.metadata_info or {})
                 if metadata.get("proxy_status") not in {"pending", "processing"}:
@@ -1556,11 +1572,17 @@ async def update_vault(
                     item.metadata_info = metadata
                     preview_jobs.append(item.id)
         await write_audit(
-            db, action="media.vault.defaults.apply_existing", actor=current_user,
-            entity_type="media_vault", entity_id=vault.id,
-            new_value={"audience": audience, "updated_count": len(items),
-                       "clips": vault.default_allow_member_clips,
-                       "full_downloads": vault.default_allow_member_downloads},
+            db,
+            action="media.vault.defaults.apply_existing",
+            actor=current_user,
+            entity_type="media_vault",
+            entity_id=vault.id,
+            new_value={
+                "audience": audience,
+                "updated_count": len(items),
+                "clips": vault.default_allow_member_clips,
+                "full_downloads": vault.default_allow_member_downloads,
+            },
         )
     if vault.upload_closes_at <= vault.upload_opens_at:
         raise HTTPException(status_code=422, detail="Invalid upload window")
@@ -1570,11 +1592,16 @@ async def update_vault(
         try:
             pool = await _get_redis_pool()
             await pool.enqueue_job(
-                "task_build_vault_preview", str(item_id), True, False,
+                "task_build_vault_preview",
+                str(item_id),
+                True,
+                False,
                 _queue_name="arq:media",
             )
         except Exception:
-            logger.exception("Could not schedule vault defaults preview for media %s", item_id)
+            logger.exception(
+                "Could not schedule vault defaults preview for media %s", item_id
+            )
     return await _vault_response(db, vault, actor)
 
 
@@ -2732,15 +2759,22 @@ async def authorize_member_video_download(
     )
     db.add(transfer)
     await write_audit(
-        db, action="media.member_original_download.authorized",
-        actor=current_user, entity_type="media_vault",
+        db,
+        action="media.member_original_download.authorized",
+        actor=current_user,
+        entity_type="media_vault",
         entity_id=vault.id,
-        new_value={"media_item_id": str(item.id), "bytes_authorized": int(item.size_bytes or 0)},
+        new_value={
+            "media_item_id": str(item.id),
+            "bytes_authorized": int(item.size_bytes or 0),
+        },
     )
     await db.commit()
     await db.refresh(transfer)
     return DownloadAuthorizationResponse(
-        transfer_id=transfer.id, url=url, expires_in_seconds=ttl,
+        transfer_id=transfer.id,
+        url=url,
+        expires_in_seconds=ttl,
         bytes_authorized=int(item.size_bytes or 0),
         filename=item.original_filename or f"swimbuddz-{item.id}.mp4",
     )

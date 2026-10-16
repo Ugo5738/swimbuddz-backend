@@ -35,7 +35,9 @@ class VaultCreate(BaseModel):
     retention_days: int = Field(default=730, ge=1, le=3650)
     consent_notice: Optional[str] = None
     shot_checklist: list[str] = Field(default_factory=list)
-    default_session_visibility: Literal["private", "selected_members", "session_participants"] = "selected_members"
+    default_session_visibility: Literal[
+        "private", "selected_members", "session_participants"
+    ] = "selected_members"
     default_allow_member_clips: bool = False
     default_allow_member_downloads: bool = False
 
@@ -43,8 +45,13 @@ class VaultCreate(BaseModel):
     def validate_dates_and_link(self):
         if self.session_id and self.event_id:
             raise ValueError("Use either session_id or event_id, not both")
-        if self.default_session_visibility == "session_participants" and not self.session_id:
-            raise ValueError("Session participant visibility requires a linked scheduled session")
+        if (
+            self.default_session_visibility == "session_participants"
+            and not self.session_id
+        ):
+            raise ValueError(
+                "Session participant visibility requires a linked scheduled session"
+            )
         if self.default_session_visibility == "private":
             self.default_allow_member_clips = False
             self.default_allow_member_downloads = False
