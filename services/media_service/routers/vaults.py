@@ -1528,6 +1528,7 @@ async def update_vault(
         values["default_allow_member_downloads"] = False
     for key, value in values.items():
         setattr(vault, key, value)
+    preview_jobs: list[uuid.UUID] = []
     if apply_existing:
         if not actor.is_admin:
             raise HTTPException(status_code=403, detail="Only administrators can update existing media permissions")
@@ -1548,6 +1549,12 @@ async def update_vault(
             item.session_visibility = audience
             item.allow_member_clips = vault.default_allow_member_clips if audience != "private" else False
             item.allow_member_downloads = vault.default_allow_member_downloads if audience != "private" else False
+            if audience != "private" and not item.proxy_object_key:
+                metadata = dict(item.metadata_info or {})
+                if metadata.get("proxy_status") not in {"pending", "processing"}:
+                    metadata["proxy_status"] = "pending"
+                    item.metadata_info = metadata
+                    preview_jobs.append(item.id)
         await write_audit(
             db, action="media.vault.defaults.apply_existing", actor=current_user,
             entity_type="media_vault", entity_id=vault.id,
@@ -1559,6 +1566,15 @@ async def update_vault(
         raise HTTPException(status_code=422, detail="Invalid upload window")
     await db.commit()
     await db.refresh(vault)
+    for item_id in preview_jobs:
+        try:
+            pool = await _get_redis_pool()
+            await pool.enqueue_job(
+                "task_build_vault_preview", str(item_id), True, False,
+                _queue_name="arq:media",
+            )
+        except Exception:
+            logger.exception("Could not schedule vault defaults preview for media %s", item_id)
     return await _vault_response(db, vault, actor)
 
 
