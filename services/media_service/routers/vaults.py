@@ -2373,7 +2373,11 @@ async def assign_media_to_swimmers_or_session(
         raise HTTPException(
             status_code=404, detail="One or more media items were not found"
         )
-    if payload.session_id and vault.session_id and vault.session_id != payload.session_id:
+    if (
+        payload.session_id
+        and vault.session_id
+        and vault.session_id != payload.session_id
+    ):
         raise HTTPException(
             status_code=422,
             detail="Media in a session-specific Vault cannot be reassigned to an unrelated session",
