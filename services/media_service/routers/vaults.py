@@ -2667,6 +2667,70 @@ async def request_item_preview(
 
 
 @router.post(
+    "/my-videos/{media_item_id}/download",
+    response_model=DownloadAuthorizationResponse,
+)
+async def authorize_member_video_download(
+    media_item_id: uuid.UUID,
+    request: Request,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Download only an individually allowed, consent-cleared original recording."""
+    actor = await resolve_actor(current_user)
+    if not actor.member_id:
+        raise HTTPException(status_code=403, detail="Member profile required")
+    item = await db.get(MediaItem, media_item_id)
+    if not item or not item.vault_id or not item.object_key:
+        raise HTTPException(status_code=404, detail="Video unavailable")
+    vault = await get_vault_or_404(db, item.vault_id)
+    if not item.allow_member_downloads or not await _member_can_view_video(
+        db, member_id=actor.member_id, item=item, vault=vault
+    ):
+        raise HTTPException(status_code=403, detail="Full video download not permitted")
+    # Bound network egress per request; larger recordings can be shared as short clips.
+    if int(item.size_bytes or 0) > 512 * 1024**2:
+        raise HTTPException(
+            status_code=413,
+            detail="Full video exceeds the 512 MiB member download limit; save a short clip instead",
+        )
+    ttl = min(settings.MEDIA_VAULT_SIGNED_URL_TTL_SECONDS, 300)
+    url, method = await storage_service.generate_private_download_url(
+        file_key=item.object_key,
+        expiration=ttl,
+        download_name=item.original_filename or f"swimbuddz-{item.id}.mp4",
+    )
+    ip, agent = _request_metadata(request)
+    transfer = MediaTransferLog(
+        vault_id=vault.id,
+        media_item_id=item.id,
+        object_key=item.object_key,
+        actor_id=actor.auth_id,
+        actor_member_id=actor.member_id,
+        transfer_type="original",
+        direction="download",
+        delivery_method=method,
+        bytes_authorized=int(item.size_bytes or 0),
+        ip_address=ip,
+        user_agent=agent,
+    )
+    db.add(transfer)
+    await write_audit(
+        db, action="media.member_original_download.authorized",
+        actor=current_user, entity_type="media_vault",
+        entity_id=vault.id,
+        new_value={"media_item_id": str(item.id), "bytes_authorized": int(item.size_bytes or 0)},
+    )
+    await db.commit()
+    await db.refresh(transfer)
+    return DownloadAuthorizationResponse(
+        transfer_id=transfer.id, url=url, expires_in_seconds=ttl,
+        bytes_authorized=int(item.size_bytes or 0),
+        filename=item.original_filename or f"swimbuddz-{item.id}.mp4",
+    )
+
+
+@router.post(
     "/{vault_id}/items/{item_id}/download",
     response_model=DownloadAuthorizationResponse,
 )
