@@ -70,15 +70,24 @@ async def test_member_full_download_denied_without_recording_permission(monkeypa
 
     member_id = uuid.uuid4()
     item = SimpleNamespace(
-        id=uuid.uuid4(), vault_id=uuid.uuid4(),
-        object_key="private/test.mp4", allow_member_downloads=False,
+        id=uuid.uuid4(),
+        vault_id=uuid.uuid4(),
+        object_key="private/test.mp4",
+        allow_member_downloads=False,
     )
     actor = SimpleNamespace(member_id=member_id, auth_id=uuid.uuid4())
     monkeypatch.setattr(vaults, "resolve_actor", AsyncMock(return_value=actor))
-    monkeypatch.setattr(vaults, "get_vault_or_404", AsyncMock(return_value=SimpleNamespace(id=item.vault_id)))
+    monkeypatch.setattr(
+        vaults,
+        "get_vault_or_404",
+        AsyncMock(return_value=SimpleNamespace(id=item.vault_id)),
+    )
     db = SimpleNamespace(get=AsyncMock(return_value=item))
     with pytest.raises(vaults.HTTPException) as exc:
         await vaults.authorize_member_video_download(
-            item.id, request=SimpleNamespace(), current_user=SimpleNamespace(), db=db,
+            item.id,
+            request=SimpleNamespace(),
+            current_user=SimpleNamespace(),
+            db=db,
         )
     assert exc.value.status_code == 403
