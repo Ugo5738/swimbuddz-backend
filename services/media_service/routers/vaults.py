@@ -36,6 +36,7 @@ from services.media_service.models import (
     MediaAccessLogObject,
     MediaItem,
     MediaItemMemberShare,
+    MediaItemFeaturedMember,
     MediaTakedownRequest,
     MediaTransferLog,
     MediaType,
@@ -63,6 +64,8 @@ from services.media_service.schemas import (
     MultipartSignPartsRequest,
     MultipartSignPartsResponse,
     MemberVideoShareRequest,
+    MediaAssignmentRequest,
+    MediaAssignmentResponse,
     MemberVideoShareResponse,
     MemberVideoItem,
     MemberVideosResponse,
@@ -1110,7 +1113,7 @@ async def _member_can_view_video(
     item: MediaItem,
     vault: MediaVault,
 ) -> bool:
-    if item.media_type != MediaType.VIDEO or item.processing_status != "ready":
+    if item.media_type not in {MediaType.VIDEO, MediaType.IMAGE} or item.processing_status != "ready":
         return False
     if item.soft_deleted_at or vault.deleted_at or vault.status == "archived":
         return False
@@ -1291,7 +1294,7 @@ async def my_session_videos(
         or_(personal_share, session_audience),
         MediaItem.soft_deleted_at.is_(None),
         MediaItem.processing_status == "ready",
-        MediaItem.media_type == MediaType.VIDEO,
+        MediaItem.media_type.in_([MediaType.VIDEO, MediaType.IMAGE]),
         MediaItem.consent_status == "cleared",
         MediaItem.review_status.in_(["approved", "published"]),
         MediaVault.deleted_at.is_(None),
@@ -2262,6 +2265,62 @@ async def change_session_media_visibility(
     return {"updated": len(items)}
 
 
+@router.patch("/{vault_id}/items/assignment", response_model=MediaAssignmentResponse)
+async def assign_media_to_swimmers_or_session(
+    vault_id: uuid.UUID,
+    payload: MediaAssignmentRequest,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Associate existing media without reuploading it or changing access grants."""
+    vault = await get_vault_or_404(db, vault_id)
+    ids = set(payload.media_item_ids)
+    items = list((await db.scalars(select(MediaItem).where(
+        MediaItem.vault_id == vault.id,
+        MediaItem.id.in_(ids),
+        MediaItem.soft_deleted_at.is_(None),
+    ))).all())
+    if len(items) != len(ids):
+        raise HTTPException(status_code=404, detail="One or more media items were not found")
+    if payload.session_id:
+        sessions = await get_sessions_by_ids([str(payload.session_id)], calling_service="media")
+        if not any(str(row["id"]) == str(payload.session_id) for row in sessions):
+            raise HTTPException(status_code=422, detail="Selected session does not exist")
+    existing = list((await db.scalars(select(MediaItemFeaturedMember).where(
+        MediaItemFeaturedMember.media_item_id.in_(ids),
+    ))).all())
+    existing_pairs = {(row.media_item_id, row.member_id) for row in existing}
+    targets = set(payload.member_ids)
+    if payload.replace_featured:
+        for row in existing:
+            if row.member_id not in targets:
+                await db.delete(row)
+    for item in items:
+        if payload.session_id:
+            item.source_session_id = payload.session_id
+            if item.session_visibility == "session_participants":
+                # Changing a session must never silently expose this recording
+                # to an entirely different audience.
+                item.session_visibility = "private"
+                item.allow_member_clips = False
+                item.allow_member_downloads = False
+        for member_id in targets:
+            if (item.id, member_id) not in existing_pairs:
+                db.add(MediaItemFeaturedMember(
+                    media_item_id=item.id, member_id=member_id,
+                    created_by=uuid.UUID(str(current_user.user_id)),
+                ))
+    await write_audit(
+        db, action="media.vault.assignment.updated", actor=current_user,
+        entity_type="media_vault", entity_id=vault_id,
+        new_value={"media_item_ids": [str(x) for x in ids],
+                   "member_ids": [str(x) for x in targets],
+                   "session_id": str(payload.session_id) if payload.session_id else None},
+    )
+    await db.commit()
+    return MediaAssignmentResponse(updated_count=len(items))
+
+
 @router.post("/{vault_id}/items/shares", response_model=MemberVideoShareResponse)
 async def share_vault_videos_with_members(
     vault_id: uuid.UUID,
@@ -2293,7 +2352,7 @@ async def share_vault_videos_with_members(
             detail="Switch visibility to Selected Members before granting individual access",
         )
     if payload.action == "grant" and any(
-        item.media_type != MediaType.VIDEO
+        item.media_type not in {MediaType.VIDEO, MediaType.IMAGE}
         or item.processing_status != "ready"
         or item.review_status not in {"approved", "published"}
         or item.consent_status != "cleared"
@@ -2337,7 +2396,7 @@ async def share_vault_videos_with_members(
     preview_jobs: list[uuid.UUID] = []
     if payload.action == "grant":
         for item in items:
-            if item.proxy_object_key:
+            if item.media_type != MediaType.VIDEO or item.proxy_object_key:
                 continue
             metadata = dict(item.metadata_info or {})
             if metadata.get("proxy_status") not in {"pending", "processing"}:
