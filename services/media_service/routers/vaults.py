@@ -2219,7 +2219,7 @@ async def change_session_media_visibility(
             detail="Session participant sharing needs an associated session",
         )
     if payload.session_visibility != "private" and any(
-        item.media_type != MediaType.VIDEO
+        item.media_type not in {MediaType.VIDEO, MediaType.IMAGE}
         or item.processing_status != "ready"
         or item.review_status not in {"approved", "published"}
         or item.consent_status != "cleared"
@@ -2227,14 +2227,14 @@ async def change_session_media_visibility(
     ):
         raise HTTPException(
             status_code=422,
-            detail="Only ready, consent-cleared approved videos can be shared",
+            detail="Only ready, consent-cleared approved videos or photos can be shared",
         )
-    preview_jobs: list[uuid.UUID] = []
+    preview_jobs: list[tuple[uuid.UUID, bool]] = []
     for item in items:
         item.session_visibility = payload.session_visibility
         item.allow_member_clips = (
             payload.allow_member_clips
-            if payload.session_visibility != "private"
+            if payload.session_visibility != "private" and item.media_type == MediaType.VIDEO
             else False
         )
         item.allow_member_downloads = (
@@ -2242,12 +2242,16 @@ async def change_session_media_visibility(
             if payload.session_visibility != "private"
             else False
         )
-        if payload.session_visibility != "private" and not item.proxy_object_key:
-            metadata = dict(item.metadata_info or {})
-            if metadata.get("proxy_status") not in {"pending", "processing"}:
-                metadata["proxy_status"] = "pending"
-                item.metadata_info = metadata
-                preview_jobs.append(item.id)
+        if payload.session_visibility != "private":
+            is_video = item.media_type == MediaType.VIDEO
+            derivative_key = item.proxy_object_key if is_video else item.thumbnail_object_key
+            status_key = "proxy_status" if is_video else "thumbnail_status"
+            if not derivative_key:
+                metadata = dict(item.metadata_info or {})
+                if metadata.get(status_key) not in {"pending", "processing"}:
+                    metadata[status_key] = "pending"
+                    item.metadata_info = metadata
+                    preview_jobs.append((item.id, is_video))
     await write_audit(
         db,
         action="media.vault.visibility.update",
@@ -2262,13 +2266,13 @@ async def change_session_media_visibility(
         },
     )
     await db.commit()
-    for item_id in preview_jobs:
+    for item_id, is_video in preview_jobs:
         try:
             pool = await _get_redis_pool()
             await pool.enqueue_job(
                 "task_build_vault_preview",
                 str(item_id),
-                True,
+                is_video,
                 False,
                 _queue_name="arq:media",
             )
