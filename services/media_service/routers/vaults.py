@@ -2199,6 +2199,7 @@ async def get_my_member_clip(
         end_ms=clip.end_ms,
         expires_at=clip.expires_at,
         download_url=url,
+        error_message=clip.error_message if clip.status == "failed" else None,
     )
 
 
