@@ -168,7 +168,8 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
                 expected.append(item_id)
     # A contributor also sees another uploader's approved, cleared material.
     assigned_vault = next(
-        row[0] for row in conn.execute(
+        row[0]
+        for row in conn.execute(
             "SELECT vault_id FROM media_vault_grants WHERE role='contributor'"
         )
     )
