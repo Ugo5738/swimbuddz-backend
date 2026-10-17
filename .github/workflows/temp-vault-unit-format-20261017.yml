@@ -1,0 +1,26 @@
+name: Temporary Vault Unit Test Format
+on:
+  push:
+    branches: [feature/vault-member-clip-editor-20261017]
+    paths: [.github/workflows/temp-vault-unit-format-20261017.yml]
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/vault-member-clip-editor-20261017
+          fetch-depth: 0
+      - run: |
+          python -m pip install ruff==0.4.10
+          ruff format tests/unit/test_member_experience_guards.py tests/unit/test_member_media_gallery_and_assignments.py
+      - run: |
+          git config user.name "swimbuddz-ci"
+          git config user.email "swimbuddz-ci@users.noreply.github.com"
+          git add tests/unit/test_member_experience_guards.py tests/unit/test_member_media_gallery_and_assignments.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Format contributor Vault access regression tests"
+            git push origin HEAD:feature/vault-member-clip-editor-20261017
+          fi
