@@ -1030,7 +1030,13 @@ def _library_access_conditions(actor: VaultActor):
                 MediaVaultGrant.role.in_(["curator", "admin"]),
                 and_(
                     MediaVaultGrant.role == "contributor",
-                    MediaItem.uploaded_by == actor.auth_id,
+                    or_(
+                        MediaItem.uploaded_by == actor.auth_id,
+                        and_(
+                            MediaItem.review_status.in_(["approved", "published"]),
+                            MediaItem.consent_status == "cleared",
+                        ),
+                    ),
                 ),
             ),
         )
@@ -2015,7 +2021,15 @@ async def list_vault_items(
     elif not actor.is_admin:
         conditions.append(MediaItem.processing_status == "ready")
     if role == "contributor" and not actor.is_admin:
-        conditions.append(MediaItem.uploaded_by == actor.auth_id)
+        # Contributors can collaborate on cleared media in their assigned
+        # Vault, while unreviewed/restricted footage remains uploader-only.
+        conditions.append(or_(
+            MediaItem.uploaded_by == actor.auth_id,
+            and_(
+                MediaItem.review_status.in_(["approved", "published"]),
+                MediaItem.consent_status == "cleared",
+            ),
+        ))
     if review_status:
         conditions.append(MediaItem.review_status == review_status)
     if consent_status:
