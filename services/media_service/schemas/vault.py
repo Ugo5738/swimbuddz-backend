@@ -430,6 +430,7 @@ class ClipResponse(BaseModel):
     end_ms: int
     expires_at: datetime
     download_url: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 class ReviewUpdate(BaseModel):
