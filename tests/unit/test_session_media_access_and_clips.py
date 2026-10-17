@@ -18,10 +18,10 @@ from services.media_service.tasks.worker import (
 
 def test_member_clip_duration_is_bounded():
     assert ClipCreate(start_ms=3000, end_ms=93000).end_ms == 93000
+    assert ClipCreate(start_ms=0, end_ms=3_600_000).end_ms == 3_600_000
     with pytest.raises(ValidationError):
         ClipCreate(start_ms=5000, end_ms=5000)
-    with pytest.raises(ValidationError):
-        ClipCreate(start_ms=1000, end_ms=92000)
+    assert ClipCreate(start_ms=1000, end_ms=92000).end_ms == 92000
     with pytest.raises(ValidationError):
         ClipCreate(start_ms=5000, end_ms=5200)
 

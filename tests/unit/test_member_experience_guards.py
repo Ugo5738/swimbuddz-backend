@@ -131,7 +131,7 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
     other = uuid4()
     conn = sqlite3.connect(":memory:")
     conn.executescript("""
-        CREATE TABLE media_items (id TEXT, vault_id TEXT, soft_deleted_at TEXT, processing_status TEXT, uploaded_by TEXT);
+        CREATE TABLE media_items (id TEXT, vault_id TEXT, soft_deleted_at TEXT, processing_status TEXT, uploaded_by TEXT, review_status TEXT, consent_status TEXT);
         CREATE TABLE media_vault_grants (id TEXT, vault_id TEXT, member_id TEXT, revoked_at TEXT, starts_at TEXT, expires_at TEXT, role TEXT);
         CREATE TABLE media_vaults (id TEXT, deleted_at TEXT);
     """)
@@ -161,18 +161,31 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
         for uploader in [actor.auth_id, other]:
             item_id = uuid4().hex
             conn.execute(
-                "INSERT INTO media_items VALUES (?,?,?,?,?)",
+                "INSERT INTO media_items (id,vault_id,soft_deleted_at,processing_status,uploaded_by) VALUES (?,?,?,?,?)",
                 (item_id, vault_id, None, "ready", uploader.hex),
             )
             if state == "current" and (role == "curator" or uploader == actor.auth_id):
                 expected.append(item_id)
+    # A contributor also sees another uploader's approved, cleared material.
+    assigned_vault = next(
+        row[0]
+        for row in conn.execute(
+            "SELECT vault_id FROM media_vault_grants WHERE role='contributor'"
+        )
+    )
+    cleared_id = uuid4().hex
+    conn.execute(
+        "INSERT INTO media_items (id,vault_id,soft_deleted_at,processing_status,uploaded_by,review_status,consent_status) VALUES (?,?,?,?,?,?,?)",
+        (cleared_id, assigned_vault, None, "ready", other.hex, "approved", "cleared"),
+    )
+    expected.append(cleared_id)
     for deleted, processing, vault_id in [
         ("2026-09-10", "ready", uuid4().hex),
         (None, "uploading", uuid4().hex),
         (None, "ready", None),
     ]:
         conn.execute(
-            "INSERT INTO media_items VALUES (?,?,?,?,?)",
+            "INSERT INTO media_items (id,vault_id,soft_deleted_at,processing_status,uploaded_by) VALUES (?,?,?,?,?)",
             (uuid4().hex, vault_id, deleted, processing, actor.auth_id.hex),
         )
     removed_vault_id = uuid4().hex
@@ -180,7 +193,7 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
         "INSERT INTO media_vaults VALUES (?,?)", (removed_vault_id, "2026-09-10")
     )
     conn.execute(
-        "INSERT INTO media_items VALUES (?,?,?,?,?)",
+        "INSERT INTO media_items (id,vault_id,soft_deleted_at,processing_status,uploaded_by) VALUES (?,?,?,?,?)",
         (uuid4().hex, removed_vault_id, None, "ready", actor.auth_id.hex),
     )
 
@@ -197,7 +210,7 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
 
     assert visible(actor) == set(expected)
     assert visible(VaultActor(actor.auth_id, None, False)) == set()
-    assert len(visible(VaultActor(actor.auth_id, None, True))) == 12
+    assert len(visible(VaultActor(actor.auth_id, None, True))) == 13
     conn.close()
 
 

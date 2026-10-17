@@ -103,6 +103,10 @@ async def build_member_vault_clip(clip_id: str) -> dict:
             result = await asyncio.to_thread(render)
             if result.returncode:
                 raise RuntimeError(result.stderr[-500:])
+            if Path(target).stat().st_size > 512 * 1024**2:
+                raise ValueError(
+                    "The clip exceeds the 512 MiB download size limit; select a shorter range"
+                )
             object_key = f"vault-derivatives/{vault_id}/{uid}/member-clip.mp4"
             with open(target, "rb") as stream:
                 await storage_service.upload_private_fileobj(

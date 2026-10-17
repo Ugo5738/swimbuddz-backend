@@ -1030,7 +1030,13 @@ def _library_access_conditions(actor: VaultActor):
                 MediaVaultGrant.role.in_(["curator", "admin"]),
                 and_(
                     MediaVaultGrant.role == "contributor",
-                    MediaItem.uploaded_by == actor.auth_id,
+                    or_(
+                        MediaItem.uploaded_by == actor.auth_id,
+                        and_(
+                            MediaItem.review_status.in_(["approved", "published"]),
+                            MediaItem.consent_status == "cleared",
+                        ),
+                    ),
                 ),
             ),
         )
@@ -2015,7 +2021,17 @@ async def list_vault_items(
     elif not actor.is_admin:
         conditions.append(MediaItem.processing_status == "ready")
     if role == "contributor" and not actor.is_admin:
-        conditions.append(MediaItem.uploaded_by == actor.auth_id)
+        # Contributors can collaborate on cleared media in their assigned
+        # Vault, while unreviewed/restricted footage remains uploader-only.
+        conditions.append(
+            or_(
+                MediaItem.uploaded_by == actor.auth_id,
+                and_(
+                    MediaItem.review_status.in_(["approved", "published"]),
+                    MediaItem.consent_status == "cleared",
+                ),
+            )
+        )
     if review_status:
         conditions.append(MediaItem.review_status == review_status)
     if consent_status:
@@ -2185,6 +2201,7 @@ async def get_my_member_clip(
         end_ms=clip.end_ms,
         expires_at=clip.expires_at,
         download_url=url,
+        error_message=clip.error_message if clip.status == "failed" else None,
     )
 
 
@@ -2296,14 +2313,32 @@ async def request_my_shared_preview(
     actor = await resolve_actor(current_user)
     item = await db.get(MediaItem, media_item_id)
     vault = await db.get(MediaVault, item.vault_id) if item else None
-    if (
-        not actor.member_id
-        or not item
-        or not vault
-        or not await _member_can_view_video(
+    can_view = bool(
+        actor.member_id
+        and item
+        and vault
+        and await _member_can_view_video(
             db, member_id=actor.member_id, item=item, vault=vault
         )
-    ):
+    )
+    if not can_view and actor.member_id and item and vault:
+        role = await effective_vault_role(db, vault_id=vault.id, actor=actor)
+        can_view = bool(
+            role in {"contributor", "curator", "admin"}
+            and item.processing_status == "ready"
+            and item.soft_deleted_at is None
+            and vault.deleted_at is None
+            and vault.status != "archived"
+            and (
+                role in {"curator", "admin"}
+                or item.uploaded_by == actor.auth_id
+                or (
+                    item.review_status in {"approved", "published"}
+                    and item.consent_status == "cleared"
+                )
+            )
+        )
+    if not can_view:
         raise HTTPException(status_code=403, detail="This media is not shared with you")
     if item.media_type == MediaType.VIDEO and item.proxy_object_key:
         return {"status": "ready"}
