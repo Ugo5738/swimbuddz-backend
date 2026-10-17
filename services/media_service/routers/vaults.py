@@ -2311,14 +2311,32 @@ async def request_my_shared_preview(
     actor = await resolve_actor(current_user)
     item = await db.get(MediaItem, media_item_id)
     vault = await db.get(MediaVault, item.vault_id) if item else None
-    if (
-        not actor.member_id
-        or not item
-        or not vault
-        or not await _member_can_view_video(
+    can_view = bool(
+        actor.member_id
+        and item
+        and vault
+        and await _member_can_view_video(
             db, member_id=actor.member_id, item=item, vault=vault
         )
-    ):
+    )
+    if not can_view and actor.member_id and item and vault:
+        role = await effective_vault_role(db, vault_id=vault.id, actor=actor)
+        can_view = bool(
+            role in {"contributor", "curator", "admin"}
+            and item.processing_status == "ready"
+            and item.soft_deleted_at is None
+            and vault.deleted_at is None
+            and vault.status != "archived"
+            and (
+                role in {"curator", "admin"}
+                or item.uploaded_by == actor.auth_id
+                or (
+                    item.review_status in {"approved", "published"}
+                    and item.consent_status == "cleared"
+                )
+            )
+        )
+    if not can_view:
         raise HTTPException(status_code=403, detail="This media is not shared with you")
     if item.media_type == MediaType.VIDEO and item.proxy_object_key:
         return {"status": "ready"}
