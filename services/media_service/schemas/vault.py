@@ -414,8 +414,12 @@ class ClipCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_clip(self):
-        if self.end_ms - self.start_ms < 1000 or self.end_ms - self.start_ms > 90000:
-            raise ValueError("Clip must be between 1 and 90 seconds")
+        if self.end_ms - self.start_ms < 1000:
+            raise ValueError("Clip must be at least 1 second long")
+        # Source duration is independently verified by ffprobe in the worker.
+        # This bound avoids overflow and malformed multi-day timestamps.
+        if self.end_ms > 24 * 60 * 60 * 1000:
+            raise ValueError("Clip timestamps must be within 24 hours")
         return self
 
 
