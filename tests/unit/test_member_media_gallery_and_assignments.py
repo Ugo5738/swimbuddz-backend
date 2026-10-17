@@ -77,6 +77,7 @@ async def test_member_can_only_request_proxy_for_their_own_shared_media(monkeypa
     actor = SimpleNamespace(member_id=member_id)
     monkeypatch.setattr(vaults, "resolve_actor", AsyncMock(return_value=actor))
     monkeypatch.setattr(vaults, "_member_can_view_video", AsyncMock(return_value=False))
+    monkeypatch.setattr(vaults, "effective_vault_role", AsyncMock(return_value=None))
     db = SimpleNamespace(
         get=AsyncMock(side_effect=[item, SimpleNamespace(id=item.vault_id)])
     )
