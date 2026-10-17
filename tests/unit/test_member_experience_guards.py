@@ -185,7 +185,7 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
         (None, "ready", None),
     ]:
         conn.execute(
-            "INSERT INTO media_items VALUES (?,?,?,?,?)",
+            "INSERT INTO media_items (id,vault_id,soft_deleted_at,processing_status,uploaded_by) VALUES (?,?,?,?,?)",
             (uuid4().hex, vault_id, deleted, processing, actor.auth_id.hex),
         )
     removed_vault_id = uuid4().hex
@@ -193,7 +193,7 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
         "INSERT INTO media_vaults VALUES (?,?)", (removed_vault_id, "2026-09-10")
     )
     conn.execute(
-        "INSERT INTO media_items VALUES (?,?,?,?,?)",
+        "INSERT INTO media_items (id,vault_id,soft_deleted_at,processing_status,uploaded_by) VALUES (?,?,?,?,?)",
         (uuid4().hex, removed_vault_id, None, "ready", actor.auth_id.hex),
     )
 
