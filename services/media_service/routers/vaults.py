@@ -1517,6 +1517,21 @@ async def rename_my_collection(
     return await _vault_response(db, vault, actor)
 
 
+@router.get("/{vault_id}/attendee-denials", response_model=list[str])
+async def list_attendee_denials(
+    vault_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    vault = await get_vault_or_404(db, vault_id)
+    if not vault.session_id:
+        return []
+    ids = await db.scalars(select(MediaVaultAttendanceDeny.member_id).where(
+        MediaVaultAttendanceDeny.vault_id == vault_id
+    ))
+    return [str(member_id) for member_id in ids]
+
+
 @router.post("/{vault_id}/attendee-access", response_model=dict)
 async def change_attendee_access(
     vault_id: uuid.UUID,
