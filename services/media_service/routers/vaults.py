@@ -1179,6 +1179,21 @@ async def _member_can_view_video(
         )
     linked_session_id = item.source_session_id or vault.session_id
     if item.session_visibility == "session_participants" and linked_session_id:
+        session_vault = vault
+        if vault.session_id != linked_session_id:
+            session_vault = await db.scalar(select(MediaVault).where(
+                MediaVault.session_id == linked_session_id,
+                MediaVault.deleted_at.is_(None),
+            ))
+        if session_vault:
+            if not session_vault.attendee_can_view:
+                return False
+            denied = await db.scalar(select(MediaVaultAttendanceDeny.id).where(
+                MediaVaultAttendanceDeny.vault_id == session_vault.id,
+                MediaVaultAttendanceDeny.member_id == member_id,
+            ))
+            if denied:
+                return False
         records = await get_member_attendance(
             str(member_id),
             session_ids=[str(linked_session_id)],
@@ -1534,10 +1549,14 @@ async def my_session_videos(
         & (MediaItemMemberShare.member_id == actor.member_id)
         & (MediaItemMemberShare.revoked_at.is_(None))
     )
-    session_audience = (MediaItem.session_visibility == "session_participants") & (
-        func.coalesce(MediaItem.source_session_id, MediaVault.session_id).in_(
-            attended_ids
-        )
+    exclusions = select(MediaVaultAttendanceDeny.vault_id).where(
+        MediaVaultAttendanceDeny.member_id == actor.member_id
+    )
+    session_audience = (
+        (MediaItem.session_visibility == "session_participants")
+        & func.coalesce(MediaItem.source_session_id, MediaVault.session_id).in_(attended_ids)
+        & (MediaVault.attendee_can_view.is_(True))
+        & ~MediaVault.id.in_(exclusions)
     )
     conditions = [
         or_(personal_share, session_audience),
