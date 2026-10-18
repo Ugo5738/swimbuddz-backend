@@ -214,6 +214,8 @@ async def _vault_response(
     )
     item_count, pending_count = counts.one()
     role = await effective_vault_role(db, vault_id=vault.id, actor=actor)
+    if vault.owner_member_id == actor.member_id:
+        role = role or "contributor"
     response = VaultResponse.model_validate(vault)
     return response.model_copy(
         update={
@@ -961,9 +963,30 @@ async def list_vaults(
     if not actor.is_admin:
         if not actor.member_id:
             return VaultListResponse(items=[], total=0)
+        try:
+            attendance = await get_member_attendance(
+                str(actor.member_id), calling_service="media"
+            )
+        except Exception:
+            logger.exception("Could not retrieve attendance for Vault listing")
+            attendance = []
+        attended_ids = [
+            uuid.UUID(str(row["session_id"])) for row in attendance
+            if row.get("status", "").lower() in {"present", "late"}
+            and row.get("role", "swimmer").lower() == "swimmer"
+        ]
+        denied_ids = select(MediaVaultAttendanceDeny.vault_id).where(
+            MediaVaultAttendanceDeny.member_id == actor.member_id
+        )
         query = query.outerjoin(MediaVaultGrant).where(
             or_(
                 MediaVault.owner_member_id == actor.member_id,
+                and_(
+                    MediaVault.session_id.in_(attended_ids),
+                    MediaVault.attendee_can_view.is_(True),
+                    MediaVault.status != "archived",
+                    ~MediaVault.id.in_(denied_ids),
+                ),
                 and_(
                     MediaVaultGrant.member_id == actor.member_id,
                     MediaVaultGrant.revoked_at.is_(None),
@@ -982,10 +1005,18 @@ async def list_vaults(
         query.distinct().order_by(desc(MediaVault.capture_date), MediaVault.title)
     )
     vaults = list(result.scalars().all())
-    return VaultListResponse(
-        items=await _vault_list_responses(db, vaults, actor),
-        total=len(vaults),
-    )
+    responses = await _vault_list_responses(db, vaults, actor)
+    if not actor.is_admin:
+        attended_set = set(attended_ids)
+        for entry in responses:
+            if entry.owner_member_id == actor.member_id:
+                entry.effective_role = entry.effective_role or "contributor"
+            elif entry.session_id in attended_set and entry.attendee_can_view:
+                if entry.effective_role not in {"admin", "curator", "contributor"}:
+                    entry.effective_role = (
+                        "contributor" if entry.attendee_can_contribute else "viewer"
+                    )
+    return VaultListResponse(items=responses, total=len(responses))
 
 
 DEFAULT_VAULT_TAGS = [
@@ -2214,7 +2245,11 @@ async def list_vault_items(
 ):
     actor = await resolve_actor(current_user)
     vault = await get_vault_or_404(db, vault_id)
-    role = await require_vault_role(db, vault=vault, actor=actor, minimum="contributor")
+    role = await effective_vault_role(db, vault_id=vault.id, actor=actor)
+    if vault.owner_member_id == actor.member_id and not role:
+        role = "contributor"
+    if not role:
+        raise HTTPException(status_code=403, detail="Vault access required")
     allowed_processing_states = {"ready", "uploading", "failed", "aborted", "all"}
     if processing_status not in allowed_processing_states:
         raise HTTPException(status_code=422, detail="Invalid processing status")
@@ -2223,8 +2258,8 @@ async def list_vault_items(
         conditions.append(MediaItem.processing_status == processing_status)
     elif not actor.is_admin:
         conditions.append(MediaItem.processing_status == "ready")
-    if role == "contributor" and not actor.is_admin:
-        # Contributors can collaborate on cleared media in their assigned
+    if role in {"viewer", "contributor"} and not actor.is_admin:
+        # Attendees and contributors can collaborate on cleared media in their assigned
         # Vault, while unreviewed/restricted footage remains uploader-only.
         conditions.append(
             or_(
