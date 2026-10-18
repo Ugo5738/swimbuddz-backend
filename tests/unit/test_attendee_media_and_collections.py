@@ -55,6 +55,7 @@ async def test_present_member_gets_contribution_or_view_permission(monkeypatch):
         id=uuid.uuid4(),
         session_id=uuid.uuid4(),
         deleted_at=None,
+        status="open",
         attendee_can_view=True,
         attendee_can_contribute=True,
     )
@@ -82,6 +83,7 @@ async def test_admin_denial_overrides_attendance(monkeypatch):
         id=uuid.uuid4(),
         session_id=uuid.uuid4(),
         deleted_at=None,
+        status="open",
         attendee_can_view=True,
         attendee_can_contribute=True,
     )
