@@ -44,6 +44,7 @@ from services.media_service.models import (
     MediaVault,
     MediaVaultExport,
     MediaVaultGrant,
+    MediaVaultAttendanceDeny,
     MediaVaultClip,
     MediaVaultGuestLink,
 )
@@ -90,6 +91,9 @@ from services.media_service.schemas import (
     VaultMediaResponse,
     VaultResponse,
     VaultUpdate,
+    AttendanceAccessChange,
+    PersonalCollectionCreate,
+    PersonalCollectionUpdate,
 )
 from services.media_service.services.storage import (
     AWS_REGION,
@@ -117,6 +121,7 @@ from services.media_service.services.vault_access import (
     require_upload_window,
     require_vault_role,
     resolve_actor,
+    verified_attendee_role,
 )
 
 router = APIRouter(prefix="/media/vaults", tags=["media-vaults"])
@@ -1240,6 +1245,7 @@ async def get_or_create_my_swim_vault(
         select(MediaVault)
         .where(
             MediaVault.owner_member_id == actor.member_id,
+            MediaVault.settings_json.contains({"member_self_upload": True}),
             MediaVault.deleted_at.is_(None),
         )
         .with_for_update()
@@ -1249,8 +1255,8 @@ async def get_or_create_my_swim_vault(
         vault = MediaVault(
             owner_member_id=actor.member_id,
             title="My Swim Uploads",
-            max_file_bytes=2 * 1024**3,
-            max_total_bytes=20 * 1024**3,
+            max_file_bytes=5 * 1024**4,
+            max_total_bytes=5 * 1024**4,
             retention_days=730,
             description="Private member uploads awaiting SwimBuddz review",
             capture_date=now.date(),
@@ -1259,11 +1265,109 @@ async def get_or_create_my_swim_vault(
             status="open",
             created_by=actor.auth_id,
             settings_json={"member_self_upload": True},
+            default_session_visibility="private",
+            attendee_can_view=False, attendee_can_contribute=False,
         )
         db.add(vault)
         await db.commit()
         await db.refresh(vault)
     return await _vault_response(db, vault, actor)
+
+
+@router.get("/my-collections", response_model=VaultListResponse)
+async def list_my_collections(
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    actor = await resolve_actor(current_user)
+    if not actor.member_id:
+        return VaultListResponse(items=[], total=0)
+    items = list((await db.scalars(select(MediaVault).where(
+        MediaVault.owner_member_id == actor.member_id,
+        MediaVault.deleted_at.is_(None),
+    ).order_by(desc(MediaVault.created_at)))).all())
+    return VaultListResponse(
+        items=await _vault_list_responses(db, items, actor), total=len(items)
+    )
+
+
+@router.post("/my-collections", response_model=VaultResponse, status_code=201)
+async def create_my_collection(
+    payload: PersonalCollectionCreate,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    actor = await resolve_actor(current_user)
+    if not actor.member_id:
+        raise HTTPException(status_code=403, detail="Member profile required")
+    now = utc_now()
+    vault = MediaVault(
+        owner_member_id=actor.member_id,
+        title=payload.title.strip(), description=payload.description,
+        capture_date=now.date(), status="open",
+        max_file_bytes=5 * 1024**4,
+        max_total_bytes=5 * 1024**4,
+        upload_opens_at=now - timedelta(minutes=1),
+        upload_closes_at=now + timedelta(days=3650),
+        default_session_visibility="private",
+        attendee_can_view=False, attendee_can_contribute=False,
+        created_by=actor.auth_id, settings_json={"personal_collection": True},
+    )
+    db.add(vault)
+    await db.commit()
+    await db.refresh(vault)
+    return await _vault_response(db, vault, actor)
+
+
+@router.patch("/my-collections/{vault_id}", response_model=VaultResponse)
+async def rename_my_collection(
+    vault_id: uuid.UUID,
+    payload: PersonalCollectionUpdate,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    actor = await resolve_actor(current_user)
+    vault = await get_vault_or_404(db, vault_id)
+    if not actor.member_id or vault.owner_member_id != actor.member_id:
+        raise HTTPException(status_code=403, detail="Not your collection")
+    if payload.title is not None:
+        vault.title = payload.title.strip()
+    if payload.description is not None:
+        vault.description = payload.description
+    await db.commit()
+    await db.refresh(vault)
+    return await _vault_response(db, vault, actor)
+
+
+@router.post("/{vault_id}/attendee-access", response_model=dict)
+async def change_attendee_access(
+    vault_id: uuid.UUID,
+    payload: AttendanceAccessChange,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    actor = await resolve_actor(current_user)
+    vault = await get_vault_or_404(db, vault_id)
+    if not vault.session_id:
+        raise HTTPException(status_code=422, detail="Not a session Vault")
+    existing = await db.scalar(select(MediaVaultAttendanceDeny).where(
+        MediaVaultAttendanceDeny.vault_id == vault.id,
+        MediaVaultAttendanceDeny.member_id == payload.member_id,
+    ))
+    if payload.deny and not existing:
+        db.add(MediaVaultAttendanceDeny(
+            vault_id=vault.id, member_id=payload.member_id,
+            created_by=actor.auth_id,
+        ))
+    elif not payload.deny and existing:
+        await db.delete(existing)
+    await write_audit(
+        db, action="media.attendee_access.changed", actor=current_user,
+        entity_type="media_vault", entity_id=vault.id,
+        new_value={"member_id": str(payload.member_id), "denied": payload.deny},
+    )
+    await db.commit()
+    return {"denied": payload.deny}
 
 
 @router.get("/my-videos", response_model=MemberVideosResponse)
