@@ -972,7 +972,8 @@ async def list_vaults(
             logger.exception("Could not retrieve attendance for Vault listing")
             attendance = []
         attended_ids = [
-            uuid.UUID(str(row["session_id"])) for row in attendance
+            uuid.UUID(str(row["session_id"]))
+            for row in attendance
             if row.get("status", "").lower() in {"present", "late"}
             and row.get("role", "swimmer").lower() == "swimmer"
         ]
@@ -1037,7 +1038,9 @@ DEFAULT_VAULT_TAGS = [
 ]
 
 
-def _library_access_conditions(actor: VaultActor, attended_ids: list[uuid.UUID] | None = None):
+def _library_access_conditions(
+    actor: VaultActor, attended_ids: list[uuid.UUID] | None = None
+):
     """Apply the same row visibility as the per-vault view before pagination."""
     conditions = [
         MediaItem.vault_id.is_not(None),
@@ -1079,22 +1082,30 @@ def _library_access_conditions(actor: VaultActor, attended_ids: list[uuid.UUID] 
         )
         .exists()
     )
-    owns_collection = select(MediaVault.id).where(
-        MediaVault.id == MediaItem.vault_id,
-        MediaVault.owner_member_id == actor.member_id,
-        MediaItem.uploaded_by == actor.auth_id,
-    ).exists()
+    owns_collection = (
+        select(MediaVault.id)
+        .where(
+            MediaVault.id == MediaItem.vault_id,
+            MediaVault.owner_member_id == actor.member_id,
+            MediaItem.uploaded_by == actor.auth_id,
+        )
+        .exists()
+    )
     denied = select(MediaVaultAttendanceDeny.vault_id).where(
         MediaVaultAttendanceDeny.member_id == actor.member_id
     )
-    attended = select(MediaVault.id).where(
-        MediaVault.id == MediaItem.vault_id,
-        MediaVault.session_id.in_(attended_ids or []),
-        MediaVault.attendee_can_view.is_(True),
-        ~MediaVault.id.in_(denied),
-        MediaItem.review_status.in_(["approved", "published"]),
-        MediaItem.consent_status == "cleared",
-    ).exists()
+    attended = (
+        select(MediaVault.id)
+        .where(
+            MediaVault.id == MediaItem.vault_id,
+            MediaVault.session_id.in_(attended_ids or []),
+            MediaVault.attendee_can_view.is_(True),
+            ~MediaVault.id.in_(denied),
+            MediaItem.review_status.in_(["approved", "published"]),
+            MediaItem.consent_status == "cleared",
+        )
+        .exists()
+    )
     return [*conditions, or_(grant, owns_collection, attended)]
 
 
@@ -1114,9 +1125,12 @@ async def list_media_library(
     attendance_ids: list[uuid.UUID] = []
     if actor.member_id and not actor.is_admin:
         try:
-            records = await get_member_attendance(str(actor.member_id), calling_service="media")
+            records = await get_member_attendance(
+                str(actor.member_id), calling_service="media"
+            )
             attendance_ids = [
-                uuid.UUID(str(r["session_id"])) for r in records
+                uuid.UUID(str(r["session_id"]))
+                for r in records
                 if r.get("status", "").lower() in {"present", "late"}
                 and r.get("role", "swimmer").lower() == "swimmer"
             ]
@@ -1211,17 +1225,21 @@ async def _member_can_view_video(
     if item.session_visibility == "session_participants" and linked_session_id:
         session_vault = vault
         if vault.session_id != linked_session_id:
-            session_vault = await db.scalar(select(MediaVault).where(
-                MediaVault.session_id == linked_session_id,
-                MediaVault.deleted_at.is_(None),
-            ))
+            session_vault = await db.scalar(
+                select(MediaVault).where(
+                    MediaVault.session_id == linked_session_id,
+                    MediaVault.deleted_at.is_(None),
+                )
+            )
         if session_vault:
             if not session_vault.attendee_can_view:
                 return False
-            denied = await db.scalar(select(MediaVaultAttendanceDeny.id).where(
-                MediaVaultAttendanceDeny.vault_id == session_vault.id,
-                MediaVaultAttendanceDeny.member_id == member_id,
-            ))
+            denied = await db.scalar(
+                select(MediaVaultAttendanceDeny.id).where(
+                    MediaVaultAttendanceDeny.vault_id == session_vault.id,
+                    MediaVaultAttendanceDeny.member_id == member_id,
+                )
+            )
             if denied:
                 return False
         records = await get_member_attendance(
@@ -1348,7 +1366,8 @@ async def get_or_create_my_swim_vault(
             created_by=actor.auth_id,
             settings_json={"member_self_upload": True},
             default_session_visibility="private",
-            attendee_can_view=False, attendee_can_contribute=False,
+            attendee_can_view=False,
+            attendee_can_contribute=False,
         )
         db.add(vault)
         await db.commit()
@@ -1364,27 +1383,40 @@ async def list_my_attended_vaults(
     actor = await resolve_actor(current_user)
     if not actor.member_id:
         return VaultListResponse(items=[], total=0)
-    records = await get_member_attendance(
-        str(actor.member_id), calling_service="media"
+    records = await get_member_attendance(str(actor.member_id), calling_service="media")
+    ids = list(
+        {
+            uuid.UUID(str(row["session_id"]))
+            for row in records
+            if row.get("status", "").lower() in {"present", "late"}
+            and row.get("role", "swimmer").lower() == "swimmer"
+        }
     )
-    ids = list({
-        uuid.UUID(str(row["session_id"])) for row in records
-        if row.get("status", "").lower() in {"present", "late"}
-        and row.get("role", "swimmer").lower() == "swimmer"
-    })
     if not ids:
         return VaultListResponse(items=[], total=0)
     blocked = select(MediaVaultAttendanceDeny.vault_id).where(
         MediaVaultAttendanceDeny.member_id == actor.member_id
     )
-    items = list((await db.scalars(select(MediaVault).where(
-        MediaVault.session_id.in_(ids), MediaVault.attendee_can_view.is_(True),
-        MediaVault.deleted_at.is_(None), MediaVault.status != "archived",
-        ~MediaVault.id.in_(blocked),
-    ).order_by(desc(MediaVault.capture_date)))).all())
+    items = list(
+        (
+            await db.scalars(
+                select(MediaVault)
+                .where(
+                    MediaVault.session_id.in_(ids),
+                    MediaVault.attendee_can_view.is_(True),
+                    MediaVault.deleted_at.is_(None),
+                    MediaVault.status != "archived",
+                    ~MediaVault.id.in_(blocked),
+                )
+                .order_by(desc(MediaVault.capture_date))
+            )
+        ).all()
+    )
     responses = await _vault_list_responses(db, items, actor)
     for item in responses:
-        item.effective_role = "contributor" if item.attendee_can_contribute else "viewer"
+        item.effective_role = (
+            "contributor" if item.attendee_can_contribute else "viewer"
+        )
     return VaultListResponse(items=responses, total=len(responses))
 
 
@@ -1405,19 +1437,27 @@ async def get_or_create_attended_session_vault(
         and row.get("role", "swimmer").lower() == "swimmer"
         for row in records
     ):
-        raise HTTPException(status_code=403, detail="Only verified attendees can access session media")
-    vault = await db.scalar(select(MediaVault).where(
-        MediaVault.session_id == session_id,
-        MediaVault.deleted_at.is_(None),
-    ))
+        raise HTTPException(
+            status_code=403, detail="Only verified attendees can access session media"
+        )
+    vault = await db.scalar(
+        select(MediaVault).where(
+            MediaVault.session_id == session_id,
+            MediaVault.deleted_at.is_(None),
+        )
+    )
     if not vault:
         sessions = await get_sessions_by_ids([str(session_id)], calling_service="media")
-        row = next((row for row in sessions if str(row.get("id")) == str(session_id)), None)
+        row = next(
+            (row for row in sessions if str(row.get("id")) == str(session_id)), None
+        )
         if not row:
             raise HTTPException(status_code=404, detail="Session unavailable")
         starts = row.get("starts_at")
         if not starts:
-            raise HTTPException(status_code=422, detail="Session start time unavailable")
+            raise HTTPException(
+                status_code=422, detail="Session start time unavailable"
+            )
         if isinstance(starts, str):
             starts = datetime.fromisoformat(starts.replace("Z", "+00:00"))
         now = utc_now()
@@ -1434,7 +1474,8 @@ async def get_or_create_attended_session_vault(
             max_total_bytes=5 * 1024**4,
             default_session_visibility="session_participants",
             default_allow_member_clips=True,
-            attendee_can_view=True, attendee_can_contribute=True,
+            attendee_can_view=True,
+            attendee_can_contribute=True,
             settings_json={"attendee_created": True},
             created_by=actor.auth_id,
         )
@@ -1444,14 +1485,18 @@ async def get_or_create_attended_session_vault(
             await db.refresh(vault)
         except Exception:
             await db.rollback()
-            vault = await db.scalar(select(MediaVault).where(
-                MediaVault.session_id == session_id, MediaVault.deleted_at.is_(None)
-            ))
+            vault = await db.scalar(
+                select(MediaVault).where(
+                    MediaVault.session_id == session_id, MediaVault.deleted_at.is_(None)
+                )
+            )
             if not vault:
                 raise
     role = await verified_attendee_role(db, vault=vault, actor=actor)
     if not role:
-        raise HTTPException(status_code=403, detail="Your session media access is disabled")
+        raise HTTPException(
+            status_code=403, detail="Your session media access is disabled"
+        )
     return await _vault_response(db, vault, actor)
 
 
@@ -1463,10 +1508,18 @@ async def list_my_collections(
     actor = await resolve_actor(current_user)
     if not actor.member_id:
         return VaultListResponse(items=[], total=0)
-    items = list((await db.scalars(select(MediaVault).where(
-        MediaVault.owner_member_id == actor.member_id,
-        MediaVault.deleted_at.is_(None),
-    ).order_by(desc(MediaVault.created_at)))).all())
+    items = list(
+        (
+            await db.scalars(
+                select(MediaVault)
+                .where(
+                    MediaVault.owner_member_id == actor.member_id,
+                    MediaVault.deleted_at.is_(None),
+                )
+                .order_by(desc(MediaVault.created_at))
+            )
+        ).all()
+    )
     return VaultListResponse(
         items=await _vault_list_responses(db, items, actor), total=len(items)
     )
@@ -1484,15 +1537,21 @@ async def create_my_collection(
     now = utc_now()
     vault = MediaVault(
         owner_member_id=actor.member_id,
-        title=payload.title.strip(), description=payload.description,
-        capture_date=now.date(), status="open",
+        title=payload.title.strip(),
+        description=payload.description,
+        capture_date=now.date(),
+        status="open",
         max_file_bytes=5 * 1024**4,
         max_total_bytes=5 * 1024**4,
         upload_opens_at=now - timedelta(minutes=1),
         upload_closes_at=now + timedelta(days=3650),
-        default_session_visibility="community" if payload.share_with_community else "private",
-        attendee_can_view=False, attendee_can_contribute=False,
-        created_by=actor.auth_id, settings_json={"personal_collection": True},
+        default_session_visibility="community"
+        if payload.share_with_community
+        else "private",
+        attendee_can_view=False,
+        attendee_can_contribute=False,
+        created_by=actor.auth_id,
+        settings_json={"personal_collection": True},
     )
     db.add(vault)
     await db.commit()
@@ -1516,7 +1575,9 @@ async def rename_my_collection(
     if payload.description is not None:
         vault.description = payload.description
     if payload.share_with_community is not None:
-        vault.default_session_visibility = ("community" if payload.share_with_community else "private")
+        vault.default_session_visibility = (
+            "community" if payload.share_with_community else "private"
+        )
     await db.commit()
     await db.refresh(vault)
     return await _vault_response(db, vault, actor)
@@ -1531,9 +1592,11 @@ async def list_attendee_denials(
     vault = await get_vault_or_404(db, vault_id)
     if not vault.session_id:
         return []
-    ids = await db.scalars(select(MediaVaultAttendanceDeny.member_id).where(
-        MediaVaultAttendanceDeny.vault_id == vault_id
-    ))
+    ids = await db.scalars(
+        select(MediaVaultAttendanceDeny.member_id).where(
+            MediaVaultAttendanceDeny.vault_id == vault_id
+        )
+    )
     return [str(member_id) for member_id in ids]
 
 
@@ -1548,20 +1611,28 @@ async def change_attendee_access(
     vault = await get_vault_or_404(db, vault_id)
     if not vault.session_id:
         raise HTTPException(status_code=422, detail="Not a session Vault")
-    existing = await db.scalar(select(MediaVaultAttendanceDeny).where(
-        MediaVaultAttendanceDeny.vault_id == vault.id,
-        MediaVaultAttendanceDeny.member_id == payload.member_id,
-    ))
+    existing = await db.scalar(
+        select(MediaVaultAttendanceDeny).where(
+            MediaVaultAttendanceDeny.vault_id == vault.id,
+            MediaVaultAttendanceDeny.member_id == payload.member_id,
+        )
+    )
     if payload.deny and not existing:
-        db.add(MediaVaultAttendanceDeny(
-            vault_id=vault.id, member_id=payload.member_id,
-            created_by=actor.auth_id,
-        ))
+        db.add(
+            MediaVaultAttendanceDeny(
+                vault_id=vault.id,
+                member_id=payload.member_id,
+                created_by=actor.auth_id,
+            )
+        )
     elif not payload.deny and existing:
         await db.delete(existing)
     await write_audit(
-        db, action="media.attendee_access.changed", actor=current_user,
-        entity_type="media_vault", entity_id=vault.id,
+        db,
+        action="media.attendee_access.changed",
+        actor=current_user,
+        entity_type="media_vault",
+        entity_id=vault.id,
         new_value={"member_id": str(payload.member_id), "denied": payload.deny},
     )
     await db.commit()
@@ -1578,9 +1649,14 @@ async def share_personal_media_with_community(
     actor = await resolve_actor(current_user)
     item = await db.get(MediaItem, media_item_id)
     vault = await db.get(MediaVault, item.vault_id) if item else None
-    if not actor.member_id or not item or not vault or (
-        vault.owner_member_id != actor.member_id
-        or item.uploaded_by != actor.auth_id
+    if (
+        not actor.member_id
+        or not item
+        or not vault
+        or (
+            vault.owner_member_id != actor.member_id
+            or item.uploaded_by != actor.auth_id
+        )
     ):
         raise HTTPException(status_code=403, detail="Not your recording")
     if payload.share_with_community and (
@@ -1597,8 +1673,11 @@ async def share_personal_media_with_community(
         item.allow_member_clips = False
         item.allow_member_downloads = False
     await write_audit(
-        db, action="media.member.community_share_changed",
-        actor=current_user, entity_type="media_item", entity_id=item.id,
+        db,
+        action="media.member.community_share_changed",
+        actor=current_user,
+        entity_type="media_item",
+        entity_id=item.id,
         new_value={"shared": payload.share_with_community},
     )
     await db.commit()
@@ -1644,12 +1723,18 @@ async def my_session_videos(
     )
     session_audience = (
         (MediaItem.session_visibility == "session_participants")
-        & func.coalesce(MediaItem.source_session_id, MediaVault.session_id).in_(attended_ids)
+        & func.coalesce(MediaItem.source_session_id, MediaVault.session_id).in_(
+            attended_ids
+        )
         & (MediaVault.attendee_can_view.is_(True))
         & ~MediaVault.id.in_(exclusions)
     )
     conditions = [
-        or_(personal_share, session_audience, MediaItem.session_visibility == "community"),
+        or_(
+            personal_share,
+            session_audience,
+            MediaItem.session_visibility == "community",
+        ),
         MediaItem.soft_deleted_at.is_(None),
         MediaItem.processing_status == "ready",
         MediaItem.media_type.in_([MediaType.VIDEO, MediaType.IMAGE]),

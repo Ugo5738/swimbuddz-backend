@@ -42,7 +42,8 @@ class MediaVault(Base):
         UniqueConstraint("session_id", name="uq_media_vaults_session_id"),
         UniqueConstraint("event_id", name="uq_media_vaults_event_id"),
         Index(
-            "uq_media_vaults_primary_member_upload", "owner_member_id",
+            "uq_media_vaults_primary_member_upload",
+            "owner_member_id",
             unique=True,
             postgresql_where=text(
                 "owner_member_id IS NOT NULL AND settings_json @> '{\"member_self_upload\":true}'::jsonb"
@@ -207,11 +208,15 @@ class MediaVaultAttendanceDeny(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     vault_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("media_vaults.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=True),
+        ForeignKey("media_vaults.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True,
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
     )
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

@@ -15,7 +15,11 @@ from libs.auth.dependencies import is_admin_or_service
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.service_client import get_member_by_auth_id, get_member_attendance
-from services.media_service.models import MediaVault, MediaVaultGrant, MediaVaultAttendanceDeny
+from services.media_service.models import (
+    MediaVault,
+    MediaVaultGrant,
+    MediaVaultAttendanceDeny,
+)
 
 ROLE_RANK = {"viewer": 0, "contributor": 1, "curator": 2, "admin": 3}
 
@@ -58,7 +62,8 @@ async def verified_attendee_role(
     if denied:
         return None
     rows = await get_member_attendance(
-        str(actor.member_id), session_ids=[str(vault.session_id)],
+        str(actor.member_id),
+        session_ids=[str(vault.session_id)],
         calling_service="media",
     )
     if not any(
