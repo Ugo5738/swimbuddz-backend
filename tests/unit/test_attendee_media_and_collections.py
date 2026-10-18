@@ -32,6 +32,7 @@ async def test_absent_or_guest_does_not_get_inferred_access(monkeypatch):
         id=uuid.uuid4(),
         session_id=uuid.uuid4(),
         deleted_at=None,
+        status="open",
         attendee_can_view=True,
         attendee_can_contribute=True,
     )
