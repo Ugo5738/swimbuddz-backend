@@ -131,9 +131,10 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
     other = uuid4()
     conn = sqlite3.connect(":memory:")
     conn.executescript("""
-        CREATE TABLE media_items (id TEXT, vault_id TEXT, soft_deleted_at TEXT, processing_status TEXT, uploaded_by TEXT, review_status TEXT, consent_status TEXT);
+        CREATE TABLE media_items (id TEXT, vault_id TEXT, soft_deleted_at TEXT, processing_status TEXT, uploaded_by TEXT, review_status TEXT, consent_status TEXT, session_visibility TEXT);
         CREATE TABLE media_vault_grants (id TEXT, vault_id TEXT, member_id TEXT, revoked_at TEXT, starts_at TEXT, expires_at TEXT, role TEXT);
-        CREATE TABLE media_vaults (id TEXT, deleted_at TEXT);
+        CREATE TABLE media_vaults (id TEXT, deleted_at TEXT, owner_member_id TEXT, session_id TEXT, attendee_can_view INTEGER);
+        CREATE TABLE media_vault_attendance_denials (id TEXT, vault_id TEXT, member_id TEXT);
     """)
     expected = []
     for role, state in [
@@ -145,7 +146,7 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
         ("curator", "other-member"),
     ]:
         vault_id = uuid4().hex
-        conn.execute("INSERT INTO media_vaults VALUES (?,?)", (vault_id, None))
+        conn.execute("INSERT INTO media_vaults (id, deleted_at) VALUES (?,?)", (vault_id, None))
         conn.execute(
             "INSERT INTO media_vault_grants VALUES (?,?,?,?,?,?,?)",
             (
@@ -190,7 +191,7 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
         )
     removed_vault_id = uuid4().hex
     conn.execute(
-        "INSERT INTO media_vaults VALUES (?,?)", (removed_vault_id, "2026-09-10")
+        "INSERT INTO media_vaults (id, deleted_at) VALUES (?,?)", (removed_vault_id, "2026-09-10")
     )
     conn.execute(
         "INSERT INTO media_items (id,vault_id,soft_deleted_at,processing_status,uploaded_by) VALUES (?,?,?,?,?)",
