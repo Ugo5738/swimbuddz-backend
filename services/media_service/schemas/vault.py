@@ -8,7 +8,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-VaultRole = Literal["contributor", "curator", "admin"]
+VaultRole = Literal["viewer", "contributor", "curator", "admin"]
 ReviewStatus = Literal["unreviewed", "shortlisted", "approved", "rejected", "published"]
 ConsentStatus = Literal["unreviewed", "cleared", "restricted", "takedown"]
 S3_MAX_OBJECT_BYTES = 5 * 1024**4
@@ -177,7 +177,7 @@ class BulkVaultGrantCreate(BaseModel):
     """Grant one member access to selected vaults or all existing vaults."""
 
     member_id: uuid.UUID
-    role: Literal["contributor", "curator"]
+    role: Literal["viewer", "contributor", "curator"]
     scope: Literal["selected", "all_current"]
     vault_ids: list[uuid.UUID] = Field(default_factory=list, max_length=1000)
     starts_at: datetime
