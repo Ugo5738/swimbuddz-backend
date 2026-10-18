@@ -1036,7 +1036,7 @@ DEFAULT_VAULT_TAGS = [
 ]
 
 
-def _library_access_conditions(actor: VaultActor):
+def _library_access_conditions(actor: VaultActor, attended_ids: list[uuid.UUID] | None = None):
     """Apply the same row visibility as the per-vault view before pagination."""
     conditions = [
         MediaItem.vault_id.is_not(None),
@@ -1083,7 +1083,18 @@ def _library_access_conditions(actor: VaultActor):
         MediaVault.owner_member_id == actor.member_id,
         MediaItem.uploaded_by == actor.auth_id,
     ).exists()
-    return [*conditions, or_(grant, owns_collection)]
+    denied = select(MediaVaultAttendanceDeny.vault_id).where(
+        MediaVaultAttendanceDeny.member_id == actor.member_id
+    )
+    attended = select(MediaVault.id).where(
+        MediaVault.id == MediaItem.vault_id,
+        MediaVault.session_id.in_(attended_ids or []),
+        MediaVault.attendee_can_view.is_(True),
+        ~MediaVault.id.in_(denied),
+        MediaItem.review_status.in_(["approved", "published"]),
+        MediaItem.consent_status == "cleared",
+    ).exists()
+    return [*conditions, or_(grant, owns_collection, attended)]
 
 
 @router.get("/library", response_model=VaultMediaListResponse)
@@ -1099,7 +1110,18 @@ async def list_media_library(
     db: AsyncSession = Depends(get_async_db),
 ):
     actor = await resolve_actor(current_user)
-    conditions = _library_access_conditions(actor)
+    attendance_ids: list[uuid.UUID] = []
+    if actor.member_id and not actor.is_admin:
+        try:
+            records = await get_member_attendance(str(actor.member_id), calling_service="media")
+            attendance_ids = [
+                uuid.UUID(str(r["session_id"])) for r in records
+                if r.get("status", "").lower() in {"present", "late"}
+                and r.get("role", "swimmer").lower() == "swimmer"
+            ]
+        except Exception:
+            logger.exception("Could not check attendance for media library")
+    conditions = _library_access_conditions(actor, attendance_ids)
     if vault_id:
         conditions.append(MediaItem.vault_id == vault_id)
     if media_type:
@@ -1791,7 +1813,7 @@ async def get_vault(
 ):
     actor = await resolve_actor(current_user)
     vault = await get_vault_or_404(db, vault_id)
-    await require_vault_role(db, vault=vault, actor=actor, minimum="contributor")
+    await require_vault_role(db, vault=vault, actor=actor, minimum="viewer")
     return await _vault_response(db, vault, actor)
 
 
