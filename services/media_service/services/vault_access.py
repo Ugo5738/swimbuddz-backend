@@ -14,10 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import is_admin_or_service
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
-from libs.common.service_client import get_member_by_auth_id
-from services.media_service.models import MediaVault, MediaVaultGrant
+from libs.common.service_client import get_member_by_auth_id, get_member_attendance
+from services.media_service.models import MediaVault, MediaVaultGrant, MediaVaultAttendanceDeny
 
-ROLE_RANK = {"contributor": 1, "curator": 2, "admin": 3}
+ROLE_RANK = {"viewer": 0, "contributor": 1, "curator": 2, "admin": 3}
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,35 @@ async def resolve_actor(user: AuthUser) -> VaultActor:
     member = await get_member_by_auth_id(str(user.user_id), calling_service="media")
     member_id = uuid.UUID(str(member["id"])) if member else None
     return VaultActor(auth_id=auth_id, member_id=member_id, is_admin=admin)
+
+
+async def verified_attendee_role(
+    db: AsyncSession, *, vault: MediaVault, actor: VaultActor
+) -> Optional[str]:
+    """Compute attendee access on demand; explicit denials override attendance."""
+    if not actor.member_id or not vault.session_id or vault.deleted_at:
+        return None
+    if not vault.attendee_can_view:
+        return None
+    denied = await db.scalar(
+        select(MediaVaultAttendanceDeny.id).where(
+            MediaVaultAttendanceDeny.vault_id == vault.id,
+            MediaVaultAttendanceDeny.member_id == actor.member_id,
+        )
+    )
+    if denied:
+        return None
+    rows = await get_member_attendance(
+        str(actor.member_id), session_ids=[str(vault.session_id)],
+        calling_service="media",
+    )
+    if not any(
+        row.get("status", "").lower() in {"present", "late"}
+        and row.get("role", "swimmer").lower() == "swimmer"
+        for row in rows
+    ):
+        return None
+    return "contributor" if vault.attendee_can_contribute else "viewer"
 
 
 async def effective_vault_role(
@@ -63,7 +92,12 @@ async def effective_vault_role(
         )
     )
     roles = list(rows.scalars().all())
-    return max(roles, key=lambda role: ROLE_RANK.get(role, 0)) if roles else None
+    if roles:
+        return max(roles, key=lambda role: ROLE_RANK.get(role, -1))
+    vault = await db.get(MediaVault, vault_id)
+    if not vault:
+        return None
+    return await verified_attendee_role(db, vault=vault, actor=actor)
 
 
 async def require_vault_role(
@@ -76,7 +110,7 @@ async def require_vault_role(
     role = await effective_vault_role(db, vault_id=vault.id, actor=actor)
     if vault.owner_member_id and actor.member_id == vault.owner_member_id and not role:
         role = "contributor"
-    if not role or ROLE_RANK.get(role, 0) < ROLE_RANK[minimum]:
+    if not role or ROLE_RANK.get(role, -1) < ROLE_RANK[minimum]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"{minimum.capitalize()} vault access is required",
