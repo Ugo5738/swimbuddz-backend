@@ -94,6 +94,7 @@ from services.media_service.schemas import (
     AttendanceAccessChange,
     PersonalCollectionCreate,
     PersonalCollectionUpdate,
+    PersonalMediaShareUpdate,
 )
 from services.media_service.services.storage import (
     AWS_REGION,
@@ -1194,6 +1195,8 @@ async def _member_can_view_video(
         or item.consent_status != "cleared"
     ):
         return False
+    if item.session_visibility == "community":
+        return True
     if item.session_visibility == "selected_members":
         return bool(
             await db.scalar(
@@ -1487,7 +1490,7 @@ async def create_my_collection(
         max_total_bytes=5 * 1024**4,
         upload_opens_at=now - timedelta(minutes=1),
         upload_closes_at=now + timedelta(days=3650),
-        default_session_visibility="private",
+        default_session_visibility="community" if payload.share_with_community else "private",
         attendee_can_view=False, attendee_can_contribute=False,
         created_by=actor.auth_id, settings_json={"personal_collection": True},
     )
@@ -1512,6 +1515,8 @@ async def rename_my_collection(
         vault.title = payload.title.strip()
     if payload.description is not None:
         vault.description = payload.description
+    if payload.share_with_community is not None:
+        vault.default_session_visibility = ("community" if payload.share_with_community else "private")
     await db.commit()
     await db.refresh(vault)
     return await _vault_response(db, vault, actor)
@@ -1563,6 +1568,43 @@ async def change_attendee_access(
     return {"denied": payload.deny}
 
 
+@router.post("/my-media/{media_item_id}/share-community", response_model=dict)
+async def share_personal_media_with_community(
+    media_item_id: uuid.UUID,
+    payload: PersonalMediaShareUpdate,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    actor = await resolve_actor(current_user)
+    item = await db.get(MediaItem, media_item_id)
+    vault = await db.get(MediaVault, item.vault_id) if item else None
+    if not actor.member_id or not item or not vault or (
+        vault.owner_member_id != actor.member_id
+        or item.uploaded_by != actor.auth_id
+    ):
+        raise HTTPException(status_code=403, detail="Not your recording")
+    if payload.share_with_community and (
+        item.processing_status != "ready"
+        or item.review_status not in {"approved", "published"}
+        or item.consent_status != "cleared"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="You can share this recording after it has been approved and consent-cleared",
+        )
+    item.session_visibility = "community" if payload.share_with_community else "private"
+    if not payload.share_with_community:
+        item.allow_member_clips = False
+        item.allow_member_downloads = False
+    await write_audit(
+        db, action="media.member.community_share_changed",
+        actor=current_user, entity_type="media_item", entity_id=item.id,
+        new_value={"shared": payload.share_with_community},
+    )
+    await db.commit()
+    return {"shared": payload.share_with_community}
+
+
 @router.get("/my-videos", response_model=MemberVideosResponse)
 async def my_session_videos(
     page: int = Query(default=1, ge=1),
@@ -1607,7 +1649,7 @@ async def my_session_videos(
         & ~MediaVault.id.in_(exclusions)
     )
     conditions = [
-        or_(personal_share, session_audience),
+        or_(personal_share, session_audience, MediaItem.session_visibility == "community"),
         MediaItem.soft_deleted_at.is_(None),
         MediaItem.processing_status == "ready",
         MediaItem.media_type.in_([MediaType.VIDEO, MediaType.IMAGE]),
