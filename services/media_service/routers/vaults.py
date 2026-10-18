@@ -1066,7 +1066,7 @@ def _library_access_conditions(actor: VaultActor, attended_ids: list[uuid.UUID] 
             or_(
                 MediaVaultGrant.role.in_(["curator", "admin"]),
                 and_(
-                    MediaVaultGrant.role == "contributor",
+                    MediaVaultGrant.role.in_(["viewer", "contributor"]),
                     or_(
                         MediaItem.uploaded_by == actor.auth_id,
                         and_(
@@ -2671,7 +2671,7 @@ async def request_my_shared_preview(
     if not can_view and actor.member_id and item and vault:
         role = await effective_vault_role(db, vault_id=vault.id, actor=actor)
         can_view = bool(
-            role in {"contributor", "curator", "admin"}
+            role in {"viewer", "contributor", "curator", "admin"}
             and item.processing_status == "ready"
             and item.soft_deleted_at is None
             and vault.deleted_at is None
