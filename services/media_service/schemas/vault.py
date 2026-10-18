@@ -38,6 +38,8 @@ class VaultCreate(BaseModel):
     default_session_visibility: Literal[
         "private", "selected_members", "session_participants"
     ] = "selected_members"
+    attendee_can_view: bool = True
+    attendee_can_contribute: bool = True
     default_allow_member_clips: bool = False
     default_allow_member_downloads: bool = False
 
@@ -86,6 +88,8 @@ class VaultUpdate(BaseModel):
     default_allow_member_clips: Optional[bool] = None
     default_allow_member_downloads: Optional[bool] = None
     apply_defaults_to_existing: bool = False
+    attendee_can_view: Optional[bool] = None
+    attendee_can_contribute: Optional[bool] = None
 
 
 class VaultResponse(BaseModel):
@@ -113,6 +117,8 @@ class VaultResponse(BaseModel):
     shot_checklist: list[str]
     settings_json: dict[str, Any]
     default_session_visibility: str = "selected_members"
+    attendee_can_view: bool = True
+    attendee_can_contribute: bool = True
     default_allow_member_clips: bool = False
     default_allow_member_downloads: bool = False
     published_album_id: Optional[uuid.UUID]
@@ -128,6 +134,21 @@ class VaultResponse(BaseModel):
 class VaultListResponse(BaseModel):
     items: list[VaultResponse]
     total: int
+
+
+class AttendanceAccessChange(BaseModel):
+    member_id: uuid.UUID
+    deny: bool = True
+
+
+class PersonalCollectionCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=2000)
+
+
+class PersonalCollectionUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=2, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=2000)
 
 
 class VaultGrantCreate(BaseModel):
