@@ -22,6 +22,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    text,
     String,
     Text,
     UniqueConstraint,
@@ -40,7 +41,13 @@ class MediaVault(Base):
     __table_args__ = (
         UniqueConstraint("session_id", name="uq_media_vaults_session_id"),
         UniqueConstraint("event_id", name="uq_media_vaults_event_id"),
-        UniqueConstraint("owner_member_id", name="uq_media_vaults_owner_member_id"),
+        Index(
+            "uq_media_vaults_primary_member_upload", "owner_member_id",
+            unique=True,
+            postgresql_where=text(
+                "owner_member_id IS NOT NULL AND settings_json @> '{\"member_self_upload\":true}'::jsonb"
+            ),
+        ),
         Index("ix_media_vaults_capture_date_status", "capture_date", "status"),
     )
 
@@ -97,6 +104,12 @@ class MediaVault(Base):
     )
     settings_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
+    )
+    attendee_can_view: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    attendee_can_contribute: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
     )
     default_session_visibility: Mapped[str] = mapped_column(
         String(24), nullable=False, default="selected_members"
@@ -180,6 +193,30 @@ class MediaVaultGrant(Base):
     )
 
     vault = relationship("MediaVault", back_populates="grants")
+
+
+class MediaVaultAttendanceDeny(Base):
+    """An explicit admin exclusion superseding inferred session attendance."""
+
+    __tablename__ = "media_vault_attendance_denials"
+    __table_args__ = (
+        UniqueConstraint("vault_id", "member_id", name="uq_vault_attendance_deny"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    vault_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("media_vaults.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True,
+    )
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
 
 
 class MediaItemMemberShare(Base):
