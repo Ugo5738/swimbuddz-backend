@@ -60,11 +60,17 @@ async def notify_vault_access(
 ) -> Optional[dict]:
     """Send a durable in-app assignment alert and a preference-aware email."""
 
-    role_label = {"viewer": "media viewer", "contributor": "media uploader", "curator": "social curator"}.get(role, "media collaborator")
+    role_label = {
+        "viewer": "media viewer",
+        "contributor": "media uploader",
+        "curator": "social curator",
+    }.get(role, "media collaborator")
     action_path = f"/account/media-vault/{vault.id}"
     action_url = f"{get_settings().FRONTEND_URL.rstrip('/')}{action_path}"
     expiry_label = expires_at.strftime("%A, %d %B %Y at %H:%M UTC")
-    if role == "contributor":
+    if role == "viewer":
+        responsibility = "view approved, consent-cleared media"
+    elif role == "contributor":
         responsibility = "upload full-quality session photos and videos"
     else:
         responsibility = "review, shortlist, and download the session media"
