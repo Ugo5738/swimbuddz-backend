@@ -2456,31 +2456,47 @@ async def list_vault_items(
     if role in {"viewer", "contributor"} and not actor.is_admin:
         # Explicit Vault grants permit collaboration; automatic attendance
         # never widens private or individually selected recording audiences.
-        active_grant = await db.scalar(select(MediaVaultGrant.id).where(
-            MediaVaultGrant.vault_id == vault.id,
-            MediaVaultGrant.member_id == actor.member_id,
-            MediaVaultGrant.revoked_at.is_(None),
-            MediaVaultGrant.starts_at <= utc_now(),
-            MediaVaultGrant.expires_at >= utc_now(),
-        ))
+        active_grant = await db.scalar(
+            select(MediaVaultGrant.id).where(
+                MediaVaultGrant.vault_id == vault.id,
+                MediaVaultGrant.member_id == actor.member_id,
+                MediaVaultGrant.revoked_at.is_(None),
+                MediaVaultGrant.starts_at <= utc_now(),
+                MediaVaultGrant.expires_at >= utc_now(),
+            )
+        )
         allowed = and_(
             MediaItem.review_status.in_(["approved", "published"]),
             MediaItem.consent_status == "cleared",
         )
         if not active_grant and vault.owner_member_id != actor.member_id:
-            explicit_share = select(MediaItemMemberShare.id).where(
-                MediaItemMemberShare.media_item_id == MediaItem.id,
-                MediaItemMemberShare.member_id == actor.member_id,
-                MediaItemMemberShare.revoked_at.is_(None),
-            ).exists()
-            allowed = and_(allowed, or_(
-                MediaItem.session_visibility.in_(["session_participants", "community"]),
-                and_(MediaItem.session_visibility == "selected_members", explicit_share),
-            ))
-        conditions.append(or_(
-            MediaItem.uploaded_by == actor.auth_id,
-            allowed,
-        ))
+            explicit_share = (
+                select(MediaItemMemberShare.id)
+                .where(
+                    MediaItemMemberShare.media_item_id == MediaItem.id,
+                    MediaItemMemberShare.member_id == actor.member_id,
+                    MediaItemMemberShare.revoked_at.is_(None),
+                )
+                .exists()
+            )
+            allowed = and_(
+                allowed,
+                or_(
+                    MediaItem.session_visibility.in_(
+                        ["session_participants", "community"]
+                    ),
+                    and_(
+                        MediaItem.session_visibility == "selected_members",
+                        explicit_share,
+                    ),
+                ),
+            )
+        conditions.append(
+            or_(
+                MediaItem.uploaded_by == actor.auth_id,
+                allowed,
+            )
+        )
     if review_status:
         conditions.append(MediaItem.review_status == review_status)
     if consent_status:

@@ -49,7 +49,12 @@ async def verified_attendee_role(
     db: AsyncSession, *, vault: MediaVault, actor: VaultActor
 ) -> Optional[str]:
     """Compute attendee access on demand; explicit denials override attendance."""
-    if not actor.member_id or not vault.session_id or vault.deleted_at or vault.status == "archived":
+    if (
+        not actor.member_id
+        or not vault.session_id
+        or vault.deleted_at
+        or vault.status == "archived"
+    ):
         return None
     if not vault.attendee_can_view:
         return None
