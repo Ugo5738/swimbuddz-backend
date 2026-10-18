@@ -1078,7 +1078,12 @@ def _library_access_conditions(actor: VaultActor):
         )
         .exists()
     )
-    return [*conditions, grant]
+    owns_collection = select(MediaVault.id).where(
+        MediaVault.id == MediaItem.vault_id,
+        MediaVault.owner_member_id == actor.member_id,
+        MediaItem.uploaded_by == actor.auth_id,
+    ).exists()
+    return [*conditions, or_(grant, owns_collection)]
 
 
 @router.get("/library", response_model=VaultMediaListResponse)
@@ -1296,6 +1301,12 @@ async def get_or_create_my_swim_vault(
         )
         .with_for_update()
     )
+    if vault is not None and (
+        vault.max_file_bytes < 5 * 1024**4 or vault.max_total_bytes < 5 * 1024**4
+    ):
+        vault.max_file_bytes = 5 * 1024**4
+        vault.max_total_bytes = 5 * 1024**4
+        await db.commit()
     if vault is None:
         now = utc_now()
         vault = MediaVault(
