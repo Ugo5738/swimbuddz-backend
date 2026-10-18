@@ -74,19 +74,21 @@ async def test_only_actual_swimmers_can_see_participant_video(monkeypatch):
         session_visibility="session_participants",
         source_session_id=session_id,
     )
-    vault = SimpleNamespace(session_id=None, deleted_at=None, status="open")
+    vault = SimpleNamespace(id=uuid.uuid4(), session_id=session_id, deleted_at=None, status="open", attendee_can_view=True)
     attendance = AsyncMock(return_value=[{"status": "absent", "role": "swimmer"}])
     monkeypatch.setattr(vaults, "get_member_attendance", attendance)
+    db = AsyncMock()
+    db.scalar.return_value = None
     assert not await vaults._member_can_view_video(
-        AsyncMock(), member_id=member_id, item=item, vault=vault
+        db, member_id=member_id, item=item, vault=vault
     )
     attendance.return_value = [{"status": "present", "role": "coach"}]
     assert not await vaults._member_can_view_video(
-        AsyncMock(), member_id=member_id, item=item, vault=vault
+        db, member_id=member_id, item=item, vault=vault
     )
     attendance.return_value = [{"status": "present", "role": "swimmer"}]
     assert await vaults._member_can_view_video(
-        AsyncMock(), member_id=member_id, item=item, vault=vault
+        db, member_id=member_id, item=item, vault=vault
     )
 
 
