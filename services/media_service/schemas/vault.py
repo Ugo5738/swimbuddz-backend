@@ -136,6 +136,10 @@ class VaultListResponse(BaseModel):
     total: int
 
 
+class PersonalMediaShareUpdate(BaseModel):
+    share_with_community: bool
+
+
 class AttendanceAccessChange(BaseModel):
     member_id: uuid.UUID
     deny: bool = True
@@ -143,11 +147,13 @@ class AttendanceAccessChange(BaseModel):
 
 class PersonalCollectionCreate(BaseModel):
     title: str = Field(min_length=2, max_length=255)
+    share_with_community: bool = False
     description: Optional[str] = Field(default=None, max_length=2000)
 
 
 class PersonalCollectionUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=2, max_length=255)
+    share_with_community: Optional[bool] = None
     description: Optional[str] = Field(default=None, max_length=2000)
 
 
