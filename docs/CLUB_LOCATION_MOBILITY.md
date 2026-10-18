@@ -25,7 +25,17 @@ A Club Session or SessionTemplate may explicitly set:
 - 'allows_visiting_club_members'
 - 'visiting_club_fee' / 'visiting_club_fee_kobo'
 
-The member must have an active dated, location-specific 'ClubEnrollment' at a *different* Club. The host Session must allow visiting Club members.
+**General Club audience (no `pod_id`) admits every active Club member**, regardless
+of their home Club or Pod. The owning `club_id` identifies the organiser,
+location and purchased inclusions; it does not narrow a general audience.
+This applies even to historical general sessions whose visiting-members flag
+was false. Academy enrollment alone never grants Club admission.
+
+A member with an active dated enrollment at another Club resolves as
+`club_visit` and pays the host session's rate. A home prepaid quarter covers
+only its purchased inclusions; admission to another general swim does not make
+that swim free. Legacy Club entitlement and an explicit post-Academy Club
+bridge remain supported Club access sources.
 
 When allowed, access resolves as 'club_visit':
 
@@ -38,6 +48,21 @@ When allowed, access resolves as 'club_visit':
 The visit creates a normal SessionBooking. It does **not** change the member's home Club, home Pod, or quarter.
 
 Pod-scoped host Sessions remain Pod-scoped. Enabling visitors does not let a member bypass a host Pod roster.
+
+## Expected attendance roster
+
+`GET /api/v1/members/club-session-roster` (Admin) accepts `session_id`, aware
+`at`, and the session's `club_id`, `pool_id`, `pod_id`, `club_access_mode`, and
+`allows_visiting_club_members`. It returns `{session_id, members}` with each
+member's ID, name, email and resolved access source. This is a read-only
+expected roster, not attendance or a booking.
+
+The lookup uses the same dated access resolver as bookings. It includes active
+pay-per-swim enrollments even when old cached Club tier fields have expired,
+excludes Academy-only and expired Club accounts, and restricts Pod sessions
+to assignments covering the swim's date. General sessions consider all active
+Club members. There is no first-500-members cutoff. Actual bookings and
+attendance remain visible separately, including supported historical walk-ins.
 
 Community drop-ins and Guests remain separate admission audiences with their own independent rates and flags.
 

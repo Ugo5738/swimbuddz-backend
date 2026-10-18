@@ -41,10 +41,11 @@ async def resolve_club_access_checks(
 
     Each check supplies ``context_key``, ``member_id``, ``at`` and optional
     ``club_id``/``pool_id``/``pod_id`` attributes. ``club_id`` is authoritative
-    for the member's home entitlement. A host session may explicitly allow a
-    member with an active enrollment at another Club to visit; that produces
-    ``source=club_visit`` without changing the home enrollment. Pod and pool
-    rules remain local to the host session. ``at`` is the session start, which
+    for purchased home inclusions. General sessions (no Pod) admit active
+    Club members across locations at the host rate, producing
+    ``source=club_visit`` outside purchased inclusions without changing the
+    home enrollment. Pod and pool rules remain local to the host session.
+    ``at`` is the session start, which
     is essential: buying Q4 in Q3 must not grant Q3 access.
     """
 
@@ -137,6 +138,9 @@ async def resolve_club_access_checks(
     for check in requested:
         at = _aware(check.at)
         check_club_id = getattr(check, "club_id", None)
+        general_session = (
+            getattr(check, "session_id", None) is not None and check.pod_id is None
+        )
         matched_enrollments: list[ClubEnrollment] = []
         access_mode = getattr(check, "club_access_mode", "plan_included")
         for enrollment, club, plan in enrollments_by_member.get(check.member_id, []):
@@ -200,15 +204,18 @@ async def resolve_club_access_checks(
             matched_enrollments[0] if matched_enrollments else None,
         )
 
-        # Cross-location access is deliberate rather than a weakening of the
-        # home-Club boundary. Only a real, dated ClubEnrollment can qualify as
-        # a visitor; legacy generic entitlements and post-Academy bridges do not
-        # silently become global Club passes.
+        # General Club is an audience, independent of the owning location.
+        # A member from another Club pays the host swim's rate; their home
+        # prepaid quarter never silently includes an unsold/other-location swim.
+        # Pod restrictions are additionally enforced by the session evaluator.
         visiting_enrollment = None
         if (
             matched_enrollment is None
             and check_club_id is not None
-            and bool(getattr(check, "allows_visiting_club_members", False))
+            and (
+                general_session
+                or bool(getattr(check, "allows_visiting_club_members", False))
+            )
         ):
             visit_candidates = [
                 enrollment
@@ -216,7 +223,7 @@ async def resolve_club_access_checks(
                     check.member_id, []
                 )
                 if _aware(enrollment.starts_at) <= at < _aware(enrollment.ends_at)
-                and enrollment.club_id != check_club_id
+                and (general_session or enrollment.club_id != check_club_id)
             ]
             visiting_enrollment = next(
                 (
