@@ -25,7 +25,7 @@ def upgrade() -> None:
         ["owner_member_id"],
         unique=True,
         postgresql_where=sa.text(
-            "owner_member_id IS NOT NULL AND settings_json @> '{\"member_self_upload\":true}'::jsonb"
+            "owner_member_id IS NOT NULL AND settings_json ->> 'member_self_upload' = 'true'"
         ),
     )
     op.add_column(

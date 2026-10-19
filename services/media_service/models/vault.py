@@ -46,7 +46,7 @@ class MediaVault(Base):
             "owner_member_id",
             unique=True,
             postgresql_where=text(
-                "owner_member_id IS NOT NULL AND settings_json @> '{\"member_self_upload\":true}'::jsonb"
+                "owner_member_id IS NOT NULL AND settings_json ->> 'member_self_upload' = 'true'"
             ),
         ),
         Index("ix_media_vaults_capture_date_status", "capture_date", "status"),
