@@ -654,6 +654,140 @@
         }
       }
     },
+    "/api/v1/members/club-session-roster": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Get Club Session Roster",
+        "operationId": "get_club_session_roster_members_club_session_roster_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            }
+          },
+          {
+            "name": "club_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Club Id"
+            }
+          },
+          {
+            "name": "pool_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id"
+            }
+          },
+          {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "club_access_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "plan_included",
+                "active_club",
+                "paid_addon"
+              ],
+              "type": "string",
+              "default": "plan_included",
+              "title": "Club Access Mode"
+            }
+          },
+          {
+            "name": "allows_visiting_club_members",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Allows Visiting Club Members"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubSessionRosterResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/members/": {
       "post": {
         "tags": [
@@ -68984,6 +69118,57 @@
           "updated_at"
         ],
         "title": "ClubResponse"
+      },
+      "ClubSessionRosterMember": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "access_source": {
+            "type": "string",
+            "title": "Access Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "name",
+          "email",
+          "access_source"
+        ],
+        "title": "ClubSessionRosterMember"
+      },
+      "ClubSessionRosterResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/ClubSessionRosterMember"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "members"
+        ],
+        "title": "ClubSessionRosterResponse"
       },
       "ClubTermsApproval": {
         "properties": {

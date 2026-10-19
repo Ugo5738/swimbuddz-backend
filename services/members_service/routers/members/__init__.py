@@ -18,6 +18,7 @@ from fastapi import APIRouter
 
 from . import admin as _admin
 from . import bulk as _bulk
+from . import club_roster as _club_roster
 from . import me as _me
 from . import public as _public
 
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/members", tags=["members"])
 router.include_router(_me.router)
 router.include_router(_public.router)
 router.include_router(_bulk.router)
+router.include_router(_club_roster.router)
 router.include_router(_admin.router)
 
 __all__ = ["router"]
