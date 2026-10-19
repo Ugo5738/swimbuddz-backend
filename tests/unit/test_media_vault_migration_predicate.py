@@ -15,8 +15,8 @@ def test_primary_member_upload_index_compiles_without_json_bind_parameters():
     compiled = CreateIndex(index).compile(dialect=postgresql.dialect())
     sql = str(compiled)
     assert "settings_json ->> 'member_self_upload' = 'true'" in sql
-    assert "\"member_self_upload\"NULL" not in sql
-    assert "\"member_self_upload\":NULL" not in sql
+    assert '"member_self_upload"NULL' not in sql
+    assert '"member_self_upload":NULL' not in sql
     assert not compiled.params
 
 
