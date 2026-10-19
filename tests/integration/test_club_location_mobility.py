@@ -41,7 +41,7 @@ def _club_plan(club_id, name, *, published=True):
 
 
 @pytest.mark.asyncio
-async def test_cross_location_visit_requires_explicit_host_opt_in(
+async def test_general_club_visit_is_open_to_members_from_other_home_clubs(
     db_session, seed_member_row
 ):
     member = await seed_member_row(auth_id=f"visitor-{uuid.uuid4()}")
@@ -95,7 +95,10 @@ async def test_cross_location_visit_requires_explicit_host_opt_in(
             )
         ],
     )
-    assert closed[0]["allowed"] is False
+    # No pod means General Club: host ownership does not restrict the audience.
+    assert closed[0]["allowed"] is True
+    assert closed[0]["source"] == "club_visit"
+    assert closed[0]["fee_amount_kobo"] is None
 
     open_visit = await resolve_club_access_checks(
         db_session,

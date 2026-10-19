@@ -22,6 +22,26 @@ async def task_generate_quarterly_snapshot(ctx: dict):
     await run_quarterly_snapshot()
 
 
+async def task_refresh_current_quarter_reports(ctx: dict):
+    """Refresh member and community reporting throughout the active quarter.
+
+    Runs in the reporting worker rather than on a member page request so a
+    single dashboard visit never launches a cross-service fan-out for everyone.
+    """
+    from libs.db.session import AsyncSessionLocal
+    from services.reporting_service.services.aggregator import (
+        compute_all_member_reports,
+        compute_community_stats,
+    )
+    from services.reporting_service.services.quarter_utils import current_quarter
+
+    year, quarter = current_quarter()
+    async with AsyncSessionLocal() as db:
+        count = await compute_all_member_reports(year, quarter, db)
+        await compute_community_stats(year, quarter, db)
+    logger.info("Refreshed live Q%s %s reports for %s swimmers", quarter, year, count)
+
+
 async def task_refresh_cohort_fill_snapshots(ctx: dict):
     """Snapshot cohort fill state for all OPEN/ACTIVE cohorts."""
     from services.reporting_service.tasks.flywheel import compute_cohort_fill_snapshots
@@ -73,6 +93,7 @@ class WorkerSettings:
 
     functions = [
         task_generate_quarterly_snapshot,
+        task_refresh_current_quarter_reports,
         task_refresh_cohort_fill_snapshots,
         task_refresh_funnel_conversions,
         task_refresh_wallet_ecosystem,
@@ -81,6 +102,8 @@ class WorkerSettings:
     ]
 
     cron_jobs = [
+        # Current-quarter community stats and leaderboard, refreshed hourly.
+        cron(task_refresh_current_quarter_reports, minute=10, run_at_startup=True),
         cron(
             task_refresh_content_acquisition,
             hour=5,

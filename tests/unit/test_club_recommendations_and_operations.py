@@ -201,7 +201,7 @@ async def test_inaugural_generation_needs_no_existing_session_and_is_idempotent(
 @pytest.mark.parametrize(
     "mode,payment,expected,source",
     [
-        ("plan_included", "quarterly_prepaid", False, "none"),
+        ("plan_included", "quarterly_prepaid", True, "club_visit"),
         ("active_club", "quarterly_prepaid", True, "club_enrollment"),
         ("paid_addon", "quarterly_prepaid", True, "club_paid_addon"),
         ("active_club", "transition_per_session", True, "club_transition"),
@@ -241,11 +241,13 @@ async def test_extra_practice_access_is_separate_from_quarter_inclusion(
     if mode == "paid_addon" or payment == "transition_per_session":
         assert got["fee_amount_kobo"] is None
     other_club = check.model_copy(update={"club_id": uuid4()})
-    assert not (
+    visiting = (
         await resolve_club_access_checks(
             _AccessDb([], [(enrollment, NS(default_pool_id=pool), plan)]), [other_club]
         )
-    )[0]["allowed"]
+    )[0]
+    assert visiting["allowed"] and visiting["source"] == "club_visit"
+    assert visiting["fee_amount_kobo"] is None
 
 
 def session():
