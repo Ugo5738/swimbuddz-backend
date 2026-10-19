@@ -55792,6 +55792,380 @@
         ]
       }
     },
+    "/api/v1/media/vaults/my-attended-vaults": {
+      "get": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "List My Attended Vaults",
+        "operationId": "list_my_attended_vaults_media_vaults_my_attended_vaults_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/media/vaults/my-session-vault/{session_id}": {
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Get Or Create Attended Session Vault",
+        "operationId": "get_or_create_attended_session_vault_media_vaults_my_session_vault__session_id__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/my-collections": {
+      "get": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "List My Collections",
+        "operationId": "list_my_collections_media_vaults_my_collections_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Create My Collection",
+        "operationId": "create_my_collection_media_vaults_my_collections_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalCollectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/media/vaults/my-collections/{vault_id}": {
+      "patch": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Rename My Collection",
+        "operationId": "rename_my_collection_media_vaults_my_collections__vault_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vault_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vault Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalCollectionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/{vault_id}/attendee-denials": {
+      "get": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "List Attendee Denials",
+        "operationId": "list_attendee_denials_media_vaults__vault_id__attendee_denials_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vault_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vault Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Attendee Denials Media Vaults  Vault Id  Attendee Denials Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/{vault_id}/attendee-access": {
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Change Attendee Access",
+        "operationId": "change_attendee_access_media_vaults__vault_id__attendee_access_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vault_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Vault Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttendanceAccessChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Change Attendee Access Media Vaults  Vault Id  Attendee Access Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/vaults/my-media/{media_item_id}/share-community": {
+      "post": {
+        "tags": [
+          "media-vaults"
+        ],
+        "summary": "Share Personal Media With Community",
+        "operationId": "share_personal_media_with_community_media_vaults_my_media__media_item_id__share_community_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "media_item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Media Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalMediaShareUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Share Personal Media With Community Media Vaults My Media  Media Item Id  Share Community Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/media/vaults/my-videos": {
       "get": {
         "tags": [
@@ -129820,6 +130194,25 @@
         "title": "ApplyAudioRequest",
         "description": "Request body for applying audio to a video."
       },
+      "AttendanceAccessChange": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "deny": {
+            "type": "boolean",
+            "title": "Deny",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id"
+        ],
+        "title": "AttendanceAccessChange"
+      },
       "AudioTrackResponse": {
         "properties": {
           "title": {
@@ -130558,6 +130951,7 @@
           "role": {
             "type": "string",
             "enum": [
+              "viewer",
               "contributor",
               "curator"
             ],
@@ -132015,6 +132409,93 @@
         ],
         "title": "MultipartSignPartsResponse"
       },
+      "PersonalCollectionCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Title"
+          },
+          "share_with_community": {
+            "type": "boolean",
+            "title": "Share With Community",
+            "default": false
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "PersonalCollectionCreate"
+      },
+      "PersonalCollectionUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "share_with_community": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share With Community"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "title": "PersonalCollectionUpdate"
+      },
+      "PersonalMediaShareUpdate": {
+        "properties": {
+          "share_with_community": {
+            "type": "boolean",
+            "title": "Share With Community"
+          }
+        },
+        "type": "object",
+        "required": [
+          "share_with_community"
+        ],
+        "title": "PersonalMediaShareUpdate"
+      },
       "PublishRequest": {
         "properties": {
           "media_item_ids": {
@@ -132787,6 +133268,16 @@
             "title": "Default Session Visibility",
             "default": "selected_members"
           },
+          "attendee_can_view": {
+            "type": "boolean",
+            "title": "Attendee Can View",
+            "default": true
+          },
+          "attendee_can_contribute": {
+            "type": "boolean",
+            "title": "Attendee Can Contribute",
+            "default": true
+          },
           "default_allow_member_clips": {
             "type": "boolean",
             "title": "Default Allow Member Clips",
@@ -132817,6 +133308,7 @@
           "role": {
             "type": "string",
             "enum": [
+              "viewer",
               "contributor",
               "curator",
               "admin"
@@ -133442,6 +133934,16 @@
             "title": "Default Session Visibility",
             "default": "selected_members"
           },
+          "attendee_can_view": {
+            "type": "boolean",
+            "title": "Attendee Can View",
+            "default": true
+          },
+          "attendee_can_contribute": {
+            "type": "boolean",
+            "title": "Attendee Can Contribute",
+            "default": true
+          },
           "default_allow_member_clips": {
             "type": "boolean",
             "title": "Default Allow Member Clips",
@@ -133734,6 +134236,28 @@
             "type": "boolean",
             "title": "Apply Defaults To Existing",
             "default": false
+          },
+          "attendee_can_view": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendee Can View"
+          },
+          "attendee_can_contribute": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendee Can Contribute"
           }
         },
         "type": "object",

@@ -25,6 +25,7 @@ from services.media_service.models.vault import (
     MediaVault,
     MediaVaultExport,
     MediaVaultGrant,
+    MediaVaultAttendanceDeny,
     MediaVaultGuestLink,
 )
 
@@ -37,6 +38,7 @@ __all__ = [
     "MediaAuditLog",
     "MediaVault",
     "MediaVaultGrant",
+    "MediaVaultAttendanceDeny",
     "MediaItemMemberShare",
     "MediaItemFeaturedMember",
     "MediaVaultClip",
