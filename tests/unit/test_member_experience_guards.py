@@ -146,7 +146,9 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
         ("curator", "other-member"),
     ]:
         vault_id = uuid4().hex
-        conn.execute("INSERT INTO media_vaults (id, deleted_at) VALUES (?,?)", (vault_id, None))
+        conn.execute(
+            "INSERT INTO media_vaults (id, deleted_at) VALUES (?,?)", (vault_id, None)
+        )
         conn.execute(
             "INSERT INTO media_vault_grants VALUES (?,?,?,?,?,?,?)",
             (
@@ -191,7 +193,8 @@ def test_library_visibility_with_real_query_execution(monkeypatch):
         )
     removed_vault_id = uuid4().hex
     conn.execute(
-        "INSERT INTO media_vaults (id, deleted_at) VALUES (?,?)", (removed_vault_id, "2026-09-10")
+        "INSERT INTO media_vaults (id, deleted_at) VALUES (?,?)",
+        (removed_vault_id, "2026-09-10"),
     )
     conn.execute(
         "INSERT INTO media_items (id,vault_id,soft_deleted_at,processing_status,uploaded_by) VALUES (?,?,?,?,?)",
