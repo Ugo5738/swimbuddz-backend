@@ -73,6 +73,7 @@ jobs:
           alembic -c services/attendance_service/alembic.ini upgrade head
           alembic -c services/communications_service/alembic.ini upgrade head
           alembic -c services/events_service/alembic.ini upgrade head
+          alembic -c services/media_service/alembic.ini upgrade head
           alembic -c services/payments_service/alembic.ini upgrade head
           alembic -c services/sessions_service/alembic.ini upgrade head
           alembic -c services/store_service/alembic.ini upgrade head
