@@ -23,6 +23,7 @@ imports it directly from this module.
 from fastapi import APIRouter
 
 from . import admin as _admin
+from . import academy as _academy
 from . import coach_mark as _coach_mark
 from . import lists as _lists
 from . import sign_in as _sign_in
@@ -36,5 +37,6 @@ router.include_router(_sign_in.router)
 router.include_router(_coach_mark.router)
 router.include_router(_lists.router)
 router.include_router(_admin.router)
+router.include_router(_academy.router)
 
 __all__ = ["router", "get_current_member"]

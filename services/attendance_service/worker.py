@@ -1,19 +1,9 @@
-"""ARQ worker for attendance reconciliation.
+"""ARQ attendance reconciliation.
 
-Runs two cron jobs:
-
-* **notify_stale_attendance** — daily at 19:00 UTC (~20:00 WAT). Pings
-  coaches and admins about sessions whose attendance is still unmarked
-  ~24h after they ended, BEFORE the auto-mark sweep below has a chance
-  to flip them to ABSENT.
-* **sweep_no_show_bookings** — daily at 02:45 UTC (~03:45 WAT). For
-  CONFIRMED bookings whose session ended without a matching
-  AttendanceRecord, creates AttendanceRecord(status=ABSENT). See
-  docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C.
-
-The notify job is intentionally scheduled ~7h before the sweep so the
-coach has an evening window to mark attendance manually before the
-system fills in ABSENT rows on their behalf.
+Included Academy classes default enrolled students to Present at startup and
+every five minutes after a class starts. Saved coach/admin exceptions win.
+The evening reminder and nightly legacy booking sweep remain in place for
+other session kinds; the sweep never invents an Academy absence.
 """
 
 from arq import cron
@@ -22,6 +12,14 @@ from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+async def task_reconcile_academy_defaults(ctx: dict):
+    from services.attendance_service.services.academy_defaults import (
+        reconcile_academy_defaults,
+    )
+
+    return await reconcile_academy_defaults()
 
 
 async def task_sweep_no_show_bookings(ctx: dict):
@@ -42,9 +40,18 @@ class WorkerSettings:
     redis_settings = get_redis_settings()
     queue_name = "arq:attendance"
 
-    functions = [task_sweep_no_show_bookings, task_notify_stale_attendance]
+    functions = [
+        task_sweep_no_show_bookings,
+        task_notify_stale_attendance,
+        task_reconcile_academy_defaults,
+    ]
 
     cron_jobs = [
+        cron(
+            task_reconcile_academy_defaults,
+            minute=set(range(0, 60, 5)),
+            run_at_startup=True,
+        ),
         # Stale-attendance nudge first (evening of the day after session)
         # so coaches can mark before the sweep auto-flips to ABSENT.
         cron(

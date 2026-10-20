@@ -480,6 +480,10 @@ async def get_cohort_enrolled_students_internal(
             "member_id": str(e.member_id),
             "status": e.status.value if e.status else None,
             "access_suspended": e.access_suspended or False,
+            "enrolled_at": e.enrolled_at.isoformat() if e.enrolled_at else None,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+            "paused_at": e.paused_at.isoformat() if e.paused_at else None,
+            "dropped_at": e.dropped_at.isoformat() if e.dropped_at else None,
         }
         for e in enrollments
     ]
@@ -514,6 +518,7 @@ async def check_cohort_enrollment_internal(
         "enrolled": enrollment.status == EnrollmentStatus.ENROLLED,
         "status": enrollment.status.value if enrollment.status else None,
         "access_suspended": enrollment.access_suspended or False,
+        "paused_at": enrollment.paused_at.isoformat() if enrollment.paused_at else None,
     }
 
 
