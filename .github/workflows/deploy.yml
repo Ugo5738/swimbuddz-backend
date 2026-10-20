@@ -146,6 +146,9 @@ jobs:
           pytest -v \
             tests/integration/test_attendance_walkin.py
 
+          pytest -v tests/integration/test_academy_default_attendance.py
+          pytest -v tests/integration/test_academy_student_exceptions.py
+
           pytest -v \
             tests/integration/test_booking_payment_attempts.py \
             tests/integration/test_checkout_reconciliation.py

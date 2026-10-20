@@ -17022,6 +17022,65 @@
         }
       }
     },
+    "/api/v1/attendance/sessions/{session_id}/my-academy-attendance": {
+      "post": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "Report My Academy Attendance",
+        "description": "Report an own-class exception before class ends; no separate booking needed.\n\nExcused absence keeps the existing 24-hour notice rule. Later absence is\nrecorded as Absent. A student may undo their own report, while coach/admin\nexceptions can only be cleared by a coach/admin. This action moves no money.",
+        "operationId": "report_my_academy_attendance_attendance_sessions__session_id__my_academy_attendance_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcademyAttendanceExceptionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/attendance/member/{member_id}": {
       "get": {
         "tags": [
@@ -87186,6 +87245,38 @@
           "payment_status"
         ],
         "title": "WalkInPaymentReconcile"
+      },
+      "AcademyAttendanceExceptionRequest": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "absent",
+              "excused",
+              "late"
+            ],
+            "title": "Status"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "AcademyAttendanceExceptionRequest"
       },
       "AttendanceCreate": {
         "properties": {
