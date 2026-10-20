@@ -102,6 +102,13 @@ async def sweep_no_show_bookings(*, lookback_days: int = 7) -> dict:
             if session_data is None:
                 skipped_session_lookup += 1
                 continue
+            # Enrolled Academy students are Present unless a coach/admin records
+            # an exception. A missing booking-linked row is not evidence of absence.
+            if (
+                session_data.get("session_type") == "cohort_class"
+                and (session_data.get("cohort_fee_mode") or "included") == "included"
+            ):
+                continue
             ends_at = _parse_iso(session_data.get("ends_at"))
             if ends_at is None or ends_at > utc_now():
                 skipped_session_future += 1

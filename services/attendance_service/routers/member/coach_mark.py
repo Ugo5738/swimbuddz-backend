@@ -74,11 +74,9 @@ async def coach_mark_session_attendance(
     )
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
-    # Note: we used to branch on session_data.get("cohort_id") below — see
-    # PRESENT branch — but the May 2026 payout policy retired the
-    # default-present model. Explicit attendance is now required for the
-    # coach to get paid, so PRESENT always materialises a row regardless of
-    # session kind. See payment_service/services/payout_calculator.py.
+    # Academy defaults are persisted by its reconciliation worker. Explicit
+    # coach/admin decisions, including restoring Present, update that same fact
+    # so media, reporting and payouts agree.
 
     await require_academy_safety_clearance(
         session_data,
@@ -113,16 +111,8 @@ async def coach_mark_session_attendance(
     for entry in payload.entries:
         existing = existing_by_member.get(entry.member_id)
 
-        # PRESENT now materialises a row for ALL session kinds. Pre-May-2026
-        # cohort sessions had a "default-present" optimisation where no row =
-        # present and PRESENT just removed any exception. That optimisation
-        # was retired when coach payout switched to "pay only for lessons
-        # actually held with the student" — under the new policy, "no row"
-        # means "skip, coach not paid" (see
-        # services/payments_service/services/payout_calculator.py). The
-        # admin attendance UI also defaults cohort members to "absent" and
-        # expects PRESENT to land an explicit row, so the legacy branch
-        # silently no-op'd every cohort-present click.
+        # Keep a durable row for every decision. Deleting a restored Present
+        # would make explicit-record consumers lose the student's attendance.
         if entry.status == AttendanceStatus.PRESENT:
             if existing is None:
                 db.add(
