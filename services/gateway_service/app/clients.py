@@ -56,9 +56,14 @@ class ServiceClient:
         follow_redirects: bool = True,
         **kwargs,
     ) -> httpx.Response:
-        """Send a request with small retries to smooth over transient DNS/connection hiccups."""
+        """Retry safe reads on transient errors; never replay writes.
+
+        A transport failure after a mutation may mean the service committed
+        it but its response was lost. A blind retry risks duplicate effects.
+        """
         last_exc: Exception | None = None
-        attempts = 1 if isinstance(kwargs.get("content"), AsyncIterable) else 3
+        safe_read = method.upper() in {"GET", "HEAD"}
+        attempts = 3 if safe_read and not isinstance(kwargs.get("content"), AsyncIterable) else 1
         for attempt in range(attempts):
             try:
                 client = _get_shared_client()
