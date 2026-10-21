@@ -1,4 +1,5 @@
 from services.pools_service.models.directory_review import PoolDirectoryReview
+
 """Pools service models package."""
 
 from services.pools_service.models.enums import (

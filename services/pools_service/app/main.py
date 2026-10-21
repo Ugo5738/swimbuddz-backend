@@ -1,7 +1,10 @@
 """FastAPI application for the Pools Service."""
 
 from fastapi import FastAPI
-from services.pools_service.routers.directory import router as directory_router, admin as directory_admin_router
+from services.pools_service.routers.directory import (
+    router as directory_router,
+    admin as directory_admin_router,
+)
 from services.pools_service.routers.access_partner import (
     router as pool_access_partner_router,
     admin as pool_access_partner_admin_router,

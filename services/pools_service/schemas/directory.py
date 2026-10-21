@@ -1,4 +1,5 @@
 """Public-safe pool directory contracts. No partner rates, notes or contact records."""
+
 import uuid
 from datetime import datetime
 from typing import Optional

@@ -119,11 +119,13 @@ async def approve_submission(
     # Do not promote a second Pool record when the same facility is already known.
     duplicate = (
         await db.execute(
-            select(Pool.id, Pool.name).where(
+            select(Pool.id, Pool.name)
+            .where(
                 func.lower(Pool.name) == submission.pool_name.strip().casefold(),
                 func.lower(Pool.location_area)
                 == (submission.location_area or "").strip().casefold(),
-            ).limit(1)
+            )
+            .limit(1)
         )
     ).first()
     if duplicate:
