@@ -18,6 +18,8 @@ jobs:
         with:
           python-version: "3.11"
       - name: Rebuild combined schema
+        env:
+          DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/swimbuddz
         run: |
           python -m pip install -e .
           python scripts/api/generate-openapi.py > openapi.json
