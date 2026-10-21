@@ -14,16 +14,15 @@ from services.pools_service.models import (
     Pool,
     PoolType,
 )
+from services.pools_service.schemas.public_partner import PublicPartnerPool, PublicPartnerPoolList
 from services.pools_service.schemas import (
     OperatingAreaResponse,
-    PoolListResponse,
-    PoolResponse,
 )
 
 router = APIRouter(tags=["pools"])
 
 
-@router.get("", response_model=PoolListResponse)
+@router.get("", response_model=PublicPartnerPoolList)
 async def list_partner_pools(
     pool_type: Optional[PoolType] = None,
     location_area: Optional[str] = None,
@@ -58,8 +57,8 @@ async def list_partner_pools(
 
     pools = (await db.execute(query)).scalars().all()
 
-    return PoolListResponse(
-        items=pools,
+    return PublicPartnerPoolList(
+        items=[PublicPartnerPool.model_validate(pool) for pool in pools],
         total=total,
         page=page,
         page_size=page_size,
@@ -91,7 +90,7 @@ async def list_public_operating_areas(
     return rows.scalars().all()
 
 
-@router.get("/{pool_id}", response_model=PoolResponse)
+@router.get("/{pool_id}", response_model=PublicPartnerPool)
 async def get_partner_pool(
     pool_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_db),
@@ -108,4 +107,4 @@ async def get_partner_pool(
     if not pool:
         raise HTTPException(status_code=404, detail="Pool not found")
 
-    return pool
+    return PublicPartnerPool.model_validate(pool)
