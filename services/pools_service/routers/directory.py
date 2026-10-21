@@ -8,14 +8,17 @@ from libs.auth.dependencies import get_current_user, require_admin
 from libs.db.session import get_async_db
 from services.pools_service.models import (
     Pool,
+    PoolAsset,
     PartnershipStatus,
     PoolAccessOffer,
     PoolSubmission,
     PoolSubmissionStatus,
 )
 from services.pools_service.models.directory_review import PoolDirectoryReview
+from services.pools_service.models.enums import PoolAssetType
 from services.pools_service.schemas.directory import (
     DirectoryPool,
+    DirectoryPhoto,
     DirectoryList,
     DirectoryReview,
     DirectoryReviews,
@@ -58,6 +61,28 @@ async def _public_pool(pool: Pool, db: AsyncSession) -> DirectoryPool:
             )
         ).scalar_one_or_none()
     )
+    photo_rows = (
+        await db.execute(
+            select(PoolAsset)
+            .where(
+                PoolAsset.pool_id == pool.id,
+                PoolAsset.directory_public.is_(True),
+                PoolAsset.asset_type == PoolAssetType.PHOTO,
+            )
+            .order_by(PoolAsset.is_primary.desc(), PoolAsset.display_order, PoolAsset.created_at)
+            .limit(8)
+        )
+    ).scalars().all()
+    photos = [
+        DirectoryPhoto(id=asset.id, url=asset.url, caption=asset.caption)
+        for asset in photo_rows
+        if asset.url and asset.url.startswith("https://")
+    ]
+    assessment_ready = bool(
+        pool.directory_assessment_rating
+        and pool.directory_assessment_summary
+        and pool.directory_assessment_updated_at
+    )
     return DirectoryPool(
         id=pool.id,
         slug=pool.slug,
@@ -81,6 +106,10 @@ async def _public_pool(pool: Pool, db: AsyncSession) -> DirectoryPool:
         and pool.partnership_status == PartnershipStatus.ACTIVE_PARTNER,
         rating_average=round(float(average), 1) if average is not None else None,
         rating_count=count,
+        photos=photos,
+        swimbuddz_assessment_rating=pool.directory_assessment_rating if assessment_ready else None,
+        swimbuddz_assessment_summary=pool.directory_assessment_summary if assessment_ready else None,
+        swimbuddz_assessment_updated_at=pool.directory_assessment_updated_at if assessment_ready else None,
     )
 
 
