@@ -175,6 +175,10 @@ class Pool(Base):
     )
 
     # ── Partnership ───────────────────────────────────────────────────────
+    directory_published: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
     partnership_status: Mapped[PartnershipStatus] = mapped_column(
         SAEnum(
             PartnershipStatus,

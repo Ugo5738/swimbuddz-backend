@@ -116,6 +116,27 @@ async def approve_submission(
             detail=f"Submission is already {submission.status.value}",
         )
 
+    # Do not promote a second Pool record when the same facility is already known.
+    duplicate = (
+        await db.execute(
+            select(Pool.id, Pool.name)
+            .where(
+                func.lower(Pool.name) == submission.pool_name.strip().casefold(),
+                func.lower(Pool.location_area)
+                == (submission.location_area or "").strip().casefold(),
+            )
+            .limit(1)
+        )
+    ).first()
+    if duplicate:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Existing pool {duplicate.id} matches this submission. "
+                "Review that pool and attach the correction instead of creating a duplicate."
+            ),
+        )
+
     # 1. Create Pool row (prospect status)
     base_slug = _slugify(submission.pool_name)
     # Ensure slug uniqueness by appending a short suffix on collision
