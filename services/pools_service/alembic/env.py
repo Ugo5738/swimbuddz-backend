@@ -19,6 +19,7 @@ from libs.common.config import get_settings
 from libs.db.base import Base
 from services.pools_service.models import (  # noqa: F401
     Pool,
+    PoolDirectoryReview,
     PoolAgreement,
     PoolAsset,
     PoolContact,
@@ -40,6 +41,7 @@ target_metadata = Base.metadata
 SERVICE_TABLES = {
     "pools",
     "pool_submissions",
+    "pool_directory_reviews",
     "pool_contacts",
     "pool_visits",
     "pool_status_changes",
