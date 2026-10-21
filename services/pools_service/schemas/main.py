@@ -89,6 +89,9 @@ class PoolBase(BaseModel):
     last_verified_at: Optional[datetime] = None
 
     # Partnership
+    directory_assessment_rating: Optional[int] = Field(None, ge=1, le=5)
+    directory_assessment_summary: Optional[str] = Field(None, max_length=800)
+    directory_assessment_updated_at: Optional[datetime] = None
     directory_published: bool = False
     partnership_status: PartnershipStatus = PartnershipStatus.PROSPECT
 
@@ -157,6 +160,8 @@ class PoolUpdate(BaseModel):
     source: Optional[PoolSource] = None
     last_verified_at: Optional[datetime] = None
 
+    directory_assessment_rating: Optional[int] = Field(None, ge=1, le=5)
+    directory_assessment_summary: Optional[str] = Field(None, max_length=800)
     directory_published: Optional[bool] = None
     partnership_status: Optional[PartnershipStatus] = None
     pool_type: Optional[PoolType] = None
