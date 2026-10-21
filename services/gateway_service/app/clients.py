@@ -63,7 +63,9 @@ class ServiceClient:
         """
         last_exc: Exception | None = None
         safe_read = method.upper() in {"GET", "HEAD"}
-        attempts = 3 if safe_read and not isinstance(kwargs.get("content"), AsyncIterable) else 1
+        attempts = (
+            3 if safe_read and not isinstance(kwargs.get("content"), AsyncIterable) else 1
+        )
         for attempt in range(attempts):
             try:
                 client = _get_shared_client()
