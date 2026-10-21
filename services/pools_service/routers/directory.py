@@ -5,10 +5,10 @@ from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.db.session import get_async_db
-from services.pools_service.models import Pool, PartnershipStatus, PoolAccessOffer
+from services.pools_service.models import Pool, PartnershipStatus, PoolAccessOffer, PoolSubmission, PoolSubmissionStatus
 from services.pools_service.models.directory_review import PoolDirectoryReview
 from services.pools_service.schemas.directory import (
-    DirectoryPool, DirectoryList, DirectoryReview, DirectoryReviews, DirectoryReviewCreate,
+    DirectoryPool, DirectoryList, DirectoryReview, DirectoryReviews, DirectoryReviewCreate, DirectorySuggestion,
 )
 from libs.common.datetime_utils import utc_now
 
@@ -122,3 +122,46 @@ async def moderate_review(review_id: uuid.UUID, approved: bool, _admin=Depends(r
     row.moderation_status = "approved" if approved else "rejected"
     await db.commit()
     return {"status": row.moderation_status}
+
+
+@router.post("/suggestions", status_code=201)
+async def suggest_pool(
+    body: DirectorySuggestion, user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Anyone with a free visitor login may contribute; no paid membership required."""
+    if body.website:
+        # Honeypot. Do not publish or reward form spam.
+        raise HTTPException(400, "Invalid suggestion")
+    normalized = body.pool_name.strip()
+    area = body.location_area.strip()
+    duplicate = (await db.execute(
+        select(Pool.id, Pool.name).where(
+            func.lower(Pool.name) == normalized.casefold(),
+            func.lower(Pool.location_area) == area.casefold(),
+        ).limit(1)
+    )).first()
+    if duplicate:
+        raise HTTPException(409, "This pool is already recorded. Please open its directory listing or contact SwimBuddz with corrections.")
+    existing = (await db.execute(
+        select(PoolSubmission.id).where(
+            func.lower(PoolSubmission.pool_name) == normalized.casefold(),
+            func.lower(PoolSubmission.location_area) == area.casefold(),
+            PoolSubmission.status == PoolSubmissionStatus.PENDING,
+        ).limit(1)
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(409, "This pool has already been suggested and is awaiting review.")
+    submission = PoolSubmission(
+        submitter_auth_id=user.user_id,
+        submitter_email=getattr(user, "email", None),
+        pool_name=normalized,
+        location_area=area,
+        address=body.address,
+        contact_email=body.contact_email,
+        member_notes=body.details,
+        status=PoolSubmissionStatus.PENDING,
+    )
+    db.add(submission)
+    await db.commit()
+    return {"status": "pending", "message": "Thanks. SwimBuddz will review your pool suggestion."}
