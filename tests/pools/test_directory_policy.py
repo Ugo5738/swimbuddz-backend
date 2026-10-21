@@ -1,4 +1,5 @@
 """Public directory contracts must not expose operational pool records."""
+
 import uuid
 
 from services.pools_service.schemas.directory import (
