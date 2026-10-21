@@ -1,0 +1,32 @@
+name: Temporary pool curation finalization
+on:
+  push:
+    branches: [codex/pool-specific-access-20261021]
+permissions:
+  contents: write
+jobs:
+  finalize:
+    if: "!contains(github.event.head_commit.message, 'chore(api): finalize curated pool contract')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/pool-specific-access-20261021
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Format and generate pinned API specification
+        env:
+          DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/swimbuddz
+        run: |
+          python -m pip install -e ".[dev]" -c constraints.txt
+          ruff format services/pools_service/routers/access.py services/pools_service/routers/admin.py services/pools_service/routers/admin_related.py services/pools_service/routers/directory.py services/pools_service/models/pool.py services/pools_service/models/pool_asset.py services/pools_service/schemas/main.py services/pools_service/schemas/related.py services/pools_service/schemas/directory.py services/pools_service/alembic/versions/ac20261021h8_public_pool_media_assessment.py tests/pools/test_public_pool_curation.py
+          python scripts/api/generate-openapi.py > openapi.json
+          git config user.name "swimbuddz-ci"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/pools_service/ tests/pools/test_public_pool_curation.py openapi.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(api): finalize curated pool contract"
+            git push
+          fi
