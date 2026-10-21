@@ -1,4 +1,5 @@
 """Regression tests: never replay non-idempotent gateway requests."""
+
 from unittest.mock import AsyncMock
 
 import httpx
@@ -24,9 +25,7 @@ async def test_gateway_does_not_retry_mutations_after_transport_failure(
 
 
 @pytest.mark.asyncio
-async def test_gateway_still_retries_safe_reads(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_gateway_still_retries_safe_reads(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_client = AsyncMock()
     request = httpx.Request("GET", "http://downstream/members")
     success = httpx.Response(200, json={"ok": True}, request=request)
