@@ -198,7 +198,6 @@ async def reviews(pool_id: uuid.UUID, db: AsyncSession = Depends(get_async_db)):
     )
 
 
-
 @router.post("/{pool_id}/corrections", status_code=201)
 async def suggest_correction(
     pool_id: uuid.UUID,
@@ -220,11 +219,13 @@ async def suggest_correction(
         raise HTTPException(404, "Pool not found")
     existing = (
         await db.execute(
-            select(PoolSubmission.id).where(
+            select(PoolSubmission.id)
+            .where(
                 PoolSubmission.promoted_pool_id == pool_id,
                 PoolSubmission.submitter_auth_id == user.user_id,
                 PoolSubmission.status == PoolSubmissionStatus.PENDING,
-            ).limit(1)
+            )
+            .limit(1)
         )
     ).scalar_one_or_none()
     if existing:
@@ -303,7 +304,9 @@ async def set_published(
     if not pool:
         raise HTTPException(404, "Pool not found")
     if published and pool.last_verified_at is None:
-        raise HTTPException(422, "Verify pool details and set last_verified_at before publishing")
+        raise HTTPException(
+            422, "Verify pool details and set last_verified_at before publishing"
+        )
     pool.directory_published = published
     await db.commit()
     return {"pool_id": pool_id, "directory_published": published}

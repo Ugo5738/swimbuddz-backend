@@ -1,4 +1,5 @@
 """Prevent confidential pool data from leaking through old and new public APIs."""
+
 from services.pools_service.schemas.public_partner import PublicPartnerPool
 from services.pools_service.schemas.directory import DirectoryPool
 

@@ -14,7 +14,10 @@ from services.pools_service.models import (
     Pool,
     PoolType,
 )
-from services.pools_service.schemas.public_partner import PublicPartnerPool, PublicPartnerPoolList
+from services.pools_service.schemas.public_partner import (
+    PublicPartnerPool,
+    PublicPartnerPoolList,
+)
 from services.pools_service.schemas import (
     OperatingAreaResponse,
 )

@@ -1,10 +1,15 @@
 """Public partner-pool fields. Not the internal screening or commercial DTO."""
+
 import uuid
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
-from services.pools_service.models.enums import IndoorOutdoor, PartnershipStatus, PoolType
+from services.pools_service.models.enums import (
+    IndoorOutdoor,
+    PartnershipStatus,
+    PoolType,
+)
 
 
 class PublicPartnerPool(BaseModel):
