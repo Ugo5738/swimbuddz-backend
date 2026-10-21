@@ -8,21 +8,29 @@ from libs.auth.dependencies import get_current_user, require_admin
 from libs.db.session import get_async_db
 from services.pools_service.models import (
     Pool,
+    PoolAsset,
     PartnershipStatus,
     PoolAccessOffer,
     PoolSubmission,
     PoolSubmissionStatus,
 )
 from services.pools_service.models.directory_review import PoolDirectoryReview
+from services.pools_service.models.enums import PoolAssetType
 from services.pools_service.schemas.directory import (
     DirectoryPool,
+    DirectoryPhoto,
     DirectoryList,
     DirectoryReview,
     DirectoryReviews,
     DirectoryReviewCreate,
     DirectorySuggestion,
+    DirectoryCorrection,
 )
 from libs.common.datetime_utils import utc_now
+from services.pools_service.services.directory_geo import (
+    distance_km_sql,
+    likely_same_pool,
+)
 
 router = APIRouter(prefix="/pools/directory", tags=["pool-directory"])
 admin = APIRouter(prefix="/admin/pools/directory", tags=["admin-pool-directory"])
@@ -53,6 +61,36 @@ async def _public_pool(pool: Pool, db: AsyncSession) -> DirectoryPool:
             )
         ).scalar_one_or_none()
     )
+    photo_rows = (
+        (
+            await db.execute(
+                select(PoolAsset)
+                .where(
+                    PoolAsset.pool_id == pool.id,
+                    PoolAsset.directory_public.is_(True),
+                    PoolAsset.asset_type == PoolAssetType.PHOTO,
+                )
+                .order_by(
+                    PoolAsset.is_primary.desc(),
+                    PoolAsset.display_order,
+                    PoolAsset.created_at,
+                )
+                .limit(8)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    photos = [
+        DirectoryPhoto(id=asset.id, url=asset.url, caption=asset.caption)
+        for asset in photo_rows
+        if asset.url and asset.url.startswith("https://")
+    ]
+    assessment_ready = bool(
+        pool.directory_assessment_rating
+        and pool.directory_assessment_summary
+        and pool.directory_assessment_updated_at
+    )
     return DirectoryPool(
         id=pool.id,
         slug=pool.slug,
@@ -76,6 +114,16 @@ async def _public_pool(pool: Pool, db: AsyncSession) -> DirectoryPool:
         and pool.partnership_status == PartnershipStatus.ACTIVE_PARTNER,
         rating_average=round(float(average), 1) if average is not None else None,
         rating_count=count,
+        photos=photos,
+        swimbuddz_assessment_rating=pool.directory_assessment_rating
+        if assessment_ready
+        else None,
+        swimbuddz_assessment_summary=pool.directory_assessment_summary
+        if assessment_ready
+        else None,
+        swimbuddz_assessment_updated_at=pool.directory_assessment_updated_at
+        if assessment_ready
+        else None,
     )
 
 
@@ -83,6 +131,10 @@ async def _public_pool(pool: Pool, db: AsyncSession) -> DirectoryPool:
 async def list_directory(
     search: str | None = Query(None, max_length=100),
     area: str | None = Query(None, max_length=100),
+    latitude: float | None = Query(None, ge=-90, le=90),
+    longitude: float | None = Query(None, ge=-180, le=180),
+    radius_km: float | None = Query(None, gt=0, le=250),
+    sort: str = Query("name", pattern="^(name|nearest)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_async_db),
@@ -96,13 +148,32 @@ async def list_directory(
         )
     if area:
         query = query.where(Pool.location_area.ilike(f"%{area}%"))
+    if (latitude is None) != (longitude is None):
+        raise HTTPException(422, "Latitude and longitude must be supplied together")
+    if (radius_km is not None or sort == "nearest") and latitude is None:
+        raise HTTPException(422, "Nearby searches require coordinates")
+    distance = None
+    if latitude is not None and longitude is not None:
+        distance = distance_km_sql(Pool, latitude, longitude)
+        if radius_km is not None or sort == "nearest":
+            query = query.where(Pool.latitude.is_not(None), Pool.longitude.is_not(None))
+        if radius_km is not None:
+            query = query.where(
+                Pool.latitude.is_not(None),
+                Pool.longitude.is_not(None),
+                distance <= radius_km,
+            )
     total = (
         await db.execute(select(func.count()).select_from(query.subquery()))
     ).scalar_one()
     rows = (
         (
             await db.execute(
-                query.order_by(Pool.name, Pool.id)
+                (
+                    query.order_by(distance.asc(), Pool.id)
+                    if sort == "nearest" and distance is not None
+                    else query.order_by(Pool.name, Pool.id)
+                )
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             )
@@ -170,6 +241,56 @@ async def reviews(pool_id: uuid.UUID, db: AsyncSession = Depends(get_async_db)):
     )
 
 
+@router.post("/{pool_id}/corrections", status_code=201)
+async def suggest_correction(
+    pool_id: uuid.UUID,
+    body: DirectoryCorrection,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Reuse the existing moderation queue without creating a second pool."""
+    pool = (
+        await db.execute(
+            select(Pool).where(
+                Pool.id == pool_id,
+                Pool.directory_published.is_(True),
+                Pool.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if pool is None:
+        raise HTTPException(404, "Pool not found")
+    existing = (
+        await db.execute(
+            select(PoolSubmission.id)
+            .where(
+                PoolSubmission.promoted_pool_id == pool_id,
+                PoolSubmission.submitter_auth_id == user.user_id,
+                PoolSubmission.status == PoolSubmissionStatus.PENDING,
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(409, "Your previous correction is still awaiting review")
+    submission = PoolSubmission(
+        submitter_auth_id=user.user_id,
+        submitter_email=getattr(user, "email", None),
+        pool_name=pool.name,
+        location_area=pool.location_area,
+        address=pool.address,
+        member_notes=body.details.strip(),
+        promoted_pool_id=pool.id,
+        status=PoolSubmissionStatus.PENDING,
+    )
+    db.add(submission)
+    await db.commit()
+    return {
+        "status": "pending",
+        "message": "Thank you. We will review this correction before changing the public listing.",
+    }
+
+
 @router.post("/{pool_id}/reviews", status_code=201)
 async def submit_review(
     pool_id: uuid.UUID,
@@ -225,6 +346,10 @@ async def set_published(
     pool = await db.get(Pool, pool_id)
     if not pool:
         raise HTTPException(404, "Pool not found")
+    if published and pool.last_verified_at is None:
+        raise HTTPException(
+            422, "Verify pool details and set last_verified_at before publishing"
+        )
     pool.directory_published = published
     await db.commit()
     return {"pool_id": pool_id, "directory_published": published}
@@ -279,6 +404,25 @@ async def suggest_pool(
         raise HTTPException(400, "Invalid suggestion")
     normalized = body.pool_name.strip()
     area = body.location_area.strip()
+    candidates = (
+        (
+            await db.execute(
+                select(Pool).where(Pool.location_area.ilike(area)).limit(100)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if any(
+        likely_same_pool(
+            normalized, area, pool.name, pool.location_area, body.address, pool.address
+        )
+        for pool in candidates
+    ):
+        raise HTTPException(
+            409,
+            "A similar pool is already recorded in this area. Please submit a correction.",
+        )
     duplicate = (
         await db.execute(
             select(Pool.id, Pool.name)

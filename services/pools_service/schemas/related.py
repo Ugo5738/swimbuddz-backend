@@ -172,6 +172,7 @@ class PoolAssetBase(BaseModel):
     caption: Optional[str] = Field(None, max_length=2000)
     display_order: int = 0
     is_primary: bool = False
+    directory_public: bool = False
 
 
 class PoolAssetCreate(PoolAssetBase):
@@ -186,6 +187,7 @@ class PoolAssetUpdate(BaseModel):
     caption: Optional[str] = Field(None, max_length=2000)
     display_order: Optional[int] = None
     is_primary: Optional[bool] = None
+    directory_public: Optional[bool] = None
 
 
 class PoolAssetResponse(PoolAssetBase):

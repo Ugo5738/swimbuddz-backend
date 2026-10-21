@@ -44136,6 +44136,23 @@
               ],
               "title": "Location Area"
             }
+          },
+          {
+            "name": "pool_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id"
+            }
           }
         ],
         "responses": {
@@ -44562,6 +44579,71 @@
             }
           },
           {
+            "name": "latitude",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 90,
+                  "minimum": -90
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Latitude"
+            }
+          },
+          {
+            "name": "longitude",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 180,
+                  "minimum": -180
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Longitude"
+            }
+          },
+          {
+            "name": "radius_km",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 250,
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Radius Km"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(name|nearest)$",
+              "default": "name",
+              "title": "Sort"
+            }
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -44723,6 +44805,63 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DirectoryReviewCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/directory/{pool_id}/corrections": {
+      "post": {
+        "tags": [
+          "pool-directory"
+        ],
+        "summary": "Suggest Correction",
+        "description": "Reuse the existing moderation queue without creating a second pool.",
+        "operationId": "suggest_correction_pools_directory__pool_id__corrections_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pool Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DirectoryCorrection"
               }
             }
           }
@@ -45032,7 +45171,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PoolListResponse"
+                  "$ref": "#/components/schemas/PublicPartnerPoolList"
                 }
               }
             }
@@ -45102,7 +45241,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PoolResponse"
+                  "$ref": "#/components/schemas/PublicPartnerPool"
                 }
               }
             }
@@ -116167,6 +116306,21 @@
         ],
         "title": "CostQuoteResponse"
       },
+      "DirectoryCorrection": {
+        "properties": {
+          "details": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 20,
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "details"
+        ],
+        "title": "DirectoryCorrection"
+      },
       "DirectoryList": {
         "properties": {
           "items": {
@@ -116197,6 +116351,36 @@
           "page_size"
         ],
         "title": "DirectoryList"
+      },
+      "DirectoryPhoto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url"
+        ],
+        "title": "DirectoryPhoto"
       },
       "DirectoryPool": {
         "properties": {
@@ -116391,6 +116575,49 @@
             "type": "integer",
             "title": "Rating Count",
             "default": 0
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/DirectoryPhoto"
+            },
+            "type": "array",
+            "title": "Photos"
+          },
+          "swimbuddz_assessment_rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swimbuddz Assessment Rating"
+          },
+          "swimbuddz_assessment_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swimbuddz Assessment Summary"
+          },
+          "swimbuddz_assessment_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swimbuddz Assessment Updated At"
           }
         },
         "type": "object",
@@ -118214,6 +118441,11 @@
             "type": "boolean",
             "title": "Is Primary",
             "default": false
+          },
+          "directory_public": {
+            "type": "boolean",
+            "title": "Directory Public",
+            "default": false
           }
         },
         "type": "object",
@@ -118281,6 +118513,11 @@
           "is_primary": {
             "type": "boolean",
             "title": "Is Primary",
+            "default": false
+          },
+          "directory_public": {
+            "type": "boolean",
+            "title": "Directory Public",
             "default": false
           },
           "id": {
@@ -118417,6 +118654,17 @@
               }
             ],
             "title": "Is Primary"
+          },
+          "directory_public": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Public"
           }
         },
         "type": "object",
@@ -119189,6 +119437,43 @@
               }
             ],
             "title": "Last Verified At"
+          },
+          "directory_assessment_rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Rating"
+          },
+          "directory_assessment_summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 800
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Summary"
+          },
+          "directory_assessment_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Updated At"
           },
           "directory_published": {
             "type": "boolean",
@@ -120224,6 +120509,43 @@
               }
             ],
             "title": "Last Verified At"
+          },
+          "directory_assessment_rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Rating"
+          },
+          "directory_assessment_summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 800
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Summary"
+          },
+          "directory_assessment_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Updated At"
           },
           "directory_published": {
             "type": "boolean",
@@ -121458,6 +121780,31 @@
             ],
             "title": "Last Verified At"
           },
+          "directory_assessment_rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Rating"
+          },
+          "directory_assessment_summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 800
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Summary"
+          },
           "directory_published": {
             "anyOf": [
               {
@@ -121804,6 +122151,245 @@
           "in_person"
         ],
         "title": "PreferredContactChannel"
+      },
+      "PublicPartnerPool": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "location_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Area"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "operating_area_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Area Id"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "pool_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PoolType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "indoor_outdoor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndoorOutdoor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Length M"
+          },
+          "depth_min_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth Min M"
+          },
+          "depth_max_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth Max M"
+          },
+          "number_of_lanes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number Of Lanes"
+          },
+          "has_changing_rooms": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Changing Rooms"
+          },
+          "has_showers": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Showers"
+          },
+          "has_lockers": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Lockers"
+          },
+          "has_parking": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Parking"
+          },
+          "has_lifeguard": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Lifeguard"
+          },
+          "partnership_status": {
+            "$ref": "#/components/schemas/PartnershipStatus"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "partnership_status",
+          "is_active"
+        ],
+        "title": "PublicPartnerPool"
+      },
+      "PublicPartnerPoolList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicPartnerPool"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "PublicPartnerPoolList"
       },
       "ScanInput": {
         "properties": {
