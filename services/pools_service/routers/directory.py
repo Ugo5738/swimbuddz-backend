@@ -23,7 +23,10 @@ from services.pools_service.schemas.directory import (
     DirectorySuggestion,
 )
 from libs.common.datetime_utils import utc_now
-from services.pools_service.services.directory_geo import distance_km_sql, likely_same_pool
+from services.pools_service.services.directory_geo import (
+    distance_km_sql,
+    likely_same_pool,
+)
 
 router = APIRouter(prefix="/pools/directory", tags=["pool-directory"])
 admin = APIRouter(prefix="/admin/pools/directory", tags=["admin-pool-directory"])
@@ -109,14 +112,22 @@ async def list_directory(
     if latitude is not None and longitude is not None:
         distance = distance_km_sql(Pool, latitude, longitude)
         if radius_km is not None:
-            query = query.where(Pool.latitude.is_not(None), Pool.longitude.is_not(None), distance <= radius_km)
+            query = query.where(
+                Pool.latitude.is_not(None),
+                Pool.longitude.is_not(None),
+                distance <= radius_km,
+            )
     total = (
         await db.execute(select(func.count()).select_from(query.subquery()))
     ).scalar_one()
     rows = (
         (
             await db.execute(
-                (query.order_by(distance.asc(), Pool.id) if sort == "nearest" and distance is not None else query.order_by(Pool.name, Pool.id))
+                (
+                    query.order_by(distance.asc(), Pool.id)
+                    if sort == "nearest" and distance is not None
+                    else query.order_by(Pool.name, Pool.id)
+                )
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             )
@@ -293,9 +304,25 @@ async def suggest_pool(
         raise HTTPException(400, "Invalid suggestion")
     normalized = body.pool_name.strip()
     area = body.location_area.strip()
-    candidates = (await db.execute(select(Pool).where(Pool.location_area.ilike(area)).limit(100))).scalars().all()
-    if any(likely_same_pool(normalized, area, pool.name, pool.location_area, body.address, pool.address) for pool in candidates):
-        raise HTTPException(409, "A similar pool is already recorded in this area. Please submit a correction.")
+    candidates = (
+        (
+            await db.execute(
+                select(Pool).where(Pool.location_area.ilike(area)).limit(100)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if any(
+        likely_same_pool(
+            normalized, area, pool.name, pool.location_area, body.address, pool.address
+        )
+        for pool in candidates
+    ):
+        raise HTTPException(
+            409,
+            "A similar pool is already recorded in this area. Please submit a correction.",
+        )
     duplicate = (
         await db.execute(
             select(Pool.id, Pool.name)

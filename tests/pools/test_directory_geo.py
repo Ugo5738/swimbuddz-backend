@@ -1,4 +1,5 @@
 """Matching and distance validation for directory discovery."""
+
 from services.pools_service.services.directory_geo import (
     likely_same_pool,
     normalize_location,
@@ -18,8 +19,12 @@ def test_match_aliases_only_in_the_same_area():
 
 def test_dissimilar_pools_do_not_match():
     assert not likely_same_pool(
-        "Lagoon Club", "Ikoyi", "Ocean Park", "Ikoyi",
-        "15 Awolowo Road", "15 Awolowo Rd",
+        "Lagoon Club",
+        "Ikoyi",
+        "Ocean Park",
+        "Ikoyi",
+        "15 Awolowo Road",
+        "15 Awolowo Rd",
     )
 
 

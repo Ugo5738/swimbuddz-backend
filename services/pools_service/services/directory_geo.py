@@ -3,6 +3,7 @@
 Match candidates only within the same locality. A similar name alone must
 never collapse different branches in different towns.
 """
+
 import re
 from difflib import SequenceMatcher
 from math import radians
@@ -40,9 +41,12 @@ def likely_same_pool(
     if similarity >= 0.91:
         return True
     if similarity >= 0.82 and address and other_address:
-        return SequenceMatcher(
-            None, normalize_location(address), normalize_location(other_address)
-        ).ratio() >= 0.85
+        return (
+            SequenceMatcher(
+                None, normalize_location(address), normalize_location(other_address)
+            ).ratio()
+            >= 0.85
+        )
     return False
 
 
@@ -54,10 +58,9 @@ def distance_km_sql(pool, latitude: float, longitude: float):
     """
     latitude_radians = radians(latitude)
     longitude_radians = radians(longitude)
-    cosine = (
-        func.sin(latitude_radians) * func.sin(func.radians(pool.latitude))
-        + func.cos(latitude_radians)
-        * func.cos(func.radians(pool.latitude))
-        * func.cos(func.radians(pool.longitude) - longitude_radians)
+    cosine = func.sin(latitude_radians) * func.sin(
+        func.radians(pool.latitude)
+    ) + func.cos(latitude_radians) * func.cos(func.radians(pool.latitude)) * func.cos(
+        func.radians(pool.longitude) - longitude_radians
     )
     return 6371.0088 * func.acos(func.least(1.0, func.greatest(-1.0, cosine)))
