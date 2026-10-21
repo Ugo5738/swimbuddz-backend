@@ -64,3 +64,7 @@ class DirectorySuggestion(BaseModel):
     details: Optional[str] = Field(default=None, max_length=1000)
     # Anonymous form honeypot (reject nonempty quietly).
     website: str = Field(default="", max_length=255)
+
+
+class DirectoryCorrection(BaseModel):
+    details: str = Field(min_length=20, max_length=1000)
