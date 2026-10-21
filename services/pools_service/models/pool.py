@@ -175,9 +175,15 @@ class Pool(Base):
     )
 
     # ── Partnership ───────────────────────────────────────────────────────
-    directory_assessment_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    directory_assessment_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    directory_assessment_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    directory_assessment_rating: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    directory_assessment_summary: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
+    directory_assessment_updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     directory_published: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"

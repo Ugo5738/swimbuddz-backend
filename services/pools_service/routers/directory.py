@@ -62,17 +62,25 @@ async def _public_pool(pool: Pool, db: AsyncSession) -> DirectoryPool:
         ).scalar_one_or_none()
     )
     photo_rows = (
-        await db.execute(
-            select(PoolAsset)
-            .where(
-                PoolAsset.pool_id == pool.id,
-                PoolAsset.directory_public.is_(True),
-                PoolAsset.asset_type == PoolAssetType.PHOTO,
+        (
+            await db.execute(
+                select(PoolAsset)
+                .where(
+                    PoolAsset.pool_id == pool.id,
+                    PoolAsset.directory_public.is_(True),
+                    PoolAsset.asset_type == PoolAssetType.PHOTO,
+                )
+                .order_by(
+                    PoolAsset.is_primary.desc(),
+                    PoolAsset.display_order,
+                    PoolAsset.created_at,
+                )
+                .limit(8)
             )
-            .order_by(PoolAsset.is_primary.desc(), PoolAsset.display_order, PoolAsset.created_at)
-            .limit(8)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     photos = [
         DirectoryPhoto(id=asset.id, url=asset.url, caption=asset.caption)
         for asset in photo_rows
@@ -107,9 +115,15 @@ async def _public_pool(pool: Pool, db: AsyncSession) -> DirectoryPool:
         rating_average=round(float(average), 1) if average is not None else None,
         rating_count=count,
         photos=photos,
-        swimbuddz_assessment_rating=pool.directory_assessment_rating if assessment_ready else None,
-        swimbuddz_assessment_summary=pool.directory_assessment_summary if assessment_ready else None,
-        swimbuddz_assessment_updated_at=pool.directory_assessment_updated_at if assessment_ready else None,
+        swimbuddz_assessment_rating=pool.directory_assessment_rating
+        if assessment_ready
+        else None,
+        swimbuddz_assessment_summary=pool.directory_assessment_summary
+        if assessment_ready
+        else None,
+        swimbuddz_assessment_updated_at=pool.directory_assessment_updated_at
+        if assessment_ready
+        else None,
     )
 
 

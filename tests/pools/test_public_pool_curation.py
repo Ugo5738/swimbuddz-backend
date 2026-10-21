@@ -1,4 +1,5 @@
 """Public pool publication is an explicit admin action."""
+
 import pytest
 from fastapi import HTTPException
 
@@ -9,12 +10,20 @@ from services.pools_service.schemas.public_partner import PublicPartnerPool
 
 
 def test_public_photo_approval_requires_https_photograph():
-    _validate_public_asset(PoolAssetType.PHOTO, "https://cdn.example.org/pool.jpg", True)
-    _validate_public_asset(PoolAssetType.DOCUMENT, "http://private.local/document.pdf", False)
+    _validate_public_asset(
+        PoolAssetType.PHOTO, "https://cdn.example.org/pool.jpg", True
+    )
+    _validate_public_asset(
+        PoolAssetType.DOCUMENT, "http://private.local/document.pdf", False
+    )
     with pytest.raises(HTTPException):
-        _validate_public_asset(PoolAssetType.DOCUMENT, "https://cdn.example.org/document.pdf", True)
+        _validate_public_asset(
+            PoolAssetType.DOCUMENT, "https://cdn.example.org/document.pdf", True
+        )
     with pytest.raises(HTTPException):
-        _validate_public_asset(PoolAssetType.PHOTO, "http://cdn.example.org/pool.jpg", True)
+        _validate_public_asset(
+            PoolAssetType.PHOTO, "http://cdn.example.org/pool.jpg", True
+        )
     with pytest.raises(HTTPException):
         _validate_public_asset(PoolAssetType.PHOTO, None, True)
 

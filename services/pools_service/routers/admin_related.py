@@ -48,10 +48,18 @@ from services.pools_service.schemas import (
 from services.pools_service.models.enums import PoolAssetType
 
 
-def _validate_public_asset(asset_type: PoolAssetType, url: str | None, directory_public: bool) -> None:
+def _validate_public_asset(
+    asset_type: PoolAssetType, url: str | None, directory_public: bool
+) -> None:
     if directory_public:
         parsed = urlparse(url or "")
-        if asset_type != PoolAssetType.PHOTO or parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        if (
+            asset_type != PoolAssetType.PHOTO
+            or parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+        ):
             raise HTTPException(422, "Only HTTPS photo URLs can be publicly published")
 
 
@@ -484,7 +492,11 @@ async def update_asset(
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     data = payload.model_dump(exclude_unset=True)
-    _validate_public_asset(data.get("asset_type", asset.asset_type), data.get("url", asset.url), data.get("directory_public", asset.directory_public))
+    _validate_public_asset(
+        data.get("asset_type", asset.asset_type),
+        data.get("url", asset.url),
+        data.get("directory_public", asset.directory_public),
+    )
     if data.get("is_primary") is True:
         await _demote_other_primary_assets(pool_id, asset_id, db)
     for key, value in data.items():
