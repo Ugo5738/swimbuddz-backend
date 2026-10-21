@@ -16,14 +16,11 @@ def test_match_aliases_only_in_the_same_area():
     assert not likely_same_pool("Blue Water Pool", None, "Blue Water Pool", None)
 
 
-def test_address_confirms_ambiguous_name_only_in_same_area():
-    assert likely_same_pool(
-        "The Lagoon Swim", "Ikoyi", "Lagoon Swims", "Ikoyi",
+def test_dissimilar_pools_do_not_match():
+    assert not likely_same_pool(
+        "Lagoon Club", "Ikoyi", "Ocean Park", "Ikoyi",
         "15 Awolowo Road", "15 Awolowo Rd",
-    ) is False or isinstance(likely_same_pool(
-        "The Lagoon Swim", "Ikoyi", "Lagoon Swims", "Ikoyi",
-        "15 Awolowo Road", "15 Awolowo Rd",
-    ), bool)
+    )
 
 
 def test_distance_expression_is_sql_expression():
