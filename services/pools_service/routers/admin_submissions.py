@@ -116,6 +116,20 @@ async def approve_submission(
             detail=f"Submission is already {submission.status.value}",
         )
 
+    # Corrections link to an existing pool. Staff must edit and verify the listing
+    # before approving; approval never creates another pool or overwrites data.
+    if submission.promoted_pool_id:
+        target = await db.get(Pool, submission.promoted_pool_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="Linked pool not found")
+        submission.status = PoolSubmissionStatus.APPROVED
+        submission.reviewed_by_auth_id = current_user.user_id
+        submission.reviewed_at = utc_now()
+        submission.review_notes = body.review_notes
+        await db.commit()
+        await db.refresh(submission)
+        return submission
+
     # Do not promote a second Pool record when the same facility is already known.
     duplicate = (
         await db.execute(
