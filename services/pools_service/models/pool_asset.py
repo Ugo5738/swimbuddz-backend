@@ -55,6 +55,9 @@ class PoolAsset(Base):
     display_order: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
+    directory_public: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     is_primary: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )

@@ -34,10 +34,12 @@ admin = APIRouter(tags=["admin-pool-access"])
 
 @public.get("/offers", response_model=list[OfferOut])
 async def published_offers(
-    location_area: str | None = None, db: AsyncSession = Depends(get_async_db)
+    location_area: str | None = None,
+    pool_id: uuid.UUID | None = None,
+    db: AsyncSession = Depends(get_async_db),
 ):
     now = utc_now()
-    result = await db.execute(
+    query = (
         select(PoolAccessOffer, Pool)
         .join(Pool, Pool.id == PoolAccessOffer.pool_id)
         .where(
@@ -51,6 +53,9 @@ async def published_offers(
         .order_by(PoolAccessOffer.starts_at)
         .limit(100)
     )
+    if pool_id is not None:
+        query = query.where(PoolAccessOffer.pool_id == pool_id)
+    result = await db.execute(query)
     rows = result.all()
     return [
         OfferOut.model_validate(offer).model_copy(

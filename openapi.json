@@ -44136,6 +44136,23 @@
               ],
               "title": "Location Area"
             }
+          },
+          {
+            "name": "pool_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id"
+            }
           }
         ],
         "responses": {
@@ -116335,6 +116352,36 @@
         ],
         "title": "DirectoryList"
       },
+      "DirectoryPhoto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url"
+        ],
+        "title": "DirectoryPhoto"
+      },
       "DirectoryPool": {
         "properties": {
           "id": {
@@ -116528,6 +116575,49 @@
             "type": "integer",
             "title": "Rating Count",
             "default": 0
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/DirectoryPhoto"
+            },
+            "type": "array",
+            "title": "Photos"
+          },
+          "swimbuddz_assessment_rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swimbuddz Assessment Rating"
+          },
+          "swimbuddz_assessment_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swimbuddz Assessment Summary"
+          },
+          "swimbuddz_assessment_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swimbuddz Assessment Updated At"
           }
         },
         "type": "object",
@@ -118351,6 +118441,11 @@
             "type": "boolean",
             "title": "Is Primary",
             "default": false
+          },
+          "directory_public": {
+            "type": "boolean",
+            "title": "Directory Public",
+            "default": false
           }
         },
         "type": "object",
@@ -118418,6 +118513,11 @@
           "is_primary": {
             "type": "boolean",
             "title": "Is Primary",
+            "default": false
+          },
+          "directory_public": {
+            "type": "boolean",
+            "title": "Directory Public",
             "default": false
           },
           "id": {
@@ -118554,6 +118654,17 @@
               }
             ],
             "title": "Is Primary"
+          },
+          "directory_public": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Public"
           }
         },
         "type": "object",
@@ -119326,6 +119437,43 @@
               }
             ],
             "title": "Last Verified At"
+          },
+          "directory_assessment_rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Rating"
+          },
+          "directory_assessment_summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 800
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Summary"
+          },
+          "directory_assessment_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Updated At"
           },
           "directory_published": {
             "type": "boolean",
@@ -120361,6 +120509,43 @@
               }
             ],
             "title": "Last Verified At"
+          },
+          "directory_assessment_rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Rating"
+          },
+          "directory_assessment_summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 800
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Summary"
+          },
+          "directory_assessment_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Updated At"
           },
           "directory_published": {
             "type": "boolean",
@@ -121594,6 +121779,31 @@
               }
             ],
             "title": "Last Verified At"
+          },
+          "directory_assessment_rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Rating"
+          },
+          "directory_assessment_summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 800
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Assessment Summary"
           },
           "directory_published": {
             "anyOf": [

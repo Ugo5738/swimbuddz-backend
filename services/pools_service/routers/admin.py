@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.pools_service.models import (
     OperatingArea,
@@ -192,6 +193,15 @@ async def update_pool(
 
     for field, value in update_data.items():
         setattr(pool, field, value)
+    if {
+        "directory_assessment_rating",
+        "directory_assessment_summary",
+    } & update_data.keys():
+        pool.directory_assessment_updated_at = (
+            utc_now()
+            if pool.directory_assessment_rating and pool.directory_assessment_summary
+            else None
+        )
 
     # Recompute if any scoring input (components or pool_type) changed
     score_inputs = {

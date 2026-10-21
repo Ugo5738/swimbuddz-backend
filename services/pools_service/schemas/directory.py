@@ -6,6 +6,12 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class DirectoryPhoto(BaseModel):
+    id: uuid.UUID
+    url: str
+    caption: Optional[str] = None
+
+
 class DirectoryPool(BaseModel):
     id: uuid.UUID
     slug: str
@@ -28,6 +34,10 @@ class DirectoryPool(BaseModel):
     bookable: bool
     rating_average: Optional[float] = None
     rating_count: int = 0
+    photos: list[DirectoryPhoto] = Field(default_factory=list)
+    swimbuddz_assessment_rating: Optional[int] = Field(None, ge=1, le=5)
+    swimbuddz_assessment_summary: Optional[str] = None
+    swimbuddz_assessment_updated_at: Optional[datetime] = None
 
 
 class DirectoryList(BaseModel):
