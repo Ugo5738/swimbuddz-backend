@@ -41,7 +41,7 @@ timedatectl set-timezone UTC
 log "Installing system packages"
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  ca-certificates curl gnupg git ufw jq unzip
+  ca-certificates curl gnupg git python3 ufw jq unzip
 
 if ! command -v docker >/dev/null 2>&1; then
   log "Installing Docker Engine"

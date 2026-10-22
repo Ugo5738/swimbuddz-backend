@@ -19,6 +19,7 @@ COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
 export DOCKER_USERNAME LE_EMAIL API_HOST DOCKER_API_VERSION COMPOSE_PARALLEL_LIMIT
 
 require_command git
+require_command python3
 require_command gpg
 require_command docker
 
@@ -36,9 +37,9 @@ if [ ! -d .git ]; then
 else
   git remote set-url origin "$REPO_URL"
   git fetch origin "$DEPLOY_BRANCH"
-  git checkout "$DEPLOY_BRANCH"
-  git reset --hard "origin/$DEPLOY_BRANCH"
 fi
+python3 "$SCRIPT_DIR/sync_repository.py" \
+  --repository "$DEPLOY_PATH" --branch "$DEPLOY_BRANCH"
 
 [ -f .env.prod.gpg ] || die "Missing .env.prod.gpg in the repository."
 
