@@ -43,6 +43,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Test production checkout recovery
+        run: bash scripts/tests/test-deployment-sync.sh
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
