@@ -1,6 +1,7 @@
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
@@ -18,6 +19,14 @@ from services.members_service.models import (
 )
 from services.members_service.routers.internal._schemas import ClubAccessCheck
 from services.members_service.services.club_access import resolve_club_access_checks
+
+
+@pytest.fixture(autouse=True)
+def membership_notifications(monkeypatch):
+    monkeypatch.setattr(
+        "services.members_service.services.club_transfers.notify_membership_change",
+        AsyncMock(),
+    )
 
 
 def _club_plan(club_id, name, *, published=True):

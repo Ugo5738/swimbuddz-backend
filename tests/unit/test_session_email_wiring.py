@@ -71,7 +71,7 @@ async def test_daily_prompt_passes_shared_context_to_template(monkeypatch):
     monkeypatch.setattr(
         notifications,
         "dispatch_notification",
-        AsyncMock(return_value=None),
+        AsyncMock(return_value={"dispatched": 1}),
     )
 
     sent = await notifications._send_booking_prompt_for_session(
@@ -110,6 +110,8 @@ async def test_timed_reminder_passes_shared_context_to_template(monkeypatch):
         id=UUID("33333333-3333-3333-3333-333333333333"),
         session_id=UUID(SESSION_ID),
         notification_type=SessionNotificationType.REMINDER_24H,
+        scheduled_for=datetime.fromisoformat(session["starts_at"])
+        - timedelta(hours=24),
         status=ScheduledNotificationStatus.PENDING,
         sent_at=None,
         error_message=None,
@@ -151,7 +153,7 @@ async def test_timed_reminder_passes_shared_context_to_template(monkeypatch):
     monkeypatch.setattr(
         notifications,
         "dispatch_notification",
-        AsyncMock(return_value=None),
+        AsyncMock(return_value={"dispatched": 1}),
     )
 
     await notifications._process_single_notification(db, notification)

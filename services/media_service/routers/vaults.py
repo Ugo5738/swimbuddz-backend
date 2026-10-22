@@ -315,6 +315,7 @@ async def _media_response(item: MediaItem) -> VaultMediaResponse:
             "preview_url": preview_url,
             "thumbnail_url": thumbnail_url,
             "preview_status": preview_status,
+            "duration_seconds": metadata.get("duration_seconds"),
             "labels": list(item.vault_labels or []),
             "session_visibility": item.session_visibility,
             "allow_member_clips": bool(item.allow_member_clips),

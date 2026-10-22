@@ -13,7 +13,7 @@ from typing import Optional
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.config import get_settings
@@ -165,6 +165,7 @@ def _is_unpaid_community_prospect(member: dict, now: datetime) -> bool:
 async def schedule_session_notifications(
     session_id: UUID,
     is_short_notice: bool = False,
+    session_data: dict | None = None,
 ) -> None:
     """
     Schedule reminder notifications for a newly published session.
@@ -181,7 +182,7 @@ async def schedule_session_notifications(
     async for db in get_async_db():
         try:
             # Get session details via sessions-service
-            session = await _get_session_data(session_id)
+            session = session_data or await _get_session_data(session_id)
             if not session:
                 logger.error(
                     f"Session {session_id} not found for notification scheduling"
@@ -234,9 +235,7 @@ async def schedule_session_notifications(
                     )
                 )
 
-            # Bulk create
-            for notification in notifications_to_create:
-                db.add(notification)
+            await _upsert_session_reminders(db, session_id, notifications_to_create)
 
             await db.commit()
 
@@ -250,6 +249,84 @@ async def schedule_session_notifications(
         finally:
             await db.close()
             break
+
+
+async def _upsert_session_reminders(db, session_id, candidates) -> None:
+    # Publication and hourly recovery can race; serialize per session without
+    # requiring a schema change or creating duplicate scheduled jobs.
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"session-reminders:{session_id}"},
+    )
+    existing = list(
+        (
+            await db.execute(
+                select(ScheduledNotification).where(
+                    ScheduledNotification.session_id == session_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for candidate in candidates:
+        same_type = [
+            row
+            for row in existing
+            if row.notification_type == candidate.notification_type
+        ]
+        if any(
+            row.status == ScheduledNotificationStatus.SENT
+            and row.scheduled_for == candidate.scheduled_for
+            for row in same_type
+        ):
+            continue
+        reusable = next(
+            (
+                row
+                for row in same_type
+                if row.status != ScheduledNotificationStatus.SENT
+            ),
+            None,
+        )
+        if reusable:
+            reusable.scheduled_for = candidate.scheduled_for
+            reusable.status = ScheduledNotificationStatus.PENDING
+            reusable.error_message = None
+            reusable.is_short_notice = bool(candidate.is_short_notice)
+        else:
+            db.add(candidate)
+        # Clean up stale pending duplicates left by earlier publish calls.
+        for row in same_type:
+            if (
+                row is not reusable
+                and row.status == ScheduledNotificationStatus.PENDING
+            ):
+                row.status = ScheduledNotificationStatus.CANCELLED
+
+
+async def reconcile_session_reminders(window_days: int = 14) -> dict[str, int]:
+    """Recover missed publish events; schedule reminders without emailing now."""
+    now = utc_now()
+    response = await internal_get(
+        service_url=get_settings().SESSIONS_SERVICE_URL,
+        path="/internal/sessions/scheduled",
+        calling_service="communications",
+        params={
+            "start_date": now.isoformat(),
+            "end_date": (now + timedelta(days=window_days)).isoformat(),
+        },
+    )
+    response.raise_for_status()
+    sessions = response.json()
+    for session in sessions:
+        await schedule_session_notifications(
+            UUID(session["id"]),
+            is_short_notice=(_parse_session_start(session) - now).total_seconds()
+            < SHORT_NOTICE_THRESHOLD_HOURS * 3600,
+            session_data=session,
+        )
+    return {"sessions": len(sessions)}
 
 
 async def send_session_announcement(
@@ -419,7 +496,12 @@ async def _send_booking_prompt_for_session(
         pref = prefs_map.get(member.get("auth_id"))
         if not _should_send_session_announcement(session, pref):
             continue
-        if not _has_paid_session_access(member, session_type, now):
+        # Club recipients already passed the authoritative dated enrollment
+        # check above. Legacy paid-until fields can be empty for both prepaid
+        # quarter and transition-per-session members.
+        if session_type != "club" and not _has_paid_session_access(
+            member, session_type, now
+        ):
             if (
                 send_prospect_invites
                 and session_type == "community"
@@ -556,7 +638,12 @@ async def process_pending_notifications() -> None:
             query = (
                 select(ScheduledNotification)
                 .where(
-                    ScheduledNotification.status == ScheduledNotificationStatus.PENDING,
+                    ScheduledNotification.status.in_(
+                        [
+                            ScheduledNotificationStatus.PENDING,
+                            ScheduledNotificationStatus.FAILED,
+                        ]
+                    ),
                     ScheduledNotification.scheduled_for <= now,
                 )
                 .order_by(ScheduledNotification.scheduled_for.asc())
@@ -577,8 +664,11 @@ async def process_pending_notifications() -> None:
                     logger.error(
                         f"Error processing notification {notification.id}: {e}"
                     )
-                    notification.status = ScheduledNotificationStatus.FAILED
+                    notification.status = ScheduledNotificationStatus.PENDING
                     notification.error_message = str(e)
+                # Keep completed sessions durable even if a later batch item
+                # hits a transient outage or the worker is interrupted.
+                await db.commit()
 
             await db.commit()
 
@@ -644,6 +734,10 @@ async def _process_single_notification(
         members = await _get_session_attendees_and_coaches(db, session)
 
     reminder_type = notification.notification_type.value.replace("reminder_", "")
+    if reminder_type == "24h" and session_start - now <= timedelta(hours=3):
+        notification.status = ScheduledNotificationStatus.CANCELLED
+        notification.error_message = "Superseded by the 3-hour reminder"
+        return
 
     context_batch = await build_session_email_contexts(
         db,
@@ -657,6 +751,7 @@ async def _process_single_notification(
     }
 
     sent_count = 0
+    failed_count = 0
     for member in members:
         # Check preferences
         prefs = await _get_member_preferences(db, member)
@@ -665,12 +760,17 @@ async def _process_single_notification(
 
         # Check if already sent
         existing = await db.execute(
-            select(SessionNotificationLog).where(
+            select(SessionNotificationLog)
+            .where(
                 SessionNotificationLog.session_id == notification.session_id,
                 SessionNotificationLog.member_id == UUID(member["id"]),
                 SessionNotificationLog.notification_type
                 == notification.notification_type,
+                SessionNotificationLog.sent_at >= notification.scheduled_for,
+                SessionNotificationLog.channel == "email",
+                SessionNotificationLog.delivery_status == "sent",
             )
+            .limit(1)
         )
         if existing.scalar_one_or_none():
             continue
@@ -697,16 +797,35 @@ async def _process_single_notification(
                 )
                 db.add(log_entry)
                 sent_count += 1
+            else:
+                failed_count += 1
 
         except Exception as e:
+            failed_count += 1
             logger.error(f"Failed to send reminder to {member['email']}: {e}")
 
     # Dispatch in-app notifications for reminders
-    reminder_member_ids = [m["id"] for m in members]
+    reminder_member_ids = []
+    for member in members:
+        logged = await db.execute(
+            select(SessionNotificationLog.id)
+            .where(
+                SessionNotificationLog.session_id == notification.session_id,
+                SessionNotificationLog.member_id == UUID(member["id"]),
+                SessionNotificationLog.notification_type
+                == notification.notification_type,
+                SessionNotificationLog.channel == "in_app",
+                SessionNotificationLog.delivery_status == "sent",
+                SessionNotificationLog.sent_at >= notification.scheduled_for,
+            )
+            .limit(1)
+        )
+        if not logged.scalar_one_or_none():
+            reminder_member_ids.append(member["id"])
     if reminder_member_ids:
         reminder_labels = {"24h": "tomorrow", "3h": "in 3 hours", "1h": "in 1 hour"}
         time_label = reminder_labels.get(reminder_type, f"in {reminder_type}")
-        await dispatch_notification(
+        dispatched = await dispatch_notification(
             type=f"session_reminder_{reminder_type}",
             category="sessions",
             member_ids=reminder_member_ids,
@@ -720,9 +839,29 @@ async def _process_single_notification(
             },
             calling_service="communications",
         )
+        if dispatched:
+            for member_id in reminder_member_ids:
+                db.add(
+                    SessionNotificationLog(
+                        session_id=notification.session_id,
+                        member_id=UUID(member_id),
+                        notification_type=notification.notification_type,
+                        channel="in_app",
+                        delivery_status="sent",
+                    )
+                )
+        else:
+            failed_count += len(reminder_member_ids)
 
-    notification.status = ScheduledNotificationStatus.SENT
-    notification.sent_at = utc_now()
+    notification.status = (
+        ScheduledNotificationStatus.PENDING
+        if failed_count
+        else ScheduledNotificationStatus.SENT
+    )
+    notification.error_message = (
+        f"{failed_count} delivery attempt(s) failed; retrying" if failed_count else None
+    )
+    notification.sent_at = None if failed_count else utc_now()
     logger.info(
         f"Sent {notification.notification_type.value} to {sent_count} members for session {notification.session_id}"
     )
@@ -846,7 +985,7 @@ async def _get_session_coaches(session: dict) -> list[dict]:
         calling_service="communications",
     )
     if resp.status_code != 200:
-        return []
+        raise RuntimeError("Could not load session coaches")
     coach_ids = resp.json()
 
     if not coach_ids:
@@ -879,9 +1018,10 @@ async def _get_session_attendees_and_coaches(
             session.get("id"),
             exc,
         )
-        booked_member_ids = []
+        raise RuntimeError("Could not load confirmed bookings") from exc
 
     unique_attendee_ids = [mid for mid in booked_member_ids if mid not in coach_id_set]
+    session["confirmed_booking_member_ids"] = booked_member_ids
     attendees = (
         await get_members_bulk(unique_attendee_ids, calling_service="communications")
         if unique_attendee_ids

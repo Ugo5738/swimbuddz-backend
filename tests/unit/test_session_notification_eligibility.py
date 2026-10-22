@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 import pytest
 
@@ -20,6 +21,57 @@ from services.communications_service.tasks.session_notifications import (
 )
 
 NOW = datetime(2026, 7, 10, 8, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["prepaid_quarter", "transition_per_session"])
+async def test_club_prompt_keeps_members_with_current_enrollment_and_no_legacy_date(
+    monkeypatch, mode
+):
+    member = _member(
+        id="33333333-3333-3333-3333-333333333333",
+        auth_id="auth-enrollment",
+        email="member@example.com",
+        first_name="Ada",
+        payment_mode=mode,
+    )
+    session = {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "session_type": "club",
+        "title": "Club swim",
+        "starts_at": (NOW + timedelta(days=2)).isoformat(),
+    }
+    monkeypatch.setattr(notifications, "utc_now", lambda: NOW)
+    monkeypatch.setattr(
+        notifications,
+        "_get_session_announcement_members",
+        AsyncMock(return_value=[member]),
+    )
+    monkeypatch.setattr(
+        notifications, "get_confirmed_booking_member_ids", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        notifications,
+        "_get_notification_preferences_by_auth",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        notifications,
+        "_sent_session_notification_recently",
+        AsyncMock(return_value=False),
+    )
+    send = AsyncMock(return_value=True)
+    monkeypatch.setattr(notifications, "send_session_announcement_email", send)
+    monkeypatch.setattr(notifications, "dispatch_notification", AsyncMock())
+    db = SimpleNamespace(add=Mock())
+    sent = await notifications._send_booking_prompt_for_session(
+        db,
+        session=session,
+        active_members=[member],
+        email_context={"date": "Saturday", "time": "10am", "location": "Yaba"},
+    )
+    assert sent == 1
+    send.assert_awaited_once()
 
 
 def _member(**overrides):

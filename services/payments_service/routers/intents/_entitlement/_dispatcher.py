@@ -245,6 +245,9 @@ async def _mark_paid_and_apply(
         return payment
 
     payment.status = PaymentStatus.PAID
+    payment.admin_payment_notification_required = bool(
+        payment.amount > 0 or (payment.payment_metadata or {}).get("bubbles_to_apply")
+    )
     payment.provider = provider
     payment.provider_reference = provider_reference
     payment.paid_at = paid_at or utc_now()

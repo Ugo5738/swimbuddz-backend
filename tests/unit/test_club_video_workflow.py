@@ -40,6 +40,8 @@ async def test_video_submission_is_held_for_assessor_and_media_verified(monkeypa
         refresh=AsyncMock(),
     )
     video_verify = AsyncMock()
+    acknowledge = AsyncMock()
+    monkeypatch.setattr(clubs, "notify_assessment_submission", acknowledge)
     monkeypatch.setattr(clubs, "_member_for_user", AsyncMock(return_value=member))
     monkeypatch.setattr(clubs, "_verify_club_video", video_verify)
     monkeypatch.setattr(clubs, "_application_out", AsyncMock(return_value=application))
@@ -59,6 +61,7 @@ async def test_video_submission_is_held_for_assessor_and_media_verified(monkeypa
         body.swim_video_media_id
     )
     assert video_verify.await_count == 2
+    acknowledge.assert_awaited_once()
     db.commit.assert_awaited_once()
 
 

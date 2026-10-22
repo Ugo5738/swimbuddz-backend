@@ -15,6 +15,7 @@ See docs/design/A1_SESSION_DISCRIMINATOR_REFACTOR.md §C.
 """
 
 from __future__ import annotations
+import uuid
 
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
@@ -31,8 +32,47 @@ from services.sessions_service.models import (
     SessionBookingStatus,
 )
 from sqlalchemy import select, update
+from sqlalchemy import String, cast
 
 logger = get_logger(__name__)
+
+
+async def retry_club_reschedule_notifications() -> dict:
+    from services.sessions_service.models import ClubScheduleOperation
+    from services.sessions_service.routers.club_operations import notify_reschedule
+
+    async with AsyncSessionLocal() as db:
+        rows = list(
+            (
+                await db.execute(
+                    select(ClubScheduleOperation)
+                    .join(
+                        Session,
+                        cast(Session.id, String)
+                        == ClubScheduleOperation.payload["session_id"].astext,
+                    )
+                    .where(
+                        ClubScheduleOperation.kind == "reschedule",
+                        ClubScheduleOperation.notification_status.in_(
+                            ["pending", "needs_retry"]
+                        ),
+                        Session.starts_at > utc_now(),
+                        Session.status == "scheduled",
+                    )
+                    .order_by(ClubScheduleOperation.created_at)
+                    .limit(50)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        queued = 0
+        for operation in rows:
+            session = await db.get(Session, uuid.UUID(operation.payload["session_id"]))
+            if session:
+                await notify_reschedule(db, operation, session)
+                queued += operation.notification_status == "queued"
+        return {"queued": queued}
 
 
 async def sweep_expired_pending_bookings() -> dict:

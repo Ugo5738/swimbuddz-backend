@@ -1,5 +1,7 @@
 """Communications Service models package."""
 
+from libs.common.operational_email import OperationalEmail
+
 from services.communications_service.models.core import (
     Announcement,
     AnnouncementAudience,
@@ -28,6 +30,7 @@ from services.communications_service.models.engagement import ContentEngagement
 from services.communications_service.models.testimonial import Testimonial
 
 __all__ = [
+    "OperationalEmail",
     "Announcement",
     "AnnouncementAudience",
     "AnnouncementCategory",
