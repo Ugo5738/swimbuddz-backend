@@ -1,7 +1,7 @@
 """Lightweight review derivatives for vault media.
 
-Original objects are never modified or replaced. Small thumbnails are built
-automatically; playable video proxies remain curator-requested.
+Original objects are never modified or replaced. Small thumbnails and playable review proxies are built automatically after
+upload. Existing missing proxies are processed by a bounded background queue.
 """
 
 from __future__ import annotations
