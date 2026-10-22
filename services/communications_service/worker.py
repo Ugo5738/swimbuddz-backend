@@ -39,6 +39,22 @@ async def task_send_session_booking_prompts(ctx: dict):
     await send_session_booking_prompts()
 
 
+async def task_reconcile_session_reminders(ctx: dict):
+    from services.communications_service.tasks.session_notifications import (
+        reconcile_session_reminders,
+    )
+
+    return await reconcile_session_reminders()
+
+
+async def task_send_operational_emails(ctx: dict):
+    from services.communications_service.tasks.operational_emails import (
+        send_pending_operational_emails,
+    )
+
+    return await send_pending_operational_emails()
+
+
 async def task_publish_scheduled_content(ctx: dict):
     """Publish content posts whose scheduled_for time has arrived."""
     from services.communications_service.tasks import publish_scheduled_content
@@ -77,12 +93,17 @@ class WorkerSettings:
         task_process_pending_notifications,
         task_send_weekly_session_digest,
         task_send_session_booking_prompts,
+        task_reconcile_session_reminders,
+        task_send_operational_emails,
         task_publish_scheduled_content,
         task_generate_content_images,
         task_send_daily_birthday_celebrations,
     ]
 
     cron_jobs = [
+        cron(task_send_operational_emails, minute=set(range(60)), run_at_startup=True),
+        # Recover missed session-published calls and follow rescheduled times.
+        cron(task_reconcile_session_reminders, minute=10, run_at_startup=True),
         # Process pending notifications every 5 minutes
         cron(
             task_process_pending_notifications,

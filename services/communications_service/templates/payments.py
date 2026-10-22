@@ -73,7 +73,7 @@ Thank you for being part of SwimBuddz!
     return await send_email(to_email, subject, body, html_body)
 
 
-async def send_admin_bubbles_payment_received_email(
+async def send_admin_payment_received_email(
     to_email: str,
     payment_reference: str,
     member_email: str,
@@ -83,47 +83,68 @@ async def send_admin_bubbles_payment_received_email(
     bubbles_value_ngn: float,
     paid_at: str,
     currency: str = "NGN",
+    cash_amount: float = 0,
+    payment_method: str = "Bubbles",
+    fulfillment_status: str = "Applied",
+    bubbles_status: str = "Collected",
 ) -> bool:
-    """Notify an admin when a payment is settled entirely with Bubbles."""
+    """Notify operations of cash, wallet, or mixed receipts."""
     purpose_display = purpose.replace("_", " ").title()
     amount_display = (
         f"₦{amount:,.0f}" if currency == "NGN" else f"{currency} {amount:,.2f}"
     )
     bubbles_value_display = f"₦{bubbles_value_ngn:,.0f}"
-    subject = f"Bubbles Payment Received - {purpose_display} - {payment_reference}"
-    body = f"""A payment was settled entirely with Bubbles.
+    cash_display = (
+        f"₦{cash_amount:,.0f}"
+        if currency == "NGN"
+        else f"{currency} {cash_amount:,.2f}"
+    )
+    subject = f"Payment Received - {purpose_display} - {payment_reference}"
+    body = f"""A payment was received.
 
 Reference: {payment_reference}
 Member: {member_email}
 Purpose: {purpose_display}
 Purchase value: {amount_display}
+Payment method: {payment_method}
+Cash received: {cash_display}
 Bubbles used: {bubbles_used}
 Bubbles value: {bubbles_value_display}
+Bubbles settlement: {bubbles_status}
+Fulfillment: {fulfillment_status}
 Paid at: {paid_at or "Not available"}
 
 — SwimBuddz System
 """
     body_html = (
-        "<p>A payment was settled entirely with Bubbles.</p>"
+        "<p>A payment was received.</p>"
         + detail_box(
             {
                 "Reference": escape(payment_reference),
                 "Member": escape(member_email),
                 "Purpose": escape(purpose_display),
                 "Purchase value": escape(amount_display),
+                "Payment method": escape(payment_method),
+                "Cash received": escape(cash_display),
                 "Bubbles used": f"{bubbles_used:,}",
                 "Bubbles value": escape(bubbles_value_display),
+                "Bubbles settlement": escape(bubbles_status),
                 "Paid at": escape(paid_at or "Not available"),
+                "Fulfillment": escape(fulfillment_status),
             },
             accent_color="#f59e0b",
         )
         + sign_off("SwimBuddz payment notification")
     )
     html_body = wrap_html(
-        title="Bubbles Payment Received",
+        title="Payment Received",
         subtitle=escape(purpose_display),
         body_html=body_html,
         header_gradient=GRADIENT_AMBER,
-        preheader=f"{amount_display} paid with {bubbles_used:,} Bubbles",
+        preheader=f"{amount_display} received — {payment_method}",
     )
     return await send_email(to_email, subject, body, html_body)
+
+
+# Keep the previous template available during rolling deployments.
+send_admin_bubbles_payment_received_email = send_admin_payment_received_email

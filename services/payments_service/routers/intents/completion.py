@@ -76,6 +76,9 @@ async def complete_payment(
             )
 
     payment.status = PaymentStatus.PAID
+    payment.admin_payment_notification_required = bool(
+        payment.amount > 0 or (payment.payment_metadata or {}).get("bubbles_to_apply")
+    )
     payment.provider = payload.provider
     payment.provider_reference = payload.provider_reference
     payment.paid_at = payload.paid_at or utc_now()

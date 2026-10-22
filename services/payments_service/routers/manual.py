@@ -159,6 +159,9 @@ async def approve_manual_payment(
         )
 
     payment.status = PaymentStatus.PAID
+    payment.admin_payment_notification_required = bool(
+        payment.amount > 0 or (payment.payment_metadata or {}).get("bubbles_to_apply")
+    )
     payment.provider = "manual_transfer"
     payment.paid_at = utc_now()
     payment.admin_review_note = payload.note

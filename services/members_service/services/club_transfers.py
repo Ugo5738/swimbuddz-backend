@@ -31,6 +31,9 @@ from services.members_service.schemas.club import (
     ClubLocationTransferResponse,
 )
 from services.members_service.services.chat_sync import reconcile_pod_membership
+from services.members_service.services.membership_notifications import (
+    notify_membership_change,
+)
 from services.members_service.services.club_plan_schedule import (
     hydrate_schedules,
     remaining_links,
@@ -447,6 +450,19 @@ async def execute_location_transfer(
         note=(body.note or "").strip() or None,
     )
     db.add(transfer)
+    await notify_membership_change(
+        db,
+        member_id=source.member_id,
+        title="Your Club location has changed",
+        body=f"Your home Club has changed from {ctx['source_club'].name} to {target_club.name}."
+        + (
+            f" Your new pod is {target_pod.handle or target_pod.name}."
+            if target_pod
+            else " Visit your Club page to choose a pod."
+        )
+        + " Check your upcoming swims for the new location.",
+        event_key=f"club-transfer:{transfer.id}",
+    )
     await db.commit()
 
     if old_assignment is not None:

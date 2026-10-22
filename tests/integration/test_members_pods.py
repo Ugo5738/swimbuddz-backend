@@ -43,6 +43,16 @@ _ENSURE_CHAT = "services.members_service.routers.pods.ensure_pod_channel"
 _RECONCILE_CHAT = "services.members_service.routers.pods.reconcile_pod_membership"
 
 
+@pytest.fixture(autouse=True)
+def membership_notifications(monkeypatch):
+    """Keep pod API tests isolated from real member email delivery."""
+    notify = AsyncMock()
+    monkeypatch.setattr(
+        "services.members_service.services.pod_ops.notify_membership_change", notify
+    )
+    return notify
+
+
 def _silence_chat_sync():
     """Patch the two chat-sync calls used by the pod router so tests
     don't try to talk to chat_service. Returns a dict of patchers."""

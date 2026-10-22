@@ -124,6 +124,7 @@ async def verify_bank_receipt(
         amount=body.amount_kobo / 100,
         currency="NGN",
         status=PaymentStatus.PAID,
+        admin_payment_notification_required=True,
         provider="offline",
         provider_reference=reference,
         payment_method="bank_transfer",
@@ -296,6 +297,7 @@ async def adopt_previously_settled_academy_receipt(
         amount=remainder_kobo / 100,
         currency="NGN",
         status=PaymentStatus.PAID,
+        admin_payment_notification_required=True,
         provider="offline",
         # Keep canonical bank reference on the original payment. The derived
         # remainder is linked to the receipt and cannot be settled independently.

@@ -34,6 +34,12 @@ async def task_retry_booking_confirmations(ctx: dict):
     await retry_confirmations()
 
 
+async def task_retry_club_reschedule_notifications(ctx: dict):
+    from services.sessions_service.tasks import retry_club_reschedule_notifications
+
+    return await retry_club_reschedule_notifications()
+
+
 class WorkerSettings:
     redis_settings = get_redis_settings()
     queue_name = "arq:sessions"
@@ -42,9 +48,15 @@ class WorkerSettings:
         task_sweep_expired_pending_bookings,
         task_sweep_complete_makeups,
         task_retry_booking_confirmations,
+        task_retry_club_reschedule_notifications,
     ]
 
     cron_jobs = [
+        cron(
+            task_retry_club_reschedule_notifications,
+            minute={3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53, 58},
+            run_at_startup=True,
+        ),
         cron(
             task_retry_booking_confirmations,
             minute={1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56},

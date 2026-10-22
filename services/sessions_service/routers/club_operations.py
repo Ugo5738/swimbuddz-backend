@@ -12,7 +12,8 @@ from libs.auth.dependencies import get_current_user, is_admin_or_service
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
-from libs.common.service_client import internal_post, dispatch_notification
+from libs.common.service_client import internal_post
+from libs.common.operational_email import enqueue_operational_email
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     ClubScheduleOperation,
@@ -311,7 +312,7 @@ async def reschedule_practice(
         )
         db.add(operation)
         await db.commit()
-    if operation.notification_status != "sent":
+    if operation.notification_status not in {"sent", "queued"}:
         await notify_reschedule(db, operation, session)
     return {
         "session": session_snapshot(session),
@@ -321,13 +322,15 @@ async def reschedule_practice(
 
 
 async def notify_reschedule(db, operation, session):
-    if datetime.fromisoformat(operation.after[0]["starts_at"]) != session.starts_at:
+    if (
+        datetime.fromisoformat(operation.after[0]["starts_at"]) != session.starts_at
+        or session.starts_at <= utc_now()
+    ):
         operation.notification_status = "superseded"
         await db.commit()
         return
-    members = [
-        str(value)
-        for value in (
+    members = list(
+        (
             await db.execute(
                 select(SessionBooking.member_id).where(
                     SessionBooking.session_id == session.id,
@@ -336,8 +339,10 @@ async def notify_reschedule(db, operation, session):
                     ),
                 )
             )
-        ).scalars()
-    ]
+        )
+        .scalars()
+        .all()
+    )
     guests = list(
         (
             await db.execute(
@@ -346,39 +351,31 @@ async def notify_reschedule(db, operation, session):
                     GuestPass.status.in_(["confirmed", "pending_payment"]),
                 )
             )
-        ).scalars()
-    )
-    message = f"{session.title} moved from {operation.before[0]['starts_at']} to {operation.after[0]['starts_at']}. {operation.payload['reason']}. Your booking and amount paid are unchanged. Please tell any guests in your booking. Contact SwimBuddz if you cannot attend."
-    success = True
-    if members:
-        success = bool(
-            await dispatch_notification(
-                type="session_updated",
-                category="sessions",
-                member_ids=sorted(set(members)),
-                title="Club practice rescheduled",
-                body=message,
-                action_url=f"/sessions/{session.id}",
-                calling_service="sessions",
-                metadata={"operation_id": str(operation.id)},
-            )
         )
-    for email in sorted(set(guests)):
-        try:
-            response = await internal_post(
-                service_url=get_settings().COMMUNICATIONS_SERVICE_URL,
-                path="/email/send",
-                calling_service="sessions",
-                json={
-                    "to_email": email,
-                    "subject": "Club practice rescheduled",
-                    "body": message,
-                },
-            )
-            success = success and response.status_code < 400
-        except Exception:
-            success = False
-    operation.notification_status = "sent" if success else "needs_retry"
+        .scalars()
+        .all()
+    )
+    message = f"{session.title} moved from {operation.before[0]['starts_at']} to {operation.after[0]['starts_at']}. {operation.payload['reason']}. Your booking and amount paid are unchanged. Contact SwimBuddz if you cannot attend."
+    for member_id in sorted(set(members), key=str):
+        await enqueue_operational_email(
+            db,
+            event_key=f"club-reschedule:{operation.id}:member:{member_id}",
+            member_id=member_id,
+            subject="Club practice rescheduled",
+            body=message,
+            action_url=f"/sessions/{session.id}",
+            expires_at=session.starts_at,
+        )
+    for email in sorted({email.strip().lower() for email in guests if email}):
+        await enqueue_operational_email(
+            db,
+            event_key=f"club-reschedule:{operation.id}:guest:{email}",
+            recipient_email=email,
+            subject="Club practice rescheduled",
+            body=message,
+            expires_at=session.starts_at,
+        )
+    operation.notification_status = "queued"
     await db.commit()
 
 
@@ -445,6 +442,6 @@ async def retry_notifications(
         or operation.payload.get("session_id") != str(session_id)
     ):
         raise HTTPException(404, "Reschedule operation not found")
-    if operation.notification_status != "sent":
+    if operation.notification_status not in {"sent", "queued"}:
         await notify_reschedule(db, operation, session)
     return {"notification_status": operation.notification_status}

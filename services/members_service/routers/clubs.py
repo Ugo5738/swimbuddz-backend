@@ -31,6 +31,9 @@ from services.members_service.services.club_plan_schedule import (
     hydrate_schedules,
     selected_session_snapshots,
 )
+from services.members_service.services.assessment_notifications import (
+    notify_assessment_submission,
+)
 from services.members_service.models import (
     Club,
     ClubApplication,
@@ -761,6 +764,13 @@ async def submit_club_pre_assessment(
         db.add(assessment)
     assessment.self_report = body.model_dump(mode="json")
     application.status = "assessment_pending"
+    await notify_assessment_submission(
+        db,
+        member=member,
+        application=application,
+        stage="readiness",
+        submission=assessment.self_report,
+    )
     await db.commit()
     await db.refresh(application)
     return await _application_out(application, db)
@@ -833,6 +843,14 @@ async def choose_club_assessment_method(
         report["in_person_requested_at"] = utc_now().isoformat()
     assessment.self_report = report
     application.status = "assessment_pending"
+    if body.method == "in_person":
+        await notify_assessment_submission(
+            db,
+            member=member,
+            application=application,
+            stage="in_person",
+            submission={"method": body.method},
+        )
     await db.commit()
     await db.refresh(application)
     return await _application_out(application, db)
@@ -897,6 +915,13 @@ async def submit_club_video_assessment(
     )
     assessment.self_report = report
     application.status = "assessment_pending"
+    await notify_assessment_submission(
+        db,
+        member=member,
+        application=application,
+        stage="video",
+        submission=body.model_dump(mode="json"),
+    )
     await db.commit()
     await db.refresh(application)
     return await _application_out(application, db)
