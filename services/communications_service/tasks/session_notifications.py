@@ -638,7 +638,12 @@ async def process_pending_notifications() -> None:
             query = (
                 select(ScheduledNotification)
                 .where(
-                    ScheduledNotification.status == ScheduledNotificationStatus.PENDING,
+                    ScheduledNotification.status.in_(
+                        [
+                            ScheduledNotificationStatus.PENDING,
+                            ScheduledNotificationStatus.FAILED,
+                        ]
+                    ),
                     ScheduledNotification.scheduled_for <= now,
                 )
                 .order_by(ScheduledNotification.scheduled_for.asc())
@@ -659,8 +664,11 @@ async def process_pending_notifications() -> None:
                     logger.error(
                         f"Error processing notification {notification.id}: {e}"
                     )
-                    notification.status = ScheduledNotificationStatus.FAILED
+                    notification.status = ScheduledNotificationStatus.PENDING
                     notification.error_message = str(e)
+                # Keep completed sessions durable even if a later batch item
+                # hits a transient outage or the worker is interrupted.
+                await db.commit()
 
             await db.commit()
 
@@ -726,6 +734,10 @@ async def _process_single_notification(
         members = await _get_session_attendees_and_coaches(db, session)
 
     reminder_type = notification.notification_type.value.replace("reminder_", "")
+    if reminder_type == "24h" and session_start - now <= timedelta(hours=3):
+        notification.status = ScheduledNotificationStatus.CANCELLED
+        notification.error_message = "Superseded by the 3-hour reminder"
+        return
 
     context_batch = await build_session_email_contexts(
         db,
@@ -739,6 +751,7 @@ async def _process_single_notification(
     }
 
     sent_count = 0
+    failed_count = 0
     for member in members:
         # Check preferences
         prefs = await _get_member_preferences(db, member)
@@ -747,13 +760,17 @@ async def _process_single_notification(
 
         # Check if already sent
         existing = await db.execute(
-            select(SessionNotificationLog).where(
+            select(SessionNotificationLog)
+            .where(
                 SessionNotificationLog.session_id == notification.session_id,
                 SessionNotificationLog.member_id == UUID(member["id"]),
                 SessionNotificationLog.notification_type
                 == notification.notification_type,
                 SessionNotificationLog.sent_at >= notification.scheduled_for,
+                SessionNotificationLog.channel == "email",
+                SessionNotificationLog.delivery_status == "sent",
             )
+            .limit(1)
         )
         if existing.scalar_one_or_none():
             continue
@@ -780,16 +797,35 @@ async def _process_single_notification(
                 )
                 db.add(log_entry)
                 sent_count += 1
+            else:
+                failed_count += 1
 
         except Exception as e:
+            failed_count += 1
             logger.error(f"Failed to send reminder to {member['email']}: {e}")
 
     # Dispatch in-app notifications for reminders
-    reminder_member_ids = [m["id"] for m in members]
+    reminder_member_ids = []
+    for member in members:
+        logged = await db.execute(
+            select(SessionNotificationLog.id)
+            .where(
+                SessionNotificationLog.session_id == notification.session_id,
+                SessionNotificationLog.member_id == UUID(member["id"]),
+                SessionNotificationLog.notification_type
+                == notification.notification_type,
+                SessionNotificationLog.channel == "in_app",
+                SessionNotificationLog.delivery_status == "sent",
+                SessionNotificationLog.sent_at >= notification.scheduled_for,
+            )
+            .limit(1)
+        )
+        if not logged.scalar_one_or_none():
+            reminder_member_ids.append(member["id"])
     if reminder_member_ids:
         reminder_labels = {"24h": "tomorrow", "3h": "in 3 hours", "1h": "in 1 hour"}
         time_label = reminder_labels.get(reminder_type, f"in {reminder_type}")
-        await dispatch_notification(
+        dispatched = await dispatch_notification(
             type=f"session_reminder_{reminder_type}",
             category="sessions",
             member_ids=reminder_member_ids,
@@ -803,9 +839,29 @@ async def _process_single_notification(
             },
             calling_service="communications",
         )
+        if dispatched:
+            for member_id in reminder_member_ids:
+                db.add(
+                    SessionNotificationLog(
+                        session_id=notification.session_id,
+                        member_id=UUID(member_id),
+                        notification_type=notification.notification_type,
+                        channel="in_app",
+                        delivery_status="sent",
+                    )
+                )
+        else:
+            failed_count += len(reminder_member_ids)
 
-    notification.status = ScheduledNotificationStatus.SENT
-    notification.sent_at = utc_now()
+    notification.status = (
+        ScheduledNotificationStatus.PENDING
+        if failed_count
+        else ScheduledNotificationStatus.SENT
+    )
+    notification.error_message = (
+        f"{failed_count} delivery attempt(s) failed; retrying" if failed_count else None
+    )
+    notification.sent_at = None if failed_count else utc_now()
     logger.info(
         f"Sent {notification.notification_type.value} to {sent_count} members for session {notification.session_id}"
     )
@@ -929,7 +985,7 @@ async def _get_session_coaches(session: dict) -> list[dict]:
         calling_service="communications",
     )
     if resp.status_code != 200:
-        return []
+        raise RuntimeError("Could not load session coaches")
     coach_ids = resp.json()
 
     if not coach_ids:
@@ -962,7 +1018,7 @@ async def _get_session_attendees_and_coaches(
             session.get("id"),
             exc,
         )
-        booked_member_ids = []
+        raise RuntimeError("Could not load confirmed bookings") from exc
 
     unique_attendee_ids = [mid for mid in booked_member_ids if mid not in coach_id_set]
     session["confirmed_booking_member_ids"] = booked_member_ids

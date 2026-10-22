@@ -24,6 +24,9 @@ from services.members_service.schemas import (
     MemberResponse,
 )
 from services.members_service.services.member_service import calculate_club_expiry
+from services.members_service.services.membership_notifications import (
+    notify_membership_change,
+)
 
 from ._shared import _claim_entitlement_application
 
@@ -90,6 +93,13 @@ async def admin_grant_post_academy_club_bridge_by_auth(
         member.membership.post_academy_club_until.isoformat(),
     )
     normalize_member_tiers(member)
+    await notify_membership_change(
+        db,
+        member_id=member.id,
+        title="Your post-Academy Club access is confirmed",
+        body=f"Your post-Academy Club access has been granted through {member.membership.post_academy_club_until.strftime('%d %b %Y')}. Choose your Club swims and confirm individual bookings on your Club page.",
+        event_key=f"club-bridge:{member.id}:{member.membership.post_academy_club_until.isoformat()}",
+    )
     await db.commit()
     return (
         await db.execute(
@@ -191,6 +201,14 @@ async def admin_extend_club_membership_by_auth(
         )
 
     db.add(member)
+    if current_user.role != "service_role":
+        await notify_membership_change(
+            db,
+            member_id=member.id,
+            title="Your Club access has been extended",
+            body=f"Your Club access has been extended through {member.membership.club_paid_until.strftime('%d %b %Y')}. Your upcoming swims are available on your Club page.",
+            event_key=f"club-extension:{member.id}:{member.membership.club_paid_until.isoformat()}",
+        )
     await db.commit()
     await db.refresh(member)
 
@@ -343,6 +361,15 @@ async def admin_activate_club_membership_by_auth(
             member.membership.primary_tier = sorted_tiers[0]
 
     db.add(member)
+    # Payment-service activations already send the tier-activated confirmation.
+    if current_user.role != "service_role":
+        await notify_membership_change(
+            db,
+            member_id=member.id,
+            title="Your Club access is active",
+            body=f"Your Club access is active through {member.membership.club_paid_until.strftime('%d %b %Y')}. View your Club and upcoming swims in your account.",
+            event_key=f"club-activation:{member.id}:{member.membership.club_paid_until.isoformat()}",
+        )
     await db.commit()
     await db.refresh(member)
 

@@ -31,6 +31,7 @@ from services.members_service.services.membership_notifications import (
 
 from services.members_service.models import (
     Club,
+    Member,
     DayOfWeek,
     Pod,
     PodAssignment,
@@ -200,11 +201,66 @@ async def update_pod(
                 detail="max_size must be >= min_size",
             )
 
+    changed = {k for k, v in fields.items() if v is not None and getattr(pod, k) != v}
+    old_leads = {pod.pod_lead_id, pod.assistant_pod_lead_id}
     for k, v in fields.items():
         if v is not None:
             setattr(pod, k, v)
 
     pod.updated_at = utc_now()
+    notification_fields = {
+        "name",
+        "handle",
+        "pod_lead_id",
+        "assistant_pod_lead_id",
+        "default_session_day",
+        "default_session_time",
+        "default_session_duration_minutes",
+        "default_pool_id",
+    }
+    if changed & notification_fields:
+        recipients = set(
+            (
+                await db.execute(
+                    select(PodAssignment.member_id).where(
+                        PodAssignment.pod_id == pod.id, PodAssignment.left_at.is_(None)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if changed & {"pod_lead_id", "assistant_pod_lead_id"}:
+            recipients |= old_leads | {pod.pod_lead_id, pod.assistant_pod_lead_id}
+        day = getattr(pod.default_session_day, "value", pod.default_session_day)
+        schedule = f"{str(day).title() if day else 'See your Club page'}"
+        if pod.default_session_time:
+            schedule += f" at {pod.default_session_time.strftime('%H:%M')} WAT"
+        body = f"Your pod, {pod.handle or pod.name}, has updated details.\nRegular swim: {schedule}."
+        if changed & {"pod_lead_id", "assistant_pod_lead_id"}:
+            lead = await db.get(Member, pod.pod_lead_id)
+            assistant = (
+                await db.get(Member, pod.assistant_pod_lead_id)
+                if pod.assistant_pod_lead_id
+                else None
+            )
+            body += f"\nPod lead: {lead.first_name} {lead.last_name}." if lead else ""
+            body += (
+                f" Assistant: {assistant.first_name} {assistant.last_name}."
+                if assistant
+                else ""
+            )
+        if "default_pool_id" in changed:
+            body += "\nThe pool location has changed. Please check the updated venue on your Club page."
+        body += "\nCheck your upcoming swims for the current session details."
+        for member_id in recipients - {None}:
+            await notify_membership_change(
+                db,
+                member_id=member_id,
+                title="Your pod details have changed",
+                body=body,
+                event_key=f"pod-updated:{pod.id}:{pod.updated_at.isoformat()}:{member_id}",
+            )
     try:
         await db.commit()
     except IntegrityError as exc:
@@ -244,15 +300,16 @@ async def dissolve_pod(db: AsyncSession, *, pod_id: uuid.UUID) -> Pod:
     for a in assignments:
         a.left_at = now
 
-    await db.commit()
-    await db.refresh(pod)
     for assignment in assignments:
         await notify_membership_change(
             db,
             member_id=assignment.member_id,
             title="Your pod has closed",
             body=f"{pod.handle or pod.name} has closed. Please choose another available pod or contact the SwimBuddz team for help.",
+            event_key=f"pod-closed:{pod.id}:{assignment.id}",
         )
+    await db.commit()
+    await db.refresh(pod)
     return pod
 
 
@@ -323,6 +380,14 @@ async def add_member(
     )
     db.add(assignment)
     try:
+        await db.flush()
+        await notify_membership_change(
+            db,
+            member_id=member_id,
+            title="Your pod assignment is confirmed",
+            body=f"You have joined {pod.handle or pod.name}. View your Club page for your pod and upcoming swims.",
+            event_key=f"pod-joined:{assignment.id}",
+        )
         await db.commit()
     except IntegrityError:
         # Partial-unique index race — another request just added them.
@@ -333,12 +398,6 @@ async def add_member(
         ) from None
 
     await db.refresh(assignment)
-    await notify_membership_change(
-        db,
-        member_id=member_id,
-        title="Your pod assignment is confirmed",
-        body=f"You have joined {pod.handle or pod.name}. View your Club page for your pod and upcoming swims.",
-    )
     return assignment
 
 
@@ -364,15 +423,16 @@ async def remove_member(
     if assignment is None:
         return None
     assignment.left_at = utc_now()
-    await db.commit()
-    await db.refresh(assignment)
     pod = await db.get(Pod, pod_id)
     await notify_membership_change(
         db,
         member_id=member_id,
         title="Your pod membership has ended",
         body=f"You have left {pod.handle or pod.name if pod else 'your pod'}. You can choose another available pod from your Club page.",
+        event_key=f"pod-left:{assignment.id}",
     )
+    await db.commit()
+    await db.refresh(assignment)
     return assignment
 
 
@@ -442,15 +502,17 @@ async def transfer_member(
         assigned_by_id=actor_id,
     )
     db.add(new_assignment)
-    await db.commit()
-    await db.refresh(src)
-    await db.refresh(new_assignment)
+    await db.flush()
     await notify_membership_change(
         db,
         member_id=member_id,
         title="Your pod has changed",
         body=f"Your pod has changed from {source.handle or source.name} to {target.handle or target.name}. View your Club page for your new pod and upcoming swims.",
+        event_key=f"pod-transfer:{new_assignment.id}",
     )
+    await db.commit()
+    await db.refresh(src)
+    await db.refresh(new_assignment)
     return src, new_assignment
 
 

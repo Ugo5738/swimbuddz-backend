@@ -71,7 +71,7 @@ async def test_daily_prompt_passes_shared_context_to_template(monkeypatch):
     monkeypatch.setattr(
         notifications,
         "dispatch_notification",
-        AsyncMock(return_value=None),
+        AsyncMock(return_value={"dispatched": 1}),
     )
 
     sent = await notifications._send_booking_prompt_for_session(
@@ -153,7 +153,7 @@ async def test_timed_reminder_passes_shared_context_to_template(monkeypatch):
     monkeypatch.setattr(
         notifications,
         "dispatch_notification",
-        AsyncMock(return_value=None),
+        AsyncMock(return_value={"dispatched": 1}),
     )
 
     await notifications._process_single_notification(db, notification)

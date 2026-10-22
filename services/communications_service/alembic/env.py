@@ -43,6 +43,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 # Only migrate tables owned by this service
 SERVICE_TABLES = {
+    "operational_email_outbox",
     "announcements",
     "announcement_reads",
     "announcement_category_configs",
