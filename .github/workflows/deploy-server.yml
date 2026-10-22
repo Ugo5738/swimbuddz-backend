@@ -71,7 +71,13 @@ jobs:
             fi
             git fetch origin "$DEPLOY_BRANCH"
             # Use the pinned, tested deployment commit, preserving local changes.
-            bash scripts/deployment/sync-repository.sh
+            # Bootstrap from the fetched release; the old checkout may not have this script.
+            SYNC_SCRIPT="$(mktemp)"
+            trap 'rm -f "$SYNC_SCRIPT"' EXIT
+            git show "origin/$DEPLOY_BRANCH:scripts/deployment/sync-repository.sh" > "$SYNC_SCRIPT"
+            bash "$SYNC_SCRIPT"
+            rm -f "$SYNC_SCRIPT"
+            trap - EXIT
 
             chmod +x scripts/deployment/*.sh
             ./scripts/deployment/deploy-production.sh
