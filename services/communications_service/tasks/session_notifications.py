@@ -13,7 +13,7 @@ from typing import Optional
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.config import get_settings
@@ -165,6 +165,7 @@ def _is_unpaid_community_prospect(member: dict, now: datetime) -> bool:
 async def schedule_session_notifications(
     session_id: UUID,
     is_short_notice: bool = False,
+    session_data: dict | None = None,
 ) -> None:
     """
     Schedule reminder notifications for a newly published session.
@@ -181,7 +182,7 @@ async def schedule_session_notifications(
     async for db in get_async_db():
         try:
             # Get session details via sessions-service
-            session = await _get_session_data(session_id)
+            session = session_data or await _get_session_data(session_id)
             if not session:
                 logger.error(
                     f"Session {session_id} not found for notification scheduling"
@@ -234,9 +235,7 @@ async def schedule_session_notifications(
                     )
                 )
 
-            # Bulk create
-            for notification in notifications_to_create:
-                db.add(notification)
+            await _upsert_session_reminders(db, session_id, notifications_to_create)
 
             await db.commit()
 
@@ -250,6 +249,84 @@ async def schedule_session_notifications(
         finally:
             await db.close()
             break
+
+
+async def _upsert_session_reminders(db, session_id, candidates) -> None:
+    # Publication and hourly recovery can race; serialize per session without
+    # requiring a schema change or creating duplicate scheduled jobs.
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"session-reminders:{session_id}"},
+    )
+    existing = list(
+        (
+            await db.execute(
+                select(ScheduledNotification).where(
+                    ScheduledNotification.session_id == session_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for candidate in candidates:
+        same_type = [
+            row
+            for row in existing
+            if row.notification_type == candidate.notification_type
+        ]
+        if any(
+            row.status == ScheduledNotificationStatus.SENT
+            and row.scheduled_for == candidate.scheduled_for
+            for row in same_type
+        ):
+            continue
+        reusable = next(
+            (
+                row
+                for row in same_type
+                if row.status != ScheduledNotificationStatus.SENT
+            ),
+            None,
+        )
+        if reusable:
+            reusable.scheduled_for = candidate.scheduled_for
+            reusable.status = ScheduledNotificationStatus.PENDING
+            reusable.error_message = None
+            reusable.is_short_notice = bool(candidate.is_short_notice)
+        else:
+            db.add(candidate)
+        # Clean up stale pending duplicates left by earlier publish calls.
+        for row in same_type:
+            if (
+                row is not reusable
+                and row.status == ScheduledNotificationStatus.PENDING
+            ):
+                row.status = ScheduledNotificationStatus.CANCELLED
+
+
+async def reconcile_session_reminders(window_days: int = 14) -> dict[str, int]:
+    """Recover missed publish events; schedule reminders without emailing now."""
+    now = utc_now()
+    response = await internal_get(
+        service_url=get_settings().SESSIONS_SERVICE_URL,
+        path="/internal/sessions/scheduled",
+        calling_service="communications",
+        params={
+            "start_date": now.isoformat(),
+            "end_date": (now + timedelta(days=window_days)).isoformat(),
+        },
+    )
+    response.raise_for_status()
+    sessions = response.json()
+    for session in sessions:
+        await schedule_session_notifications(
+            UUID(session["id"]),
+            is_short_notice=(_parse_session_start(session) - now).total_seconds()
+            < SHORT_NOTICE_THRESHOLD_HOURS * 3600,
+            session_data=session,
+        )
+    return {"sessions": len(sessions)}
 
 
 async def send_session_announcement(
@@ -675,6 +752,7 @@ async def _process_single_notification(
                 SessionNotificationLog.member_id == UUID(member["id"]),
                 SessionNotificationLog.notification_type
                 == notification.notification_type,
+                SessionNotificationLog.sent_at >= notification.scheduled_for,
             )
         )
         if existing.scalar_one_or_none():

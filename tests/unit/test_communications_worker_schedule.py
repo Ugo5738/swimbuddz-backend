@@ -19,3 +19,10 @@ def test_booking_prompts_run_tuesday_thursday_and_friday():
     assert job.weekday == {1, 3, 4}
     assert job.hour == 8  # 09:00 WAT
     assert job.minute == 0
+
+
+def test_reminder_recovery_runs_hourly_and_at_startup():
+    job = _cron_job("cron:task_reconcile_session_reminders")
+    assert job.minute == 10
+    assert job.hour is None
+    assert job.run_at_startup is True
