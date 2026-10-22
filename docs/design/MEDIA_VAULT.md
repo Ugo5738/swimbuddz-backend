@@ -29,9 +29,13 @@ accepts the file only when its exact byte length matches the declaration.
 
 The API process never receives or buffers the original bytes. HEIC, HEIF, MOV,
 MP4, M4V and normal phone image/video formats are accepted. The original object
-is immutable from the product's perspective and is never automatically
-transcoded. Curators may explicitly request a smaller review proxy; this writes
-to `vault-derivatives/` and leaves the original untouched.
+is immutable from the product's perspective and is never replaced or
+transcoded. After upload, a bounded media worker automatically prepares a
+browser-ready H.264/AAC review proxy and thumbnail under `vault-derivatives/`.
+The original remains untouched. A cron backfill queues at most one missing
+historical video preview at a time, with bounded retries. Curators may still
+request a manual rebuild for a broken proxy. This does not publish or change
+any access permissions.
 
 ## Review, consent and publication
 
