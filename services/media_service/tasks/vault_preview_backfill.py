@@ -85,7 +85,9 @@ async def enqueue_missing_vault_video_preview(redis_pool) -> dict:
                 attempts < MAX_ATTEMPTS,
                 or_(
                     status.is_(None),
-                    and_(status == "failed", or_(queued_at.is_(None), queued_at < retry)),
+                    and_(
+                        status == "failed", or_(queued_at.is_(None), queued_at < retry)
+                    ),
                     and_(
                         status.in_(["pending", "processing"]),
                         queued_at.is_not(None),
@@ -103,7 +105,9 @@ async def enqueue_missing_vault_video_preview(redis_pool) -> dict:
         metadata = dict(item.metadata_info or {})
         if not preview_needs_backfill(metadata, now):
             return {"status": "skipped"}
-        metadata["auto_preview_attempts"] = int(metadata.get("auto_preview_attempts") or 0) + 1
+        metadata["auto_preview_attempts"] = (
+            int(metadata.get("auto_preview_attempts") or 0) + 1
+        )
         metadata["auto_preview_queued_at"] = now.isoformat()
         metadata["proxy_status"] = "pending"
         item.metadata_info = metadata

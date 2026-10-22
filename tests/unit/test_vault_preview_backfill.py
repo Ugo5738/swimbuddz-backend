@@ -30,7 +30,9 @@ def test_stale_auto_job_is_recovered():
     now = datetime.now(timezone.utc)
     metadata = {
         "proxy_status": "processing",
-        "auto_preview_queued_at": (now - STALE_AFTER - timedelta(minutes=1)).isoformat(),
+        "auto_preview_queued_at": (
+            now - STALE_AFTER - timedelta(minutes=1)
+        ).isoformat(),
         "auto_preview_attempts": 1,
     }
     assert preview_needs_backfill(metadata, now)
@@ -43,7 +45,9 @@ def test_failed_job_respects_retry_window():
         "auto_preview_queued_at": (now - RETRY_AFTER / 2).isoformat(),
     }
     assert not preview_needs_backfill(metadata, now)
-    metadata["auto_preview_queued_at"] = (now - RETRY_AFTER - timedelta(seconds=1)).isoformat()
+    metadata["auto_preview_queued_at"] = (
+        now - RETRY_AFTER - timedelta(seconds=1)
+    ).isoformat()
     assert preview_needs_backfill(metadata, now)
 
 
