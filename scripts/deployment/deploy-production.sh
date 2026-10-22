@@ -30,16 +30,8 @@ require_command docker
 mkdir -p "$DEPLOY_PATH"
 cd "$DEPLOY_PATH"
 
-log "Synchronising repository branch: $DEPLOY_BRANCH"
-if [ ! -d .git ]; then
-  git clone --branch "$DEPLOY_BRANCH" "$REPO_URL" .
-else
-  git remote set-url origin "$REPO_URL"
-  git fetch origin "$DEPLOY_BRANCH"
-  git checkout "$DEPLOY_BRANCH"
-  git reset --hard "origin/$DEPLOY_BRANCH"
-fi
-
+# Repository synchronization is performed once by the GitHub Actions entrypoint.
+# Do not reset or re-checkout the production tree while services are deploying.
 [ -f .env.prod.gpg ] || die "Missing .env.prod.gpg in the repository."
 
 log "Decrypting production environment"
