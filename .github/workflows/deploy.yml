@@ -311,6 +311,9 @@ jobs:
   # DEPLOY TO PRODUCTION SERVER
   # ------------------------------------------------------------------
   deploy:
+    concurrency:
+      group: swimbuddz-production-deployment
+      cancel-in-progress: false
     environment: production
     needs: [build-and-push]
     runs-on: ubuntu-latest
@@ -327,6 +330,7 @@ jobs:
           LE_EMAIL: ${{ secrets.LE_EMAIL }}
           REPO_URL: ${{ secrets.REPO_URL }}
           DEPLOY_BRANCH: "main"
+          DEPLOY_SHA: ${{ github.sha }}
           API_HOST: "api.swimbuddz.com"
           START_WORKERS: "true"
 
@@ -336,7 +340,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
 
-          envs: GPG_PASSPHRASE,DOCKER_USERNAME,DOCKER_PASSWORD,LE_EMAIL,REPO_URL,DEPLOY_BRANCH,API_HOST,START_WORKERS
+          envs: GPG_PASSPHRASE,DOCKER_USERNAME,DOCKER_PASSWORD,LE_EMAIL,REPO_URL,DEPLOY_BRANCH,DEPLOY_SHA,API_HOST,START_WORKERS
 
           script: |
             set -Eeuo pipefail
@@ -349,9 +353,10 @@ jobs:
               git clone --branch "$DEPLOY_BRANCH" "$REPO_URL" .
             else
               git remote set-url origin "$REPO_URL"
-              git fetch origin "$DEPLOY_BRANCH"
-              git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
             fi
+            git fetch origin "$DEPLOY_BRANCH"
+            # Use the pinned, tested deployment commit, preserving local changes.
+            bash scripts/deployment/sync-repository.sh
 
             chmod +x scripts/deployment/*.sh
             ./scripts/deployment/deploy-production.sh
