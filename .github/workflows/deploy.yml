@@ -91,6 +91,17 @@ jobs:
         run: |
           pytest tests/unit/ -v
 
+      - name: Check dashboard concurrency and safe gateway retries
+        run: pytest services/gateway_service/app/tests/ -v
+
+      - name: Record synthetic dashboard orchestration benchmark
+        run: PYTHONPATH=. python scripts/performance/benchmark_dashboards.py --output dashboard-benchmark.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-orchestration-benchmark
+          path: dashboard-benchmark.json
+
       - name: Run guest booking PostgreSQL tests
         run: |
           GUEST_TEST_DATABASE_URL="$DATABASE_SESSION_URL" \

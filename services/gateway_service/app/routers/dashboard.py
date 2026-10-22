@@ -13,6 +13,7 @@ together. Two service-boundary rules govern the shape of the code here:
      plus an ``errors`` marker so the frontend can render a partial UI.
 """
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -173,8 +174,17 @@ async def get_member_dashboard(
 
     # 2. Upcoming sessions — graceful.
     # TODO: Add limit/filter params to sessions service
-    sessions_data, sessions_err = await _fetch_optional(
-        clients.sessions_client, "/sessions/", "Sessions"
+    (
+        (sessions_data, sessions_err),
+        (announcements_data, announcements_err),
+    ) = await asyncio.gather(
+        _fetch_optional(clients.sessions_client, "/sessions/", "Sessions"),
+        _fetch_optional(
+            clients.communications_client,
+            "/announcements/",
+            "Communications",
+            member_headers,
+        ),
     )
     if sessions_err:
         errors["sessions"] = sessions_err
@@ -185,12 +195,6 @@ async def get_member_dashboard(
     recent_attendance: List[Dict[str, Any]] = []
 
     # 4. Latest announcements — graceful.
-    announcements_data, announcements_err = await _fetch_optional(
-        clients.communications_client,
-        "/announcements/",
-        "Communications",
-        member_headers,
-    )
     if announcements_err:
         errors["announcements"] = announcements_err
     latest_announcements = (announcements_data or [])[:3]
@@ -220,26 +224,31 @@ async def get_admin_dashboard_stats(
 
     errors: Dict[str, str] = {}
 
-    member_stats, err = await _fetch_optional(
-        clients.members_client, "/members/stats", "Members", service_headers
+    member_result, session_result, announcement_result = await asyncio.gather(
+        _fetch_optional(
+            clients.members_client, "/members/stats", "Members", service_headers
+        ),
+        _fetch_optional(
+            clients.sessions_client, "/sessions/stats", "Sessions", service_headers
+        ),
+        _fetch_optional(
+            clients.communications_client,
+            "/announcements/stats",
+            "Communications",
+            service_headers,
+        ),
     )
+    member_stats, err = member_result
     if err:
         errors["members"] = err
         member_stats = {}
 
-    session_stats, err = await _fetch_optional(
-        clients.sessions_client, "/sessions/stats", "Sessions", service_headers
-    )
+    session_stats, err = session_result
     if err:
         errors["sessions"] = err
         session_stats = {}
 
-    announcement_stats, err = await _fetch_optional(
-        clients.communications_client,
-        "/announcements/stats",
-        "Communications",
-        service_headers,
-    )
+    announcement_stats, err = announcement_result
     if err:
         errors["announcements"] = err
         announcement_stats = {}
