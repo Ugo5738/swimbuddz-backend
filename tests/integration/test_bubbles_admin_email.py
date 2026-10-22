@@ -39,7 +39,9 @@ async def test_admin_bubbles_email_retries_and_is_idempotent(db_session, monkeyp
     await db_session.commit()
 
     send_template = AsyncMock(side_effect=[False, True])
-    monkeypatch.setattr(tasks.get_settings(), "ADMIN_EMAILS", ["ops@example.com"])
+    monkeypatch.setattr(
+        tasks.get_settings(), "PAYMENT_NOTIFICATION_EMAILS", ["ops@example.com"]
+    )
     monkeypatch.setattr(
         tasks,
         "get_email_client",
@@ -68,5 +70,47 @@ async def test_admin_bubbles_email_retries_and_is_idempotent(db_session, monkeyp
     assert third == {"payments": 0, "sent": 0, "failed": 0}
     assert send_template.await_count == 2
     payload = send_template.await_args.kwargs
-    assert payload["template_type"] == "admin_bubbles_payment_received"
+    assert payload["template_type"] == "admin_payment_received"
     assert payload["template_data"]["bubbles_used"] == 35
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "cash,bubbles,value,method",
+    [(5000, 0, 0, "cash"), (1500, 35, 3500, "Cash + Bubbles")],
+)
+async def test_cash_and_mixed_receipts_do_not_wait_for_fulfillment(
+    db_session, monkeypatch, cash, bubbles, value, method
+):
+    payment = Payment(
+        reference=f"PAY-ALERT-{cash}",
+        member_auth_id="auth-alert",
+        payer_email="member@example.com",
+        purpose=PaymentPurpose.SESSION_BOOKING,
+        amount=cash,
+        currency="NGN",
+        status=PaymentStatus.PAID,
+        provider="offline",
+        payment_method="cash",
+        paid_at=utc_now(),
+        payment_metadata={"bubbles_to_apply": bubbles, "bubbles_value_ngn": value},
+        admin_payment_notification_required=True,
+    )
+    db_session.add(payment)
+    await db_session.commit()
+    send = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        tasks.get_settings(), "PAYMENT_NOTIFICATION_EMAILS", ["ops@example.com"]
+    )
+    monkeypatch.setattr(
+        tasks, "get_email_client", lambda: SimpleNamespace(send_template=send)
+    )
+    result = await tasks._deliver_pending_admin_payment_emails(db_session)
+    assert result == {"payments": 1, "sent": 1, "failed": 0}
+    data = send.await_args.kwargs["template_data"]
+    assert data["amount"] == cash + value
+    assert data["cash_amount"] == cash
+    assert data["payment_method"] == method
+    assert data["fulfillment_status"] == "Pending"
+    assert send.await_args.kwargs["to_email"] == "ops@example.com"

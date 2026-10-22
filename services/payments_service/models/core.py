@@ -103,8 +103,8 @@ class Payment(Base):
     )
     entitlement_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # True only for new payments settled entirely with Bubbles. The payments
-    # worker creates one durable admin-email log per configured recipient.
+    # Set when money/Bubbles is received, independently of fulfillment. The
+    # worker creates one durable email log per payment-alert recipient.
     admin_payment_notification_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

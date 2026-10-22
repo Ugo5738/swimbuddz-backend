@@ -356,6 +356,7 @@ class VaultMediaResponse(BaseModel):
     original_filename: Optional[str]
     content_type: Optional[str]
     size_bytes: Optional[int]
+    duration_seconds: Optional[float] = None
     captured_at: Optional[datetime]
     processing_status: str
     review_status: str

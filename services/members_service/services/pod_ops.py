@@ -25,6 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
+from services.members_service.services.membership_notifications import (
+    notify_membership_change,
+)
 
 from services.members_service.models import (
     Club,
@@ -237,11 +240,19 @@ async def dissolve_pod(db: AsyncSession, *, pod_id: uuid.UUID) -> Pod:
             PodAssignment.left_at.is_(None),
         )
     )
-    for a in result.scalars().all():
+    assignments = list(result.scalars().all())
+    for a in assignments:
         a.left_at = now
 
     await db.commit()
     await db.refresh(pod)
+    for assignment in assignments:
+        await notify_membership_change(
+            db,
+            member_id=assignment.member_id,
+            title="Your pod has closed",
+            body=f"{pod.handle or pod.name} has closed. Please choose another available pod or contact the SwimBuddz team for help.",
+        )
     return pod
 
 
@@ -322,6 +333,12 @@ async def add_member(
         ) from None
 
     await db.refresh(assignment)
+    await notify_membership_change(
+        db,
+        member_id=member_id,
+        title="Your pod assignment is confirmed",
+        body=f"You have joined {pod.handle or pod.name}. View your Club page for your pod and upcoming swims.",
+    )
     return assignment
 
 
@@ -349,6 +366,13 @@ async def remove_member(
     assignment.left_at = utc_now()
     await db.commit()
     await db.refresh(assignment)
+    pod = await db.get(Pod, pod_id)
+    await notify_membership_change(
+        db,
+        member_id=member_id,
+        title="Your pod membership has ended",
+        body=f"You have left {pod.handle or pod.name if pod else 'your pod'}. You can choose another available pod from your Club page.",
+    )
     return assignment
 
 
@@ -421,6 +445,12 @@ async def transfer_member(
     await db.commit()
     await db.refresh(src)
     await db.refresh(new_assignment)
+    await notify_membership_change(
+        db,
+        member_id=member_id,
+        title="Your pod has changed",
+        body=f"Your pod has changed from {source.handle or source.name} to {target.handle or target.name}. View your Club page for your new pod and upcoming swims.",
+    )
     return src, new_assignment
 
 

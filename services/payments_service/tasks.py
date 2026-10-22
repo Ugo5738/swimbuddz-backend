@@ -249,12 +249,12 @@ async def retry_failed_entitlement_fulfillment() -> None:
 
 
 async def _deliver_pending_admin_payment_emails(db) -> dict[str, int]:
-    """Deliver per-recipient admin receipts for new all-Bubbles payments."""
+    """Deliver durable receipts for cash, Bubbles, and mixed payments."""
     sending_lease_cutoff = utc_now() - timedelta(minutes=30)
     recipients = sorted(
         {
             email.strip().lower()
-            for email in (get_settings().ADMIN_EMAILS or [])
+            for email in (get_settings().PAYMENT_NOTIFICATION_EMAILS or [])
             if email and email.strip()
         }
     )
@@ -268,7 +268,6 @@ async def _deliver_pending_admin_payment_emails(db) -> dict[str, int]:
                 .where(
                     Payment.admin_payment_notification_required.is_(True),
                     Payment.status == PaymentStatus.PAID,
-                    Payment.entitlement_applied_at.is_not(None),
                 )
                 .order_by(Payment.created_at.asc())
                 .limit(200)
@@ -301,7 +300,21 @@ async def _deliver_pending_admin_payment_emails(db) -> dict[str, int]:
         metadata = payment.payment_metadata or {}
         bubbles_used = int(metadata.get("bubbles_to_apply") or 0)
         bubbles_value_ngn = float(metadata.get("bubbles_value_ngn") or 0)
-        total_ngn = float(metadata.get("original_amount") or bubbles_value_ngn)
+        cash_amount = float(payment.amount or 0)
+        bubbles_settled = bool(
+            metadata.get("wallet_transaction_id") or payment.entitlement_applied_at
+        )
+        if cash_amount <= 0 and bubbles_used > 0 and not bubbles_settled:
+            # A PAID row can exist while wallet capture is still retrying.
+            continue
+        total_ngn = cash_amount + bubbles_value_ngn
+        payment_method = (
+            "Cash + Bubbles"
+            if cash_amount > 0 and bubbles_used > 0
+            else "Bubbles"
+            if bubbles_used > 0
+            else payment.payment_method or payment.provider or "Cash"
+        )
         for recipient in recipients:
             key = (payment.id, recipient)
             log = logs_by_key.get(key)
@@ -323,14 +336,15 @@ async def _deliver_pending_admin_payment_emails(db) -> dict[str, int]:
                 logs_by_key[key] = log
 
             log.delivery_status = "sending"
-            log.attempt_count += 1
+            # SQLAlchemy column defaults apply at INSERT, not construction.
+            log.attempt_count = (log.attempt_count or 0) + 1
             log.last_attempt_at = utc_now()
             log.error_message = None
             await db.commit()
 
             try:
                 success = await email_client.send_template(
-                    template_type="admin_bubbles_payment_received",
+                    template_type="admin_payment_received",
                     to_email=recipient,
                     template_data={
                         "payment_reference": payment.reference,
@@ -340,6 +354,18 @@ async def _deliver_pending_admin_payment_emails(db) -> dict[str, int]:
                         "currency": payment.currency,
                         "bubbles_used": bubbles_used,
                         "bubbles_value_ngn": bubbles_value_ngn,
+                        "bubbles_status": (
+                            "Collected"
+                            if bubbles_settled
+                            else "Pending"
+                            if bubbles_used
+                            else "Not used"
+                        ),
+                        "cash_amount": cash_amount,
+                        "payment_method": payment_method,
+                        "fulfillment_status": (
+                            "Applied" if payment.entitlement_applied_at else "Pending"
+                        ),
                         "paid_at": (
                             payment.paid_at.isoformat() if payment.paid_at else ""
                         ),
@@ -358,7 +384,7 @@ async def _deliver_pending_admin_payment_emails(db) -> dict[str, int]:
                 log.error_message = str(exc)[:2000]
                 failed += 1
                 logger.exception(
-                    "Admin Bubbles receipt failed for payment=%s recipient=%s",
+                    "Admin payment receipt failed for payment=%s recipient=%s",
                     payment.reference,
                     recipient,
                 )
@@ -375,11 +401,11 @@ async def _deliver_pending_admin_payment_emails(db) -> dict[str, int]:
 
 
 async def send_pending_admin_payment_emails() -> dict[str, int]:
-    """Worker entry point for durable all-Bubbles admin payment receipts."""
+    """Worker entry point for durable admin payment receipts."""
     async with AsyncSessionLocal() as db:
         result = await _deliver_pending_admin_payment_emails(db)
     if result["sent"] or result["failed"]:
-        logger.info("Admin Bubbles payment email delivery: %s", result)
+        logger.info("Admin payment email delivery: %s", result)
     return result
 
 

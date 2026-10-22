@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["local", "development", "production"] = "local"
     LOG_LEVEL: str = "INFO"
     ADMIN_EMAIL: str = "admin@admin.com"
+    PAYMENT_NOTIFICATION_EMAILS: list[str] = ["contactugodaniels@gmail.com"]
     TIMEZONE: str = "Africa/Lagos"
 
     # Database

@@ -419,7 +419,12 @@ async def _send_booking_prompt_for_session(
         pref = prefs_map.get(member.get("auth_id"))
         if not _should_send_session_announcement(session, pref):
             continue
-        if not _has_paid_session_access(member, session_type, now):
+        # Club recipients already passed the authoritative dated enrollment
+        # check above. Legacy paid-until fields can be empty for both prepaid
+        # quarter and transition-per-session members.
+        if session_type != "club" and not _has_paid_session_access(
+            member, session_type, now
+        ):
             if (
                 send_prospect_invites
                 and session_type == "community"
@@ -882,6 +887,7 @@ async def _get_session_attendees_and_coaches(
         booked_member_ids = []
 
     unique_attendee_ids = [mid for mid in booked_member_ids if mid not in coach_id_set]
+    session["confirmed_booking_member_ids"] = booked_member_ids
     attendees = (
         await get_members_bulk(unique_attendee_ids, calling_service="communications")
         if unique_attendee_ids

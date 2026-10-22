@@ -7,6 +7,7 @@ automatically; playable video proxies remain curator-requested.
 from __future__ import annotations
 
 import subprocess
+import math
 import tempfile
 import uuid
 from pathlib import Path
@@ -19,6 +20,31 @@ from services.media_service.models import MediaItem, MediaType
 from services.media_service.services.storage import storage_service
 
 logger = get_logger(__name__)
+
+
+def _probe_duration(input_path: str) -> float | None:
+    """Read duration without decoding or changing the original video."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                input_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        duration = float(result.stdout.strip()) if result.returncode == 0 else 0
+        return duration if math.isfinite(duration) and duration > 0 else None
+    except (ValueError, OSError, subprocess.TimeoutExpired):
+        logger.warning("Could not read vault video duration")
+        return None
 
 
 def _run_video_proxy(input_path: str, proxy_path: str) -> None:
@@ -97,7 +123,14 @@ async def build_vault_preview(
             if is_video and generate_video_proxy
             else item.thumbnail_object_key
         )
-        if derivative_exists and not (is_video and force_video_proxy):
+        needs_duration = is_video and not (item.metadata_info or {}).get(
+            "duration_seconds"
+        )
+        if (
+            derivative_exists
+            and not needs_duration
+            and not (is_video and force_video_proxy)
+        ):
             return {"status": "ready"}
         metadata = dict(item.metadata_info or {})
         status_key = (
@@ -112,6 +145,7 @@ async def build_vault_preview(
         original_filename = item.original_filename
         existing_proxy_key = item.proxy_object_key
         existing_thumbnail_key = item.thumbnail_object_key
+        duration_seconds = None
 
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -127,6 +161,7 @@ async def build_vault_preview(
             thumbnail_key = existing_thumbnail_key
 
             if media_type == MediaType.VIDEO:
+                duration_seconds = _probe_duration(input_path)
                 if not thumbnail_key:
                     thumbnail_path = str(Path(temp_dir) / "thumbnail.jpg")
                     _run_video_thumbnail(input_path, thumbnail_path)
@@ -198,6 +233,8 @@ async def build_vault_preview(
             if thumbnail_key:
                 metadata["thumbnail_status"] = "ready"
             metadata["original_preserved"] = True
+            if duration_seconds is not None:
+                metadata["duration_seconds"] = duration_seconds
             item.metadata_info = metadata
             await db.commit()
         return {"status": "ready"}

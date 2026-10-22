@@ -135074,6 +135074,17 @@
             ],
             "title": "Size Bytes"
           },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
           "captured_at": {
             "anyOf": [
               {

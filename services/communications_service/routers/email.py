@@ -615,6 +615,21 @@ async def send_templated_email(
                 currency=d.get("currency", "NGN"),
             )
         ),
+        "admin_payment_received": lambda d: payments.send_admin_payment_received_email(
+            to_email=request.to_email,
+            payment_reference=d.get("payment_reference", ""),
+            member_email=d.get("member_email", ""),
+            purpose=d.get("purpose", ""),
+            amount=d.get("amount", 0),
+            currency=d.get("currency", "NGN"),
+            cash_amount=d.get("cash_amount", 0),
+            payment_method=d.get("payment_method", ""),
+            bubbles_used=d.get("bubbles_used", 0),
+            bubbles_value_ngn=d.get("bubbles_value_ngn", 0),
+            paid_at=d.get("paid_at", ""),
+            fulfillment_status=d.get("fulfillment_status", "Pending"),
+            bubbles_status=d.get("bubbles_status", "Not used"),
+        ),
         # --- Session templates ---
         "guest_pass_confirmation": lambda d: guest_passes.send_guest_pass_confirmation_email(
             to_email=request.to_email,
