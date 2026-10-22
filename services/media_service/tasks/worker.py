@@ -60,7 +60,7 @@ async def task_build_vault_preview(
     generate_video_proxy: bool = True,
     force_video_proxy: bool = False,
 ):
-    """Generate a thumbnail, and a video proxy only when requested."""
+    """Generate a thumbnail and optional browser-ready video proxy."""
     from services.media_service.tasks.vault_previews import build_vault_preview
 
     return await build_vault_preview(
@@ -103,6 +103,15 @@ async def task_sync_session_vaults(ctx: dict):
     return await sync_session_vaults()
 
 
+async def task_backfill_vault_video_previews(ctx: dict):
+    """Slowly repair historical uploads that do not have playable proxies."""
+    from services.media_service.tasks.vault_preview_backfill import (
+        enqueue_missing_vault_video_preview,
+    )
+
+    return await enqueue_missing_vault_video_preview(ctx["redis"])
+
+
 # ── Worker configuration ──
 
 
@@ -124,6 +133,7 @@ class WorkerSettings:
         task_apply_audio,
         task_build_vault_export,
         task_build_vault_preview,
+        task_backfill_vault_video_previews,
         task_build_member_vault_clip,
         task_cleanup_member_vault_clips,
         task_cleanup_vault_exports,
@@ -136,4 +146,5 @@ class WorkerSettings:
         cron(task_cleanup_member_vault_clips, hour={3}, minute=0),
         cron(task_reconcile_vault_bandwidth, minute={0, 15, 30, 45}),
         cron(task_sync_session_vaults, minute=5),
+        cron(task_backfill_vault_video_previews, minute={2, 17, 32, 47}),
     ]

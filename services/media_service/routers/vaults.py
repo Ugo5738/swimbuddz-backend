@@ -325,13 +325,13 @@ async def _media_response(item: MediaItem) -> VaultMediaResponse:
 
 
 async def _enqueue_default_thumbnail(item: MediaItem) -> None:
-    """Queue a small review thumbnail without modifying the original."""
+    """Queue a thumbnail and (for videos) a browser-ready proxy after upload."""
 
     pool = await _get_redis_pool()
     await pool.enqueue_job(
         "task_build_vault_preview",
         str(item.id),
-        False,
+        item.media_type == MediaType.VIDEO,
         _queue_name="arq:media",
     )
 
@@ -719,6 +719,7 @@ async def _complete_upload(
         "original_preserved": True,
         "auto_transcoded": False,
         "thumbnail_status": "pending",
+        **({"proxy_status": "pending"} if item.media_type == MediaType.VIDEO else {}),
     }
     batch.completed_files += 1
     batch.completed_bytes += actual_size
@@ -762,6 +763,8 @@ async def _complete_upload(
         logger.exception("Could not queue default vault thumbnail for %s", item.id)
         metadata = dict(item.metadata_info or {})
         metadata["thumbnail_status"] = "failed"
+        if item.media_type == MediaType.VIDEO:
+            metadata["proxy_status"] = "failed"
         item.metadata_info = metadata
         await db.commit()
     if batch.status == "complete":

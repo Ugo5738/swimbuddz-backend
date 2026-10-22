@@ -2,6 +2,31 @@
 
 Comprehensive deployment guide for the SwimBuddz microservices backend.
 
+## Production release workflow
+
+Make application and deployment changes on a feature branch, validate them in CI,
+and merge into `develop`. Promote the tested `develop` changes to `main` for a
+production release. Do not edit source files inside running containers or the
+production checkout; those edits are outside the release history.
+
+The production job in `.github/workflows/deploy.yml` loads deployment scripts
+from the fetched release into a private temporary directory before switching the
+server checkout. `scripts/deployment/sync_repository.py` archives modified source
+files and untracked files that conflict with the release, then synchronizes the
+checkout to `origin/main`. Archive failures stop the update before replacement.
+Backups are private and stored outside the checkout under
+`/home/deploy/deployment-backups/swimbuddz-backend/` by default.
+
+The synchronization does not run `git clean`. It preserves `.env.prod`,
+`letsencrypt/`, uploads and other non-conflicting runtime data. A release that
+would overwrite an ignored file or an untracked directory is rejected for manual
+review. The deployment then decrypts the versioned environment, pulls published
+images, runs migrations and starts services using `deploy-production.sh`.
+
+If a checkout fails because of source drift, preserve and reconcile the changes
+before retrying the failed deployment job. Do not replay archived source files
+over a successful release; port any missing fix through a feature branch instead.
+
 ---
 
 ## Overview
@@ -427,63 +452,31 @@ fi
 
 ## Continuous Deployment
 
-### Option 1: GitHub Actions
+### GitHub Actions
 
-**Create `.github/workflows/deploy.yml`:**
-
-```yaml
-name: Deploy to Production
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to server
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd /path/to/swimbuddz/swimbuddz-backend
-            git pull origin main
-            docker compose build
-            docker compose up -d
-            docker compose run --rm gateway-service alembic upgrade head
-```
+Use the committed `.github/workflows/deploy.yml`. It tests changes before building
+images and deploys production only on pushes to `main` or `master`. The
+development branch is `develop`; its changes must be promoted through a release
+pull request before production deployment.
 
 **Set GitHub secrets:**
 
 - `SERVER_HOST` - Your server IP/domain
-- `SERVER_USER` - SSH username
-- `SSH_PRIVATE_KEY` - SSH private key
+- `SERVER_USERNAME` - SSH username
+- `SERVER_SSH_KEY` - SSH private key
+- `DOCKER_USERNAME`, `DOCKER_PASSWORD` - image registry credentials
+- `ENV_FILE_GPG_PASSPHRASE` - production environment decryption passphrase
+- `LE_EMAIL` - certificate contact email
+- `REPO_URL` - repository clone URL with the required read access
 
-### Option 2: Manual Deployment
+### Deployment recovery
 
-```bash
-# SSH into server
-ssh user@api.swimbuddz.com
-
-# Navigate to project
-cd /path/to/swimbuddz/swimbuddz-backend
-
-# Pull latest code
-git pull origin main
-
-# Rebuild and restart
-docker compose build
-docker compose up -d
-
-# Run migrations
-docker compose run --rm gateway-service alembic upgrade head
-
-# Check status
-docker compose ps
-```
+After resolving a failed deployment's cause, rerun its failed GitHub Actions job
+so the already tested release is installed by the normal pipeline. Keep source
+changes in feature branches and private backups on the server. The canonical
+deployment entry point is `scripts/deployment/deploy-production.sh`; it requires
+the same environment variables supplied by the workflow. It migrates before
+starting updated services and runs `scripts/deployment/verify-production.sh`.
 
 ---
 

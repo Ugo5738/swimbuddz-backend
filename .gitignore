@@ -49,6 +49,7 @@ tmp/
 # Docker / Compose
 *.pid
 docker-compose.override.yml
+/letsencrypt/
 
 # MCP / tooling artifacts
 *.mcp.cache
