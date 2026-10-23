@@ -3,7 +3,7 @@ import uuid
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import get_current_user, require_admin
@@ -72,7 +72,8 @@ async def assign_quiz(cohort_id: uuid.UUID, body: QuizAssignmentCreate, _admin: 
     quiz = await db.get(AcademyQuiz, body.quiz_id)
     if not cohort or not quiz: raise HTTPException(404, "Cohort or quiz not found")
     if quiz.program_id != cohort.program_id: raise HTTPException(400, "Quiz belongs to another program")
-    if body.week_number > cohort.program.duration_weeks if hasattr(cohort, "program") and cohort.program else body.week_number > 52:
+    program = await db.get(Program, cohort.program_id)
+    if program is None or body.week_number > program.duration_weeks:
         raise HTTPException(400, "Week exceeds program duration")
     existing = await db.scalar(select(AcademyQuizAssignment).where(
         AcademyQuizAssignment.cohort_id == cohort_id, AcademyQuizAssignment.quiz_id == body.quiz_id,
@@ -101,6 +102,18 @@ async def _attempts(db, assignment_id, enrollment_id):
     return (await db.execute(select(AcademyQuizAttempt).where(
         AcademyQuizAttempt.assignment_id == assignment_id,
         AcademyQuizAttempt.enrollment_id == enrollment_id).order_by(AcademyQuizAttempt.attempt_number))).scalars().all()
+
+
+@router.get("/enrollments/{enrollment_id}/quizzes/completion", response_model=QuizCompletionResponse)
+async def quiz_completion(enrollment_id: uuid.UUID, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_async_db)):
+    enrollment = await _own_enrollment(enrollment_id, user, db)
+    assignments = (await db.execute(select(AcademyQuizAssignment).where(
+        AcademyQuizAssignment.cohort_id == enrollment.cohort_id, AcademyQuizAssignment.required.is_(True)))).scalars().all()
+    completed = 0
+    for a in assignments:
+        if any(t.passed for t in await _attempts(db, a.id, enrollment_id)): completed += 1
+    return QuizCompletionResponse(required_total=len(assignments), required_passed=completed,
+        knowledge_complete=completed == len(assignments))
 
 
 @router.get("/enrollments/{enrollment_id}/quizzes", response_model=list[LearnerQuizResponse])
@@ -169,13 +182,3 @@ async def submit_attempt(enrollment_id: uuid.UUID, assignment_id: uuid.UUID, bod
         passed=attempt.passed, feedback=feedback, submitted_at=attempt.created_at)
 
 
-@router.get("/enrollments/{enrollment_id}/quizzes/completion", response_model=QuizCompletionResponse)
-async def quiz_completion(enrollment_id: uuid.UUID, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_async_db)):
-    enrollment = await _own_enrollment(enrollment_id, user, db)
-    assignments = (await db.execute(select(AcademyQuizAssignment).where(
-        AcademyQuizAssignment.cohort_id == enrollment.cohort_id, AcademyQuizAssignment.required.is_(True)))).scalars().all()
-    completed = 0
-    for a in assignments:
-        if any(t.passed for t in await _attempts(db, a.id, enrollment_id)): completed += 1
-    return QuizCompletionResponse(required_total=len(assignments), required_passed=completed,
-        knowledge_complete=completed == len(assignments))
