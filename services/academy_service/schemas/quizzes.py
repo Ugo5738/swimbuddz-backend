@@ -1,4 +1,5 @@
 """Question validation and API contracts for automatically graded Academy quizzes."""
+
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -29,7 +30,9 @@ class QuizQuestion(BaseModel):
         if not set(self.correct_option_ids) <= set(ids):
             raise ValueError("Correct answers must reference existing options")
         if self.kind != "multiple" and len(self.correct_option_ids) != 1:
-            raise ValueError("Single/true-false questions require exactly one correct option")
+            raise ValueError(
+                "Single/true-false questions require exactly one correct option"
+            )
         if self.kind == "true_false" and len(ids) != 2:
             raise ValueError("True/false questions require exactly two options")
         return self

@@ -21,6 +21,7 @@ from services.academy_service.routers._shared import (
     MilestoneReviewEvent,
     PendingMilestoneReview,
     ProgressStatus,
+    RequiredEvidence,
     StudentProgress,
     UpcomingSessionSummary,
     _sync_installment_state_for_enrollment,
@@ -655,8 +656,68 @@ async def review_milestone_claim(
     if progress.status != ProgressStatus.PENDING or progress.reviewed_at is not None:
         raise HTTPException(status_code=409, detail="Milestone is not awaiting review")
     if action.action == "reject" and not (action.coach_notes or "").strip():
-        raise HTTPException(status_code=422, detail="Feedback is required when rejecting a milestone")
+        raise HTTPException(
+            status_code=422, detail="Feedback is required when rejecting a milestone"
+        )
 
+    # A required-video milestone must have a legitimate private student-owned
+    # milestone video before approval. Optional evidence is verified too when supplied.
+    if action.action == "approve":
+        milestone = await db.get(Milestone, progress.milestone_id)
+        evidence_required = milestone.required_evidence in (
+            RequiredEvidence.VIDEO,
+            RequiredEvidence.TIME_TRIAL,
+        )
+        if evidence_required and not progress.evidence_media_id:
+            raise HTTPException(
+                status_code=422, detail="This milestone requires video evidence"
+            )
+        if evidence_required and progress.evidence_media_id:
+            # Coach-recorded submissions are uploaded under the coach's identity.
+            # Identify the original uploader from the immutable CLAIMED event.
+            last_claim = (
+                await db.execute(
+                    select(MilestoneReviewEvent)
+                    .where(
+                        MilestoneReviewEvent.progress_id == progress.id,
+                        MilestoneReviewEvent.event_type == MilestoneEventType.CLAIMED,
+                    )
+                    .order_by(MilestoneReviewEvent.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            evidence_owner_id = (
+                last_claim.actor_id
+                if last_claim and last_claim.actor_role == "coach"
+                else progress.enrollment.member_auth_id
+            )
+            import httpx
+            from libs.common.config import get_settings
+            from libs.common.service_client.core import internal_get
+
+            try:
+                media_check = await internal_get(
+                    service_url=get_settings().MEDIA_SERVICE_URL,
+                    path=f"/internal/media/alumni-evidence/{progress.evidence_media_id}",
+                    calling_service="academy",
+                    params={
+                        "owner_auth_id": str(evidence_owner_id),
+                        "expected_linked_id": f"{progress.enrollment_id}:{progress.milestone_id}",
+                    },
+                )
+            except (httpx.HTTPError, OSError) as exc:
+                raise HTTPException(
+                    status_code=503, detail="Video verification unavailable"
+                ) from exc
+            if media_check.status_code == 404:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Milestone video is not valid or not owned by the learner",
+                )
+            if media_check.status_code != 200:
+                raise HTTPException(
+                    status_code=503, detail="Video verification unavailable"
+                )
     # 4. Perform the review action
     previous_status = progress.status
     if action.action == "approve":
