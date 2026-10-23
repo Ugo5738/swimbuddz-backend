@@ -10,6 +10,11 @@ from services.academy_service.models.deletion_audit import (
     AcademyEnrollmentDeletionAudit,
 )
 from services.academy_service.models.evidence import MilestoneEvidence
+from services.academy_service.models.quizzes import (
+    AcademyQuiz,
+    AcademyQuizAssignment,
+    AcademyQuizAttempt,
+)
 from services.academy_service.models.enrollment import Enrollment, EnrollmentInstallment
 from services.academy_service.models.financial_credit import (
     AcademyFinancialCredit,
@@ -63,6 +68,9 @@ from services.academy_service.models.progress import (
 
 __all__ = [
     "AcademyEnrollmentDeletionAudit",
+    "AcademyQuiz",
+    "AcademyQuizAssignment",
+    "AcademyQuizAttempt",
     "AcademyFinancialCredit",
     "AcademyTransferRefundObligation",
     "AcademyJourney",

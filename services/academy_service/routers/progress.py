@@ -231,7 +231,7 @@ async def claim_milestone(
     Allow a member to claim completion of a milestone.
 
     The member must own the enrollment. Creates or updates a StudentProgress
-    record with ACHIEVED status and optional evidence.
+    record with PENDING status and optional evidence.
     """
 
     # Verify enrollment exists and belongs to the current user
@@ -360,6 +360,105 @@ async def claim_milestone(
     return progress
 
 
+@router.post(
+    "/coach/enrollments/{enrollment_id}/progress/{milestone_id}/record-video",
+    response_model=StudentProgressResponse,
+)
+async def coach_record_milestone_video(
+    enrollment_id: uuid.UUID,
+    milestone_id: uuid.UUID,
+    payload: MemberMilestoneClaimRequest,
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Submit video recorded by the assigned coach, pending independent review.
+
+    No achievement is awarded here. The coach's identity is stored in the
+    CLAIMED audit event, making approval-time media ownership validation possible.
+    """
+    from libs.common.config import get_settings
+    from libs.common.service_client.core import internal_get
+
+    if not payload.evidence_media_id:
+        raise HTTPException(status_code=422, detail="A recorded video is required")
+    enrollment = await db.get(Enrollment, enrollment_id)
+    if not enrollment or not enrollment.cohort_id:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    await require_coach_for_cohort(current_user, str(enrollment.cohort_id), db)
+    if enrollment.status != EnrollmentStatus.ENROLLED or enrollment.access_suspended:
+        raise HTTPException(
+            status_code=403, detail="Active, unsuspended enrollment required"
+        )
+    milestone = await db.get(Milestone, milestone_id)
+    if not milestone or milestone.program_id != enrollment.program_id:
+        raise HTTPException(
+            status_code=404, detail="Milestone not in the enrollment programme"
+        )
+    check = await internal_get(
+        service_url=get_settings().MEDIA_SERVICE_URL,
+        path=f"/internal/media/alumni-evidence/{payload.evidence_media_id}",
+        calling_service="academy",
+        params={
+            "owner_auth_id": str(current_user.user_id),
+            "expected_linked_id": f"{enrollment_id}:{milestone_id}",
+        },
+    )
+    if check.status_code != 200:
+        raise HTTPException(
+            status_code=422 if check.status_code == 404 else 503,
+            detail="Recorded video could not be verified",
+        )
+    progress = await db.scalar(
+        select(StudentProgress)
+        .where(
+            StudentProgress.enrollment_id == enrollment_id,
+            StudentProgress.milestone_id == milestone_id,
+        )
+        .with_for_update()
+    )
+    if progress and (
+        progress.status == ProgressStatus.ACHIEVED or progress.reviewed_at is None
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Only unclaimed or rejected milestones can be resubmitted",
+        )
+    previous_status = progress.status if progress else None
+    if not progress:
+        progress = StudentProgress(
+            enrollment_id=enrollment_id,
+            milestone_id=milestone_id,
+            status=ProgressStatus.PENDING,
+        )
+        db.add(progress)
+    progress.status = ProgressStatus.PENDING
+    progress.achieved_at = None
+    progress.reviewed_at = None
+    progress.reviewed_by_coach_id = None
+    progress.coach_notes = None
+    progress.score = None
+    progress.evidence_media_id = payload.evidence_media_id
+    progress.student_notes = payload.student_notes
+    await db.flush()
+    db.add(
+        MilestoneReviewEvent(
+            progress_id=progress.id,
+            enrollment_id=enrollment_id,
+            milestone_id=milestone_id,
+            event_type=MilestoneEventType.CLAIMED,
+            actor_id=current_user.user_id,
+            actor_role="coach",
+            previous_status=previous_status,
+            new_status=ProgressStatus.PENDING,
+            evidence_media_id_snapshot=payload.evidence_media_id,
+            student_notes_snapshot=payload.student_notes,
+        )
+    )
+    await db.commit()
+    await db.refresh(progress)
+    return progress
+
+
 @router.get(
     "/enrollments/{enrollment_id}/progress/{progress_id}/events",
     response_model=List[MilestoneReviewEventResponse],
@@ -450,7 +549,7 @@ async def override_progress(
       regardless of caller — it's attribution data that travels with
       the event, not a control flag.
 
-    Returns the (possibly newly-created) ``StudentProgress`` row.
+    Returns the existing ``StudentProgress`` row after an auditable override.
     """
     # Service-role JWTs are attributed to the AI principal; everything
     # else is treated as a human admin. The synthetic principal UUID
@@ -488,10 +587,8 @@ async def override_progress(
             detail="Milestone does not belong to enrollment program",
         )
 
-    # Load (or lazily create) the StudentProgress row. Overrides should
-    # normally target an existing claim, but allow create-on-override
-    # for the rare case where an admin records a decision before the
-    # student claimed it (e.g., backfilling historical data).
+    # Overrides require an earlier coach/admin decision. Historical backfills
+    # belong in the dedicated progress management path, not an override.
     progress = (
         await db.execute(
             select(StudentProgress).where(
@@ -502,16 +599,77 @@ async def override_progress(
     ).scalar_one_or_none()
 
     if progress is None:
-        progress = StudentProgress(
-            enrollment_id=payload.enrollment_id,
-            milestone_id=payload.milestone_id,
-            status=payload.new_status,
+        raise HTTPException(
+            status_code=409, detail="No existing assessment to override"
         )
-        db.add(progress)
-        previous_status = None
-    else:
-        previous_status = progress.status
-        progress.status = payload.new_status
+    previous_status = progress.status
+    progress.status = payload.new_status
+
+    # There must be a prior decision, not merely an unreviewed upload.
+    prior_review = (
+        await db.execute(
+            select(MilestoneReviewEvent)
+            .where(
+                MilestoneReviewEvent.progress_id == progress.id,
+                MilestoneReviewEvent.event_type.in_(
+                    [
+                        MilestoneEventType.APPROVED,
+                        MilestoneEventType.REJECTED,
+                        MilestoneEventType.OVERRIDE,
+                    ]
+                ),
+            )
+            .order_by(MilestoneReviewEvent.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if prior_review is None:
+        raise HTTPException(
+            status_code=409, detail="No coach/admin decision to override"
+        )
+
+    if (
+        payload.new_status == ProgressStatus.ACHIEVED
+        and milestone.required_evidence
+        in (RequiredEvidence.VIDEO, RequiredEvidence.TIME_TRIAL)
+    ):
+        if not progress.evidence_media_id:
+            raise HTTPException(
+                status_code=422, detail="Video evidence is required for this milestone"
+            )
+        from libs.common.config import get_settings
+        from libs.common.service_client.core import internal_get
+
+        last_claim = (
+            await db.execute(
+                select(MilestoneReviewEvent)
+                .where(
+                    MilestoneReviewEvent.progress_id == progress.id,
+                    MilestoneReviewEvent.event_type == MilestoneEventType.CLAIMED,
+                )
+                .order_by(MilestoneReviewEvent.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        media_owner = (
+            last_claim.actor_id
+            if last_claim and last_claim.actor_role == "coach"
+            else enrollment.member_auth_id
+        )
+        check = await internal_get(
+            service_url=get_settings().MEDIA_SERVICE_URL,
+            path=f"/internal/media/alumni-evidence/{progress.evidence_media_id}",
+            calling_service="academy",
+            params={
+                "owner_auth_id": str(media_owner),
+                "expected_linked_id": f"{progress.enrollment_id}:{progress.milestone_id}",
+            },
+        )
+        if check.status_code != 200:
+            raise HTTPException(
+                status_code=422 if check.status_code == 404 else 503,
+                detail="Video evidence could not be verified",
+            )
 
     # Live-row mutations the override is allowed to make. Crucially,
     # ``reviewed_by_coach_id`` and ``reviewed_at`` are NOT touched.

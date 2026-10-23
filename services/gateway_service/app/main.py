@@ -71,7 +71,7 @@ def create_app() -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
     # Add observability (structured logging + request tracing)
-    add_observability_middleware(app)
+    add_observability_middleware(app, timing_name="gateway")
 
     # Add global exception handlers for consistent error responses
     add_exception_handlers(app)

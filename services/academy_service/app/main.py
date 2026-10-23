@@ -20,6 +20,7 @@ from services.academy_service.routers.programs import router as programs_router
 from services.academy_service.routers.progress import router as progress_router
 from services.academy_service.routers.public_stats import router as public_stats_router
 from services.academy_service.routers.reports import router as reports_router
+from services.academy_service.routers.quizzes import router as quizzes_router
 from services.academy_service.routers.scoring import router as scoring_router
 
 
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(coach_dashboard_router, prefix="/academy")
     app.include_router(scoring_router, prefix="/academy")
     app.include_router(reports_router, prefix="/academy")
+    app.include_router(quizzes_router, prefix="/academy")
     app.include_router(admin_tasks_router, prefix="/academy")
     from services.academy_service.routers.quarterly_metrics import (
         router as quarterly_metrics_router,

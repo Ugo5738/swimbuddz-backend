@@ -18,6 +18,9 @@ sys.path.append(str(PROJECT_ROOT))
 from libs.common.config import get_settings
 from libs.db.base import Base
 from services.academy_service.models import (  # noqa: F401
+    AcademyQuiz,
+    AcademyQuizAssignment,
+    AcademyQuizAttempt,
     CoachAssignment,
     Cohort,
     CohortComplexityScore,
@@ -48,6 +51,9 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 # Only migrate tables owned by this service
 SERVICE_TABLES = {
+    "academy_quizzes",
+    "academy_quiz_assignments",
+    "academy_quiz_attempts",
     "programs",
     "cohorts",
     "cohort_resources",
