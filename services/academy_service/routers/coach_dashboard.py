@@ -651,6 +651,12 @@ async def review_milestone_claim(
             status_code=403, detail="Not authorized to review this milestone"
         )
 
+    # Only a fresh student claim is reviewable. Do not review previously rejected or approved work twice.
+    if progress.status != ProgressStatus.PENDING or progress.reviewed_at is not None:
+        raise HTTPException(status_code=409, detail="Milestone is not awaiting review")
+    if action.action == "reject" and not (action.coach_notes or "").strip():
+        raise HTTPException(status_code=422, detail="Feedback is required when rejecting a milestone")
+
     # 4. Perform the review action
     previous_status = progress.status
     if action.action == "approve":
@@ -682,6 +688,7 @@ async def review_milestone_claim(
             previous_status=previous_status,
             new_status=progress.status,
             coach_notes_snapshot=action.coach_notes,
+            evidence_media_id_snapshot=progress.evidence_media_id,
             score_snapshot=action.score,
         )
     )
