@@ -1,0 +1,31 @@
+name: Refresh Academy OpenAPI PR 368
+on:
+  push:
+    branches:
+      - feat/academy-knowledge-quizzes-review-20261023
+    paths:
+      - .github/workflows/refresh-academy-openapi-pr368.yml
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install backend dependencies
+        run: pip install -e .
+      - name: Generate and commit OpenAPI
+        run: |
+          python scripts/api/generate-openapi.py > openapi.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add openapi.json
+          if ! git diff --cached --quiet; then
+            git commit -m "docs(api): regenerate OpenAPI for Academy quizzes"
+            git push origin HEAD:feat/academy-knowledge-quizzes-review-20261023
+          fi
