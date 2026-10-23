@@ -3,7 +3,7 @@ from functools import lru_cache
 from datetime import date
 from typing import Literal, Optional
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # One env file per environment, selected by the ENV_FILE shell var. Matches
@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # Application
     ENVIRONMENT: Literal["local", "development", "production"] = "local"
     LOG_LEVEL: str = "INFO"
+    SLOW_REQUEST_THRESHOLD_MS: float = Field(default=500, ge=0, allow_inf_nan=False)
     ADMIN_EMAIL: str = "admin@admin.com"
     PAYMENT_NOTIFICATION_EMAILS: list[str] = ["contactugodaniels@gmail.com"]
     CLUB_REVIEW_NOTIFICATION_EMAILS: list[str] = ["contactugodaniels@gmail.com"]

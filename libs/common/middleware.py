@@ -12,12 +12,13 @@ Usage:
     add_observability_middleware(app)
 """
 
-import time
+from time import perf_counter
 from typing import Callable
 
 from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from libs.common.config import get_settings
 from libs.common.logging import (
     clear_request_context,
     configure_logging,
@@ -39,53 +40,65 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
     - Clears context after request completes
     """
 
+    def __init__(self, app, *, timing_name: str = "app") -> None:
+        super().__init__(app)
+        self.timing_name = timing_name
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Get or generate request ID
         request_id = request.headers.get("X-Request-ID")
         request_id = set_request_context(
             request_id=request_id,
-            path=request.url.path,
             method=request.method,
         )
 
-        start_time = time.perf_counter()
+        start_time = perf_counter()
 
         # Log request start (skip noisy health checks)
         if request.url.path != "/health":
-            logger.info(
-                "Request started",
-                extra={
-                    "extra_fields": {
-                        "query": str(request.url.query) if request.url.query else None
-                    }
-                },
-            )
+            # Query strings can contain capabilities, payment references or
+            # search text. Do not put them into performance telemetry.
+            logger.debug("Request started")
 
         try:
             response = await call_next(request)
 
-            duration_ms = (time.perf_counter() - start_time) * 1000
+            duration_ms = (perf_counter() - start_time) * 1000
+            route = getattr(request.scope.get("route"), "path", "unmatched")
+            set_request_context(
+                request_id=request_id, path=route, method=request.method
+            )
+            slow = duration_ms >= get_settings().SLOW_REQUEST_THRESHOLD_MS
 
             # Log request completion (skip health checks)
             if request.url.path != "/health":
-                log_level = "warning" if response.status_code >= 400 else "info"
+                log_level = "warning" if response.status_code >= 400 or slow else "info"
                 getattr(logger, log_level)(
-                    "Request completed",
+                    "Slow request" if slow else "Request completed",
                     extra={
                         "extra_fields": {
                             "status_code": response.status_code,
                             "duration_ms": round(duration_ms, 2),
+                            "slow_request": slow,
+                            "route": route,
                         }
                     },
                 )
 
             # Add request ID to response headers for client-side correlation
             response.headers["X-Request-ID"] = request_id
+            # Time until response headers, excluding streamed body transfer.
+            # Gateway and domain spans overlap; they must not be added together.
+            timing = f"{self.timing_name};dur={duration_ms:.2f}"
+            existing = response.headers.get("Server-Timing")
+            response.headers["Server-Timing"] = (
+                f"{existing}, {timing}" if existing else timing
+            )
 
             return response
 
         except Exception as e:
-            duration_ms = (time.perf_counter() - start_time) * 1000
+            duration_ms = (perf_counter() - start_time) * 1000
             logger.exception(
                 "Request failed with unhandled exception",
                 extra={
@@ -101,7 +114,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             clear_request_context()
 
 
-def add_observability_middleware(app: FastAPI) -> None:
+def add_observability_middleware(app: FastAPI, *, timing_name: str = "app") -> None:
     """
     Add observability middleware to a FastAPI app.
 
@@ -115,7 +128,7 @@ def add_observability_middleware(app: FastAPI) -> None:
     configure_logging()
 
     # Add request context middleware
-    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(RequestContextMiddleware, timing_name=timing_name)
 
     # Keep import-time schema generation stdout clean. Request lifecycle logs
     # provide the useful operational signal once the app is serving traffic.
