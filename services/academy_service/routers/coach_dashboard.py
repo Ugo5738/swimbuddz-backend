@@ -21,6 +21,7 @@ from services.academy_service.routers._shared import (
     MilestoneReviewEvent,
     PendingMilestoneReview,
     ProgressStatus,
+    RequiredEvidence,
     StudentProgress,
     UpcomingSessionSummary,
     _sync_installment_state_for_enrollment,
@@ -657,6 +658,30 @@ async def review_milestone_claim(
     if action.action == "reject" and not (action.coach_notes or "").strip():
         raise HTTPException(status_code=422, detail="Feedback is required when rejecting a milestone")
 
+    # A required-video milestone must have a legitimate private student-owned
+    # milestone video before approval. Optional evidence is verified too when supplied.
+    if action.action == "approve":
+        milestone = await db.get(Milestone, progress.milestone_id)
+        evidence_required = milestone.required_evidence in (RequiredEvidence.VIDEO, RequiredEvidence.TIME_TRIAL)
+        if evidence_required and not progress.evidence_media_id:
+            raise HTTPException(status_code=422, detail="This milestone requires video evidence")
+        if progress.evidence_media_id:
+            import httpx
+            from libs.common.config import get_settings
+            from libs.common.service_client.core import internal_get
+            try:
+                media_check = await internal_get(
+                    service_url=get_settings().MEDIA_SERVICE_URL,
+                    path=f"/internal/media/alumni-evidence/{progress.evidence_media_id}",
+                    calling_service="academy",
+                    params={"owner_auth_id": str(progress.enrollment.member_auth_id)},
+                )
+            except (httpx.HTTPError, OSError) as exc:
+                raise HTTPException(status_code=503, detail="Video verification unavailable") from exc
+            if media_check.status_code == 404:
+                raise HTTPException(status_code=422, detail="Milestone video is not valid or not owned by the learner")
+            if media_check.status_code != 200:
+                raise HTTPException(status_code=503, detail="Video verification unavailable")
     # 4. Perform the review action
     previous_status = progress.status
     if action.action == "approve":
