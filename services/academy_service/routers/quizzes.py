@@ -51,8 +51,10 @@ async def create_quiz(body: QuizUpsert, _admin: AuthUser = Depends(require_admin
 @router.put("/admin/quizzes/{quiz_id}", response_model=QuizTemplateResponse)
 async def update_quiz(quiz_id: uuid.UUID, body: QuizUpsert, _admin: AuthUser = Depends(require_admin), db: AsyncSession = Depends(get_async_db)):
     quiz = await db.get(AcademyQuiz, quiz_id)
-    if not quiz: raise HTTPException(404, "Quiz not found")
-    if quiz.program_id != body.program_id: raise HTTPException(400, "Cannot move quiz between programs")
+    if not quiz:
+        raise HTTPException(404, "Quiz not found")
+    if quiz.program_id != body.program_id:
+        raise HTTPException(400, "Cannot move quiz between programs")
     quiz.title, quiz.description = body.title, body.description
     quiz.questions_json = [q.model_dump() for q in body.questions]
     quiz.version += 1
@@ -70,15 +72,18 @@ async def list_assignments(cohort_id: uuid.UUID, _admin: AuthUser = Depends(requ
 async def assign_quiz(cohort_id: uuid.UUID, body: QuizAssignmentCreate, _admin: AuthUser = Depends(require_admin), db: AsyncSession = Depends(get_async_db)):
     cohort = await db.get(Cohort, cohort_id)
     quiz = await db.get(AcademyQuiz, body.quiz_id)
-    if not cohort or not quiz: raise HTTPException(404, "Cohort or quiz not found")
-    if quiz.program_id != cohort.program_id: raise HTTPException(400, "Quiz belongs to another program")
+    if not cohort or not quiz:
+        raise HTTPException(404, "Cohort or quiz not found")
+    if quiz.program_id != cohort.program_id:
+        raise HTTPException(400, "Quiz belongs to another program")
     program = await db.get(Program, cohort.program_id)
     if program is None or body.week_number > program.duration_weeks:
         raise HTTPException(400, "Week exceeds program duration")
     existing = await db.scalar(select(AcademyQuizAssignment).where(
         AcademyQuizAssignment.cohort_id == cohort_id, AcademyQuizAssignment.quiz_id == body.quiz_id,
         AcademyQuizAssignment.week_number == body.week_number))
-    if existing: raise HTTPException(409, "Quiz already assigned for this week")
+    if existing:
+        raise HTTPException(409, "Quiz already assigned for this week")
     assignment = AcademyQuizAssignment(cohort_id=cohort_id, quiz_id=quiz.id, week_number=body.week_number,
         passing_score=body.passing_score, max_attempts=body.max_attempts,
         required=body.required, quiz_version=quiz.version, title_snapshot=quiz.title,
@@ -111,7 +116,8 @@ async def quiz_completion(enrollment_id: uuid.UUID, user: AuthUser = Depends(get
         AcademyQuizAssignment.cohort_id == enrollment.cohort_id, AcademyQuizAssignment.required.is_(True)))).scalars().all()
     completed = 0
     for a in assignments:
-        if any(t.passed for t in await _attempts(db, a.id, enrollment_id)): completed += 1
+        if any(t.passed for t in await _attempts(db, a.id, enrollment_id)):
+            completed += 1
     return QuizCompletionResponse(required_total=len(assignments), required_passed=completed,
         knowledge_complete=completed == len(assignments))
 
@@ -120,7 +126,8 @@ async def quiz_completion(enrollment_id: uuid.UUID, user: AuthUser = Depends(get
 async def learner_quizzes(enrollment_id: uuid.UUID, user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_async_db)):
     enrollment = await _own_enrollment(enrollment_id, user, db)
     cohort = await db.get(Cohort, enrollment.cohort_id)
-    if not cohort: return []
+    if not cohort:
+        return []
     assignments = (await db.execute(select(AcademyQuizAssignment).where(AcademyQuizAssignment.cohort_id == cohort.id).order_by(AcademyQuizAssignment.week_number))).scalars().all()
     now = utc_now()
     result = []
