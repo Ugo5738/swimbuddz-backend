@@ -20329,8 +20329,77 @@
           "academy"
         ],
         "summary": "Claim Milestone",
-        "description": "Allow a member to claim completion of a milestone.\n\nThe member must own the enrollment. Creates or updates a StudentProgress\nrecord with ACHIEVED status and optional evidence.",
+        "description": "Allow a member to claim completion of a milestone.\n\nThe member must own the enrollment. Creates or updates a StudentProgress\nrecord with PENDING status and optional evidence.",
         "operationId": "claim_milestone_academy_enrollments__enrollment_id__progress__milestone_id__claim_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          },
+          {
+            "name": "milestone_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Milestone Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberMilestoneClaimRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentProgressResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/coach/enrollments/{enrollment_id}/progress/{milestone_id}/record-video": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Coach Record Milestone Video",
+        "description": "Submit video recorded by the assigned coach, pending independent review.\n\nNo achievement is awarded here. The coach's identity is stored in the\nCLAIMED audit event, making approval-time media ownership validation possible.",
+        "operationId": "coach_record_milestone_video_academy_coach_enrollments__enrollment_id__progress__milestone_id__record_video_post",
         "security": [
           {
             "HTTPBearer": []
@@ -20461,7 +20530,7 @@
           "academy"
         ],
         "summary": "Override Progress",
-        "description": "Admin (or AI service) override of a prior decision on a milestone claim.\n\nUnlike ``POST /progress`` (the coach path), this endpoint:\n\n* **Requires** ``override_reason`` (enforced by the schema).\n* Records a separate ``OVERRIDE`` event on\n  ``milestone_review_events`` chained to the most recent prior\n  decision via ``override_of_event_id``. Override-of-override is\n  permitted \u2014 the chain just deepens.\n* Does **not** touch ``StudentProgress.reviewed_by_coach_id`` \u2014 the\n  original coach stays attributed to the live row (see\n  ACADEMY_ADMIN_CONTROLS_DESIGN \u00a75.4).\n* Attributes the event to the synthetic AI principal when the\n  caller authenticated via ``service_role``; otherwise to the\n  admin user. ``ai_metadata`` is recorded on the event row\n  regardless of caller \u2014 it's attribution data that travels with\n  the event, not a control flag.\n\nReturns the (possibly newly-created) ``StudentProgress`` row.",
+        "description": "Admin (or AI service) override of a prior decision on a milestone claim.\n\nUnlike ``POST /progress`` (the coach path), this endpoint:\n\n* **Requires** ``override_reason`` (enforced by the schema).\n* Records a separate ``OVERRIDE`` event on\n  ``milestone_review_events`` chained to the most recent prior\n  decision via ``override_of_event_id``. Override-of-override is\n  permitted \u2014 the chain just deepens.\n* Does **not** touch ``StudentProgress.reviewed_by_coach_id`` \u2014 the\n  original coach stays attributed to the live row (see\n  ACADEMY_ADMIN_CONTROLS_DESIGN \u00a75.4).\n* Attributes the event to the synthetic AI principal when the\n  caller authenticated via ``service_role``; otherwise to the\n  admin user. ``ai_metadata`` is recorded on the event row\n  regardless of caller \u2014 it's attribution data that travels with\n  the event, not a control flag.\n\nReturns the existing ``StudentProgress`` row after an auditable override.",
         "operationId": "override_progress_academy_admin_progress_override_post",
         "requestBody": {
           "content": {
@@ -21864,6 +21933,438 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/programs/{program_id}/quizzes": {
+      "get": {
+        "tags": [
+          "academy-quizzes"
+        ],
+        "summary": "List Templates",
+        "operationId": "list_templates_academy_admin_programs__program_id__quizzes_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QuizTemplateResponse"
+                  },
+                  "title": "Response List Templates Academy Admin Programs  Program Id  Quizzes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/quizzes": {
+      "post": {
+        "tags": [
+          "academy-quizzes"
+        ],
+        "summary": "Create Quiz",
+        "operationId": "create_quiz_academy_admin_quizzes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizUpsert"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizTemplateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/admin/quizzes/{quiz_id}": {
+      "put": {
+        "tags": [
+          "academy-quizzes"
+        ],
+        "summary": "Update Quiz",
+        "operationId": "update_quiz_academy_admin_quizzes__quiz_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "quiz_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Quiz Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizUpsert"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizTemplateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/cohorts/{cohort_id}/quizzes": {
+      "get": {
+        "tags": [
+          "academy-quizzes"
+        ],
+        "summary": "List Assignments",
+        "operationId": "list_assignments_academy_admin_cohorts__cohort_id__quizzes_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QuizAssignmentResponse"
+                  },
+                  "title": "Response List Assignments Academy Admin Cohorts  Cohort Id  Quizzes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "academy-quizzes"
+        ],
+        "summary": "Assign Quiz",
+        "operationId": "assign_quiz_academy_admin_cohorts__cohort_id__quizzes_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizAssignmentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizAssignmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/enrollments/{enrollment_id}/quizzes/completion": {
+      "get": {
+        "tags": [
+          "academy-quizzes"
+        ],
+        "summary": "Quiz Completion",
+        "operationId": "quiz_completion_academy_enrollments__enrollment_id__quizzes_completion_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizCompletionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/enrollments/{enrollment_id}/quizzes": {
+      "get": {
+        "tags": [
+          "academy-quizzes"
+        ],
+        "summary": "Learner Quizzes",
+        "operationId": "learner_quizzes_academy_enrollments__enrollment_id__quizzes_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LearnerQuizResponse"
+                  },
+                  "title": "Response Learner Quizzes Academy Enrollments  Enrollment Id  Quizzes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/enrollments/{enrollment_id}/quizzes/{assignment_id}/attempt": {
+      "post": {
+        "tags": [
+          "academy-quizzes"
+        ],
+        "summary": "Submit Attempt",
+        "operationId": "submit_attempt_academy_enrollments__enrollment_id__quizzes__assignment_id__attempt_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          },
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizAttemptSubmit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizAttemptResponse"
+                }
               }
             }
           },
@@ -50543,8 +51044,7 @@
                   "exclusiveMinimum": 0.0
                 },
                 {
-                  "type": "string",
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                  "type": "string"
                 }
               ],
               "title": "Amount Ngn"
@@ -55182,6 +55682,22 @@
               "type": "string",
               "format": "uuid",
               "title": "Owner Auth Id"
+            }
+          },
+          {
+            "name": "expected_linked_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Linked Id"
             }
           }
         ],
@@ -71077,55 +71593,7 @@
         "title": "CoachApplicationStatusResponse",
         "description": "Minimal status response for coaches checking their application."
       },
-      "CoachAvailabilityCalendar-Input": {
-        "properties": {
-          "version": {
-            "type": "integer",
-            "title": "Version",
-            "default": 1
-          },
-          "timezone": {
-            "type": "string",
-            "title": "Timezone",
-            "description": "IANA timezone name",
-            "default": "Africa/Lagos"
-          },
-          "recurring": {
-            "items": {
-              "$ref": "#/components/schemas/RecurringBlockInput"
-            },
-            "type": "array",
-            "title": "Recurring"
-          },
-          "blackouts": {
-            "items": {
-              "$ref": "#/components/schemas/BlackoutDateInput"
-            },
-            "type": "array",
-            "title": "Blackouts"
-          },
-          "slot_minutes": {
-            "type": "integer",
-            "maximum": 240.0,
-            "minimum": 15.0,
-            "title": "Slot Minutes",
-            "description": "Default lesson/make-up length in minutes",
-            "default": 60
-          },
-          "buffer_minutes": {
-            "type": "integer",
-            "maximum": 120.0,
-            "minimum": 0.0,
-            "title": "Buffer Minutes",
-            "description": "Gap between consecutive slots in minutes",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "title": "CoachAvailabilityCalendar",
-        "description": "Canonical shape of CoachProfile.availability_calendar (JSONB).\n\nRecurring weekly blocks + blackout dates in the coach's local timezone.\nsessions_service slices this into bookable make-up slots."
-      },
-      "CoachAvailabilityCalendar-Output": {
+      "CoachAvailabilityCalendar": {
         "properties": {
           "version": {
             "type": "integer",
@@ -71215,7 +71683,7 @@
           "availability": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CoachAvailabilityCalendar-Output"
+                "$ref": "#/components/schemas/CoachAvailabilityCalendar"
               },
               {
                 "type": "null"
@@ -71241,7 +71709,7 @@
       "CoachAvailabilityUpdate": {
         "properties": {
           "availability": {
-            "$ref": "#/components/schemas/CoachAvailabilityCalendar-Input"
+            "$ref": "#/components/schemas/CoachAvailabilityCalendar"
           },
           "min_hours_between_sessions": {
             "anyOf": [
@@ -93039,6 +93507,126 @@
         ],
         "title": "InstallmentStatus"
       },
+      "LearnerQuizResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "quiz_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Quiz Id"
+          },
+          "cohort_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Cohort Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "week_number": {
+            "type": "integer",
+            "title": "Week Number"
+          },
+          "passing_score": {
+            "type": "integer",
+            "title": "Passing Score"
+          },
+          "max_attempts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Attempts"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "available_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Available At"
+          },
+          "is_unlocked": {
+            "type": "boolean",
+            "title": "Is Unlocked"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "attempts_used": {
+            "type": "integer",
+            "title": "Attempts Used"
+          },
+          "attempts_remaining": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempts Remaining"
+          },
+          "questions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QuizQuestionPublic"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Questions"
+          },
+          "latest_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuizAttemptResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "quiz_id",
+          "cohort_id",
+          "title",
+          "week_number",
+          "passing_score",
+          "max_attempts",
+          "required",
+          "version",
+          "available_at",
+          "is_unlocked",
+          "passed",
+          "attempts_used",
+          "attempts_remaining"
+        ],
+        "title": "LearnerQuizResponse"
+      },
       "LocationType": {
         "type": "string",
         "enum": [
@@ -94692,6 +95280,437 @@
           "consent"
         ],
         "title": "PublicationConsentRequest"
+      },
+      "QuizAssignmentCreate": {
+        "properties": {
+          "quiz_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Quiz Id"
+          },
+          "week_number": {
+            "type": "integer",
+            "maximum": 52.0,
+            "minimum": 1.0,
+            "title": "Week Number"
+          },
+          "passing_score": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Passing Score",
+            "default": 80
+          },
+          "max_attempts": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 20.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Attempts",
+            "default": 3
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "quiz_id",
+          "week_number"
+        ],
+        "title": "QuizAssignmentCreate"
+      },
+      "QuizAssignmentResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "quiz_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Quiz Id"
+          },
+          "cohort_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Cohort Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "week_number": {
+            "type": "integer",
+            "title": "Week Number"
+          },
+          "passing_score": {
+            "type": "integer",
+            "title": "Passing Score"
+          },
+          "max_attempts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Attempts"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "quiz_id",
+          "cohort_id",
+          "title",
+          "week_number",
+          "passing_score",
+          "max_attempts",
+          "required",
+          "version"
+        ],
+        "title": "QuizAssignmentResponse"
+      },
+      "QuizAttemptResponse": {
+        "properties": {
+          "attempt_number": {
+            "type": "integer",
+            "title": "Attempt Number"
+          },
+          "score_percent": {
+            "type": "integer",
+            "title": "Score Percent"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "feedback": {
+            "items": {
+              "$ref": "#/components/schemas/QuizFeedback"
+            },
+            "type": "array",
+            "title": "Feedback"
+          },
+          "submitted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Submitted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attempt_number",
+          "score_percent",
+          "passed",
+          "feedback",
+          "submitted_at"
+        ],
+        "title": "QuizAttemptResponse"
+      },
+      "QuizAttemptSubmit": {
+        "properties": {
+          "answers": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Answers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answers"
+        ],
+        "title": "QuizAttemptSubmit"
+      },
+      "QuizCompletionResponse": {
+        "properties": {
+          "required_total": {
+            "type": "integer",
+            "title": "Required Total"
+          },
+          "required_passed": {
+            "type": "integer",
+            "title": "Required Passed"
+          },
+          "knowledge_complete": {
+            "type": "boolean",
+            "title": "Knowledge Complete"
+          }
+        },
+        "type": "object",
+        "required": [
+          "required_total",
+          "required_passed",
+          "knowledge_complete"
+        ],
+        "title": "QuizCompletionResponse"
+      },
+      "QuizFeedback": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id"
+          },
+          "correct": {
+            "type": "boolean",
+            "title": "Correct"
+          },
+          "correct_option_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Correct Option Ids"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "correct",
+          "correct_option_ids",
+          "explanation"
+        ],
+        "title": "QuizFeedback"
+      },
+      "QuizOption": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "QuizOption"
+      },
+      "QuizQuestion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "single",
+              "multiple",
+              "true_false"
+            ],
+            "title": "Kind",
+            "default": "single"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/QuizOption"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 2,
+            "title": "Options"
+          },
+          "correct_option_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Correct Option Ids"
+          },
+          "explanation": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Explanation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "options",
+          "correct_option_ids",
+          "explanation"
+        ],
+        "title": "QuizQuestion"
+      },
+      "QuizQuestionPublic": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "single",
+              "multiple",
+              "true_false"
+            ],
+            "title": "Kind"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/QuizOption"
+            },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "kind",
+          "options"
+        ],
+        "title": "QuizQuestionPublic"
+      },
+      "QuizTemplateResponse": {
+        "properties": {
+          "program_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Program Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuizQuestion"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Questions"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "program_id",
+          "title",
+          "questions",
+          "id",
+          "version"
+        ],
+        "title": "QuizTemplateResponse"
+      },
+      "QuizUpsert": {
+        "properties": {
+          "program_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Program Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuizQuestion"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Questions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "program_id",
+          "title",
+          "questions"
+        ],
+        "title": "QuizUpsert"
       },
       "ReadinessCheckItem": {
         "properties": {
@@ -96552,7 +97571,6 @@
           },
           "band_percentage": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Band Percentage"
           },
           "block_index": {
@@ -99281,8 +100299,7 @@
                 "minimum": 0.01
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Band Percentage",
@@ -99360,7 +100377,6 @@
           },
           "band_percentage": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Band Percentage"
           },
           "total_blocks": {
@@ -99492,8 +100508,7 @@
                 "minimum": 0.01
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -117984,8 +118999,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -118000,8 +119014,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -118120,8 +119133,7 @@
           "commission_percentage": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -118132,8 +119144,7 @@
           "flat_session_rate_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -118304,8 +119315,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -118320,8 +119330,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -119250,8 +120259,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -119266,8 +120274,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -120326,8 +121333,7 @@
           "price_per_swimmer_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -120338,8 +121344,7 @@
           "flat_session_fee_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -120604,8 +121609,7 @@
           "computed_score": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -121592,8 +122596,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -121608,8 +122611,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -122689,8 +123691,7 @@
           "price_override_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -122738,8 +123739,7 @@
           "cost_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -122811,7 +123811,6 @@
           },
           "unit_price_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Unit Price Ngn"
           },
           "product_name": {
@@ -122906,8 +123905,7 @@
           "member_discount_percent": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -122947,19 +123945,16 @@
           },
           "subtotal_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Subtotal Ngn",
             "default": "0"
           },
           "discount_amount_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Discount Amount Ngn",
             "default": "0"
           },
           "total_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Ngn",
             "default": "0"
           }
@@ -123312,12 +124307,10 @@
           },
           "total_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Ngn"
           },
           "delivery_fee_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Delivery Fee Ngn"
           },
           "requires_payment": {
@@ -123338,8 +124331,7 @@
           "bubbles_amount_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -123350,8 +124342,7 @@
           "paystack_amount_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -123723,7 +124714,6 @@
           },
           "total_revenue_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Revenue Ngn"
           },
           "orders_today": {
@@ -123946,7 +124936,6 @@
           },
           "total_stock_value_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Stock Value Ngn"
           }
         },
@@ -124084,7 +125073,6 @@
         "properties": {
           "total_balance_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Balance Ngn"
           },
           "credits": {
@@ -124206,12 +125194,10 @@
           },
           "unit_price_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Unit Price Ngn"
           },
           "line_total_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Line Total Ngn"
           },
           "is_preorder": {
@@ -124394,27 +125380,22 @@
           },
           "subtotal_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Subtotal Ngn"
           },
           "discount_amount_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Discount Amount Ngn"
           },
           "store_credit_applied_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Store Credit Applied Ngn"
           },
           "delivery_fee_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Delivery Fee Ngn"
           },
           "total_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Ngn"
           },
           "discount_code": {
@@ -124809,8 +125790,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Base Price Ngn"
@@ -124822,8 +125802,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -124933,8 +125912,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -125004,14 +125982,12 @@
           },
           "base_price_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Base Price Ngn"
           },
           "compare_at_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -125171,8 +126147,7 @@
           "cost_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -125488,14 +126463,12 @@
           },
           "base_price_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Base Price Ngn"
           },
           "compare_at_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -125759,8 +126732,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -125775,8 +126747,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -125916,8 +126887,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -125967,8 +126937,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -125983,8 +126952,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -126059,8 +127027,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -126075,8 +127042,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -126138,8 +127104,7 @@
           "price_override_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -126187,8 +127152,7 @@
           "cost_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -126404,14 +127368,12 @@
           },
           "base_price_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Base Price Ngn"
           },
           "compare_at_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -126624,8 +127586,7 @@
           "price_override_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -126718,22 +127679,18 @@
           },
           "total_revenue_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Revenue Ngn"
           },
           "total_discount_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Discount Ngn"
           },
           "total_delivery_fees_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Delivery Fees Ngn"
           },
           "average_order_value_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Average Order Value Ngn"
           },
           "total_items_sold": {
@@ -126784,8 +127741,7 @@
                 "exclusiveMinimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Amount Ngn"
@@ -126851,12 +127807,10 @@
           },
           "amount_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount Ngn"
           },
           "balance_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Balance Ngn"
           },
           "source_type": {
@@ -127006,8 +127960,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -127124,8 +128077,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Total Sales Ngn"
@@ -127137,8 +128089,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Commission Ngn"
@@ -127150,8 +128101,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Payout Amount Ngn"
@@ -127235,17 +128185,14 @@
           },
           "total_sales_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Sales Ngn"
           },
           "commission_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Commission Ngn"
           },
           "payout_amount_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Payout Amount Ngn"
           },
           "status": {
@@ -127362,17 +128309,14 @@
           },
           "total_revenue_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Revenue Ngn"
           },
           "total_payouts_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Payouts Ngn"
           },
           "commission_percent": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Commission Percent"
           }
         },
@@ -127450,8 +128394,7 @@
           "commission_percent": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -127539,8 +128482,7 @@
           "average_fulfillment_hours": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -127660,8 +128602,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -127768,7 +128709,6 @@
           },
           "revenue_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Revenue Ngn"
           }
         },
