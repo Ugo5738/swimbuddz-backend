@@ -360,6 +360,77 @@ async def claim_milestone(
     return progress
 
 
+@router.post(
+    "/coach/enrollments/{enrollment_id}/progress/{milestone_id}/record-video",
+    response_model=StudentProgressResponse,
+)
+async def coach_record_milestone_video(
+    enrollment_id: uuid.UUID,
+    milestone_id: uuid.UUID,
+    payload: MemberMilestoneClaimRequest,
+    current_user: AuthUser = Depends(require_coach),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Submit video recorded by the assigned coach, pending independent review.
+
+    No achievement is awarded here. The coach's identity is stored in the
+    CLAIMED audit event, making approval-time media ownership validation possible.
+    """
+    from libs.common.config import get_settings
+    from libs.common.service_client.core import internal_get
+
+    if not payload.evidence_media_id:
+        raise HTTPException(status_code=422, detail="A recorded video is required")
+    enrollment = await db.get(Enrollment, enrollment_id)
+    if not enrollment or not enrollment.cohort_id:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    await require_coach_for_cohort(current_user, str(enrollment.cohort_id), db)
+    if enrollment.status != EnrollmentStatus.ENROLLED or enrollment.access_suspended:
+        raise HTTPException(status_code=403, detail="Active, unsuspended enrollment required")
+    milestone = await db.get(Milestone, milestone_id)
+    if not milestone or milestone.program_id != enrollment.program_id:
+        raise HTTPException(status_code=404, detail="Milestone not in the enrollment programme")
+    check = await internal_get(
+        service_url=get_settings().MEDIA_SERVICE_URL,
+        path=f"/internal/media/alumni-evidence/{payload.evidence_media_id}",
+        calling_service="academy",
+        params={"owner_auth_id": str(current_user.user_id)},
+    )
+    if check.status_code != 200:
+        raise HTTPException(status_code=422 if check.status_code == 404 else 503,
+            detail="Recorded video could not be verified")
+    progress = await db.scalar(
+        select(StudentProgress).where(StudentProgress.enrollment_id == enrollment_id,
+                                      StudentProgress.milestone_id == milestone_id).with_for_update()
+    )
+    if progress and (progress.status == ProgressStatus.ACHIEVED or progress.reviewed_at is None):
+        raise HTTPException(status_code=409, detail="Only unclaimed or rejected milestones can be resubmitted")
+    previous_status = progress.status if progress else None
+    if not progress:
+        progress = StudentProgress(enrollment_id=enrollment_id, milestone_id=milestone_id,
+            status=ProgressStatus.PENDING)
+        db.add(progress)
+    progress.status = ProgressStatus.PENDING
+    progress.achieved_at = None
+    progress.reviewed_at = None
+    progress.reviewed_by_coach_id = None
+    progress.coach_notes = None
+    progress.score = None
+    progress.evidence_media_id = payload.evidence_media_id
+    progress.student_notes = payload.student_notes
+    await db.flush()
+    db.add(MilestoneReviewEvent(
+        progress_id=progress.id, enrollment_id=enrollment_id, milestone_id=milestone_id,
+        event_type=MilestoneEventType.CLAIMED, actor_id=current_user.user_id,
+        actor_role="coach", previous_status=previous_status,
+        new_status=ProgressStatus.PENDING, evidence_media_id_snapshot=payload.evidence_media_id,
+        student_notes_snapshot=payload.student_notes,
+    ))
+    await db.commit()
+    await db.refresh(progress)
+    return progress
+
+
 @router.get(
     "/enrollments/{enrollment_id}/progress/{progress_id}/events",
     response_model=List[MilestoneReviewEventResponse],
