@@ -150,6 +150,7 @@ async def validate_alumni_evidence(
     # New uploads are bound to an enrollment and milestone. Historic private
     # evidence from before the rollout may lack linked_id and remains reviewable.
     from datetime import datetime, timezone
+
     linked = (item.metadata_info or {}).get("linked_id")
     legacy_cutoff = datetime(2026, 10, 23, tzinfo=timezone.utc)
     created = item.created_at
@@ -157,7 +158,9 @@ async def validate_alumni_evidence(
         created = created.replace(tzinfo=timezone.utc)
     if expected_linked_id and linked != expected_linked_id:
         if linked is not None or not created or created >= legacy_cutoff:
-            raise HTTPException(status_code=404, detail="Video is not linked to this milestone")
+            raise HTTPException(
+                status_code=404, detail="Video is not linked to this milestone"
+            )
     if not item.file_url or storage_service.bucket_private not in item.file_url:
         raise HTTPException(status_code=404, detail="Private video not found")
     # Check the actual private object, not merely the database row / presigned URL.
@@ -167,7 +170,9 @@ async def validate_alumni_evidence(
     try:
         metadata = await storage_service.head_object(key, BucketType.PRIVATE)
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="Video object is not accessible") from exc
+        raise HTTPException(
+            status_code=503, detail="Video object is not accessible"
+        ) from exc
     if not metadata.get("size_bytes"):
         raise HTTPException(status_code=422, detail="Video object is empty")
     return {"valid": True}
