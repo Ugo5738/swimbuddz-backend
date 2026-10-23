@@ -394,7 +394,8 @@ async def coach_record_milestone_video(
         service_url=get_settings().MEDIA_SERVICE_URL,
         path=f"/internal/media/alumni-evidence/{payload.evidence_media_id}",
         calling_service="academy",
-        params={"owner_auth_id": str(current_user.user_id)},
+        params={"owner_auth_id": str(current_user.user_id),
+                "expected_linked_id": f"{enrollment_id}:{milestone_id}"},
     )
     if check.status_code != 200:
         raise HTTPException(status_code=422 if check.status_code == 404 else 503,
