@@ -231,7 +231,7 @@ async def claim_milestone(
     Allow a member to claim completion of a milestone.
 
     The member must own the enrollment. Creates or updates a StudentProgress
-    record with ACHIEVED status and optional evidence.
+    record with PENDING status and optional evidence.
     """
 
     # Verify enrollment exists and belongs to the current user
