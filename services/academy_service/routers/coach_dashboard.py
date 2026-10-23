@@ -687,7 +687,8 @@ async def review_milestone_claim(
                     service_url=get_settings().MEDIA_SERVICE_URL,
                     path=f"/internal/media/alumni-evidence/{progress.evidence_media_id}",
                     calling_service="academy",
-                    params={"owner_auth_id": str(evidence_owner_id)},
+                    params={"owner_auth_id": str(evidence_owner_id),
+                            "expected_linked_id": f"{progress.enrollment_id}:{progress.milestone_id}"},
                 )
             except (httpx.HTTPError, OSError) as exc:
                 raise HTTPException(status_code=503, detail="Video verification unavailable") from exc
