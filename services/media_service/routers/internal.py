@@ -122,6 +122,7 @@ async def verify_club_assessment_video(
 async def validate_alumni_evidence(
     media_id: uuid.UUID,
     owner_auth_id: uuid.UUID,
+    expected_linked_id: str | None = None,
     _current_user: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ) -> dict[str, bool]:
@@ -146,6 +147,29 @@ async def validate_alumni_evidence(
         or item.vault_id is not None
     ):
         raise HTTPException(status_code=404, detail="Video not found")
+    # New uploads are bound to an enrollment and milestone. Historic private
+    # evidence from before the rollout may lack linked_id and remains reviewable.
+    from datetime import datetime, timezone
+    linked = (item.metadata_info or {}).get("linked_id")
+    legacy_cutoff = datetime(2026, 10, 23, tzinfo=timezone.utc)
+    created = item.created_at
+    if created and created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    if expected_linked_id and linked != expected_linked_id:
+        if linked is not None or not created or created >= legacy_cutoff:
+            raise HTTPException(status_code=404, detail="Video is not linked to this milestone")
+    if not item.file_url or storage_service.bucket_private not in item.file_url:
+        raise HTTPException(status_code=404, detail="Private video not found")
+    # Check the actual private object, not merely the database row / presigned URL.
+    key = urlparse(item.file_url).path.lstrip("/")
+    if not key:
+        raise HTTPException(status_code=404, detail="Private video not found")
+    try:
+        metadata = await storage_service.head_object(key, BucketType.PRIVATE)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Video object is not accessible") from exc
+    if not metadata.get("size_bytes"):
+        raise HTTPException(status_code=422, detail="Video object is empty")
     return {"valid": True}
 
 
