@@ -666,6 +666,19 @@ async def review_milestone_claim(
         if evidence_required and not progress.evidence_media_id:
             raise HTTPException(status_code=422, detail="This milestone requires video evidence")
         if progress.evidence_media_id:
+            # Coach-recorded submissions are uploaded under the coach's identity.
+            # Identify the original uploader from the immutable CLAIMED event.
+            last_claim = (await db.execute(
+                select(MilestoneReviewEvent)
+                .where(MilestoneReviewEvent.progress_id == progress.id,
+                       MilestoneReviewEvent.event_type == MilestoneEventType.CLAIMED)
+                .order_by(MilestoneReviewEvent.created_at.desc())
+                .limit(1)
+            )).scalar_one_or_none()
+            evidence_owner_id = (
+                last_claim.actor_id if last_claim and last_claim.actor_role == "coach"
+                else progress.enrollment.member_auth_id
+            )
             import httpx
             from libs.common.config import get_settings
             from libs.common.service_client.core import internal_get
@@ -674,7 +687,7 @@ async def review_milestone_claim(
                     service_url=get_settings().MEDIA_SERVICE_URL,
                     path=f"/internal/media/alumni-evidence/{progress.evidence_media_id}",
                     calling_service="academy",
-                    params={"owner_auth_id": str(progress.enrollment.member_auth_id)},
+                    params={"owner_auth_id": str(evidence_owner_id)},
                 )
             except (httpx.HTTPError, OSError) as exc:
                 raise HTTPException(status_code=503, detail="Video verification unavailable") from exc
