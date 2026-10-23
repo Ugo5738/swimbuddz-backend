@@ -91840,7 +91840,6 @@
             },
             "type": "array",
             "maxItems": 6,
-            "minItems": 1,
             "title": "Expected Installments"
           },
           "unpaid_installment_amounts_kobo": {
@@ -91862,6 +91861,21 @@
             "type": "integer",
             "exclusiveMinimum": 0.0,
             "title": "Agreed Cash Total Kobo"
+          },
+          "billing_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "full",
+                  "installments"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Mode"
           }
         },
         "type": "object",

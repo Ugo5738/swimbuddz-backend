@@ -5,6 +5,7 @@ records the original and revised terms. Historical paid installments are immutab
 """
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
@@ -19,6 +20,7 @@ from libs.common.datetime_utils import utc_now
 from services.academy_service.models import (
     AcademyFinancialCredit,
     Enrollment,
+    EnrollmentInstallment,
     EnrollmentStatus,
     InstallmentStatus,
     PaymentStatus,
@@ -27,8 +29,10 @@ from services.academy_service.models.commercial_adjustment import (
     AcademyCommercialAdjustment,
 )
 from services.academy_service.routers._shared import (
+    _preview_installment_schedule,
     _sync_installment_state_for_enrollment,
 )
+from services.academy_service.services.installments import build_schedule
 from .change_cohort import financial_state
 
 router = APIRouter()
@@ -38,10 +42,11 @@ class CommercialTermsRequest(BaseModel):
     adjustment_id: uuid.UUID
     reason: str = Field(min_length=20, max_length=2000)
     expected_price_snapshot_kobo: int = Field(ge=0)
-    expected_installments: list[dict] = Field(min_length=1, max_length=6)
+    expected_installments: list[dict] = Field(max_length=6)
     unpaid_installment_amounts_kobo: list[int] = Field(min_length=1, max_length=6)
     historic_discount_kobo: int = Field(default=0, ge=0)
     agreed_cash_total_kobo: int = Field(gt=0)
+    billing_mode: Literal["full", "installments"] | None = None
 
     @model_validator(mode="after")
     def amounts_valid(self):
@@ -51,6 +56,14 @@ class CommercialTermsRequest(BaseModel):
         ):
             raise ValueError("Unpaid amounts must be positive integer kobo")
         return self
+
+    def audit_request(self):
+        # Preserve retry compatibility with approvals made before billing_mode
+        # existed. New enrollment agreements explicitly record their mode.
+        return self.model_dump(
+            mode="json",
+            exclude={"billing_mode"} if self.billing_mode is None else set(),
+        )
 
 
 async def _load(db: AsyncSession, enrollment_id: uuid.UUID, *, lock: bool = False):
@@ -97,6 +110,14 @@ def _snapshot(enrollment: Enrollment):
         }
         for item in sorted(enrollment.installments, key=lambda x: x.installment_number)
     ]
+
+
+def _require_unpaid_enrollment(enrollment: Enrollment, verified_cash: int):
+    if verified_cash or enrollment.payment_status in {
+        PaymentStatus.PAID,
+        PaymentStatus.WAIVED,
+    }:
+        raise HTTPException(409, "Settled tuition requires a separate financial review")
 
 
 async def _verified(db: AsyncSession, enrollment: Enrollment):
@@ -153,13 +174,27 @@ async def preview_commercial_terms(
     enrollment = await _load(db, enrollment_id)
     verified_cash, finance = await _verified(db, enrollment)
     installments = _snapshot(enrollment)
+    suggested = []
     if not installments:
-        raise HTTPException(409, "Enrollment has no existing installment plan")
+        _require_unpaid_enrollment(enrollment, verified_cash)
+        if enrollment.cohort.installment_plan_enabled:
+            suggested = _preview_installment_schedule(
+                enrollment, enrollment.program, enrollment.cohort
+            )
     return {
         "enrollment_id": str(enrollment.id),
         "price_snapshot_kobo": enrollment.price_snapshot_amount,
         "verified_cash_kobo": verified_cash,
         "installments": installments,
+        "suggested_installments": [
+            {
+                "number": item["installment_number"],
+                "amount_kobo": item["amount"],
+                "due_at": item["due_at"].isoformat(),
+            }
+            for item in suggested
+        ],
+        "can_create_installments": bool(enrollment.cohort.installment_plan_enabled),
         "blocked_payment_references": finance.get("blocked_references", []),
         "adjustments": [
             {
@@ -193,7 +228,7 @@ async def approve_commercial_terms(
     if prior:
         if prior.enrollment_id != enrollment_id:
             raise HTTPException(409, "Adjustment ID belongs to a different enrollment")
-        if prior.approved_terms.get("request") != payload.model_dump(mode="json"):
+        if prior.approved_terms.get("request") != payload.audit_request():
             raise HTTPException(409, "Adjustment ID already used with different terms")
         return {
             "state": "completed",
@@ -206,22 +241,28 @@ async def approve_commercial_terms(
     old = _snapshot(enrollment)
     if old != payload.expected_installments:
         raise HTTPException(409, "Installments have changed; reload the review")
-    if not old:
-        raise HTTPException(409, "Cannot amend a schedule that does not exist")
     verified_cash, finance = await _verified(db, enrollment)
+    if not old:
+        _require_unpaid_enrollment(enrollment, verified_cash)
+        if payload.billing_mode is None:
+            raise HTTPException(
+                422, "Choose full payment or installments for the new agreement"
+            )
     paid = [i for i in enrollment.installments if i.status == InstallmentStatus.PAID]
     pending = [
         i
         for i in enrollment.installments
         if i.status in {InstallmentStatus.PENDING, InstallmentStatus.MISSED}
     ]
-    if (
-        not paid
-        or not pending
-        or len(pending) != len(payload.unpaid_installment_amounts_kobo)
+    if old and (
+        not pending or len(pending) != len(payload.unpaid_installment_amounts_kobo)
     ):
         raise HTTPException(
-            409, "Expected paid history and unpaid installment count do not match"
+            409, "Unpaid installment count does not match the reviewed plan"
+        )
+    if old and payload.billing_mode == "full":
+        raise HTTPException(
+            409, "Keep the existing plan when amending installment amounts"
         )
     if any(i.payment_reference for i in pending):
         raise HTTPException(
@@ -243,17 +284,59 @@ async def approve_commercial_terms(
         )
     if new_nominal > enrollment.price_snapshot_amount:
         raise HTTPException(409, "This adjustment cannot increase the frozen tuition")
+    if (
+        not paid
+        and len(payload.unpaid_installment_amounts_kobo) > 1
+        and payload.unpaid_installment_amounts_kobo[0] * 3 < new_nominal
+    ):
+        raise HTTPException(
+            422,
+            "The first installment must cover at least one-third of the agreed tuition",
+        )
     if enrollment.payment_status == PaymentStatus.WAIVED:
         raise HTTPException(
             409, "Waived enrollment requires a separate financial review"
         )
+    new_schedule = []
+    if not old and payload.billing_mode == "installments":
+        if not enrollment.cohort.installment_plan_enabled:
+            raise HTTPException(409, "This cohort does not offer installments")
+        if len(payload.unpaid_installment_amounts_kobo) < 2:
+            raise HTTPException(
+                422, "An installment agreement requires at least two payments"
+            )
+        try:
+            new_schedule = build_schedule(
+                total_fee=new_nominal,
+                duration_weeks=int(enrollment.program.duration_weeks),
+                cohort_start=enrollment.cohort.start_date,
+                enrolled_at=enrollment.enrolled_at
+                or enrollment.created_at
+                or utc_now(),
+                count_override=len(payload.unpaid_installment_amounts_kobo),
+                deposit_override=payload.unpaid_installment_amounts_kobo[0],
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+    elif not old and len(payload.unpaid_installment_amounts_kobo) != 1:
+        raise HTTPException(422, "Full payment requires one agreed tuition amount")
     for item, amount in zip(
         sorted(pending, key=lambda x: x.installment_number),
         payload.unpaid_installment_amounts_kobo,
     ):
         item.amount = amount
+    for item, amount in zip(new_schedule, payload.unpaid_installment_amounts_kobo):
+        db.add(
+            EnrollmentInstallment(
+                enrollment_id=enrollment.id,
+                installment_number=item["installment_number"],
+                amount=amount,
+                due_at=item["due_at"],
+                status=InstallmentStatus.PENDING,
+            )
+        )
     enrollment.price_snapshot_amount = new_nominal
-    enrollment.uses_installments = True
+    enrollment.uses_installments = bool(old or new_schedule)
     db.add(
         AcademyCommercialAdjustment(
             id=payload.adjustment_id,
@@ -267,13 +350,14 @@ async def approve_commercial_terms(
                 "verified_payment_references": finance.get("references") or [],
             },
             approved_terms={
-                "request": payload.model_dump(mode="json"),
+                "request": payload.audit_request(),
                 "nominal_tuition_kobo": new_nominal,
                 "historic_discount_kobo": payload.historic_discount_kobo,
                 "agreed_cash_total_kobo": payload.agreed_cash_total_kobo,
             },
         )
     )
+    await db.flush()
     await _sync_installment_state_for_enrollment(db, enrollment, now_dt=utc_now())
     await db.commit()
     return {
