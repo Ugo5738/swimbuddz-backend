@@ -522,7 +522,7 @@ async def override_progress(
       regardless of caller — it's attribution data that travels with
       the event, not a control flag.
 
-    Returns the (possibly newly-created) ``StudentProgress`` row.
+    Returns the existing ``StudentProgress`` row after an auditable override.
     """
     # Service-role JWTs are attributed to the AI principal; everything
     # else is treated as a human admin. The synthetic principal UUID
@@ -560,10 +560,8 @@ async def override_progress(
             detail="Milestone does not belong to enrollment program",
         )
 
-    # Load (or lazily create) the StudentProgress row. Overrides should
-    # normally target an existing claim, but allow create-on-override
-    # for the rare case where an admin records a decision before the
-    # student claimed it (e.g., backfilling historical data).
+    # Overrides require an earlier coach/admin decision. Historical backfills
+    # belong in the dedicated progress management path, not an override.
     progress = (
         await db.execute(
             select(StudentProgress).where(
@@ -574,16 +572,44 @@ async def override_progress(
     ).scalar_one_or_none()
 
     if progress is None:
-        progress = StudentProgress(
-            enrollment_id=payload.enrollment_id,
-            milestone_id=payload.milestone_id,
-            status=payload.new_status,
+        raise HTTPException(status_code=409, detail="No existing assessment to override")
+    previous_status = progress.status
+    progress.status = payload.new_status
+
+    # There must be a prior decision, not merely an unreviewed upload.
+    prior_review = (await db.execute(
+        select(MilestoneReviewEvent)
+        .where(MilestoneReviewEvent.progress_id == progress.id,
+               MilestoneReviewEvent.event_type.in_([
+                   MilestoneEventType.APPROVED, MilestoneEventType.REJECTED, MilestoneEventType.OVERRIDE]))
+        .order_by(MilestoneReviewEvent.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    if prior_review is None:
+        raise HTTPException(status_code=409, detail="No coach/admin decision to override")
+
+    if payload.new_status == ProgressStatus.ACHIEVED and milestone.required_evidence in (
+        RequiredEvidence.VIDEO, RequiredEvidence.TIME_TRIAL
+    ):
+        if not progress.evidence_media_id:
+            raise HTTPException(status_code=422, detail="Video evidence is required for this milestone")
+        from libs.common.config import get_settings
+        from libs.common.service_client.core import internal_get
+        last_claim = (await db.execute(select(MilestoneReviewEvent).where(
+            MilestoneReviewEvent.progress_id == progress.id,
+            MilestoneReviewEvent.event_type == MilestoneEventType.CLAIMED
+        ).order_by(MilestoneReviewEvent.created_at.desc()).limit(1))).scalar_one_or_none()
+        media_owner = last_claim.actor_id if last_claim and last_claim.actor_role == "coach" else enrollment.member_auth_id
+        check = await internal_get(
+            service_url=get_settings().MEDIA_SERVICE_URL,
+            path=f"/internal/media/alumni-evidence/{progress.evidence_media_id}",
+            calling_service="academy",
+            params={"owner_auth_id": str(media_owner),
+                    "expected_linked_id": f"{progress.enrollment_id}:{progress.milestone_id}"},
         )
-        db.add(progress)
-        previous_status = None
-    else:
-        previous_status = progress.status
-        progress.status = payload.new_status
+        if check.status_code != 200:
+            raise HTTPException(status_code=422 if check.status_code == 404 else 503,
+                detail="Video evidence could not be verified")
 
     # Live-row mutations the override is allowed to make. Crucially,
     # ``reviewed_by_coach_id`` and ``reviewed_at`` are NOT touched.
