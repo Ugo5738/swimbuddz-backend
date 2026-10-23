@@ -20,6 +20,8 @@ jobs:
       - name: Install backend dependencies
         run: pip install -e .
       - name: Generate and commit OpenAPI
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/test_db
         run: |
           python scripts/api/generate-openapi.py > openapi.json
           git config user.name "github-actions[bot]"
