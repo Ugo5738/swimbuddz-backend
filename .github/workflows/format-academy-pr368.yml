@@ -1,0 +1,30 @@
+name: Format Academy PR 368
+on:
+  push:
+    branches:
+      - feat/academy-knowledge-quizzes-review-20261023
+    paths:
+      - .github/workflows/format-academy-pr368.yml
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff==0.4.10
+      - name: Format only files changed for Academy PR 368
+        run: |
+          ruff format services/academy_service/models/__init__.py services/academy_service/models/quizzes.py services/academy_service/routers/coach_dashboard.py services/academy_service/routers/progress.py services/academy_service/routers/quizzes.py services/academy_service/routers/reports.py services/academy_service/schemas/quizzes.py services/media_service/routers/internal.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/academy_service/models/__init__.py services/academy_service/models/quizzes.py services/academy_service/routers/coach_dashboard.py services/academy_service/routers/progress.py services/academy_service/routers/quizzes.py services/academy_service/routers/reports.py services/academy_service/schemas/quizzes.py services/media_service/routers/internal.py
+          if ! git diff --cached --quiet; then
+            git commit -m "style(academy): apply Ruff formatting for PR 368"
+            git push origin HEAD:feat/academy-knowledge-quizzes-review-20261023
+          fi
