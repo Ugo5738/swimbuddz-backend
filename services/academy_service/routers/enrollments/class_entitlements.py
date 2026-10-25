@@ -36,6 +36,7 @@ class ClassBaselineInput(BaseModel):
 
 
 class ClassAllocationInput(BaseModel):
+    actor_auth_id: str = Field(min_length=1, max_length=160)
     member_id: uuid.UUID
     session_id: uuid.UUID
     kind: str = Field(pattern="^(prepaid|paid_extra|makeup|support)$")
@@ -247,7 +248,7 @@ async def reserve_class_allocation(
         kind=payload.kind,
         agreed_fee_kobo=payload.agreed_fee_kobo,
         status="reserved",
-        actor_auth_id=actor.user_id,
+        actor_auth_id=payload.actor_auth_id,
         reason=payload.reason,
     )
     db.add(row)
