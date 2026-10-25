@@ -57,7 +57,9 @@ async def record_academy_participation(
     if session.session_type != SessionType.COHORT_CLASS or not session.cohort_id:
         raise HTTPException(422, "Only a real cohort class may use Academy allocation")
     if session.starts_at > utc_now():
-        raise HTTPException(409, "Use this attendance reconciliation flow only after class starts")
+        raise HTTPException(
+            409, "Use this attendance reconciliation flow only after class starts"
+        )
     if payload.kind == "prepaid" and payload.agreed_fee_kobo:
         raise HTTPException(422, "Prepaid lessons must have zero additional charge")
     if payload.kind == "paid_extra" and payload.agreed_fee_kobo <= 0:
@@ -143,7 +145,8 @@ async def record_academy_participation(
         )
     except Exception as exc:
         raise HTTPException(
-            503, "Booking saved, but attendance verification is unavailable. Retry safely."
+            503,
+            "Booking saved, but attendance verification is unavailable. Retry safely.",
         ) from exc
     if not any(
         entry.get("session_id") == str(session_id)
@@ -151,7 +154,8 @@ async def record_academy_participation(
         for entry in recorded
     ):
         raise HTTPException(
-            503, "Booking saved, but attendance was not confirmed. Retry after recording attendance."
+            503,
+            "Booking saved, but attendance was not confirmed. Retry after recording attendance.",
         )
     try:
         confirmed = await internal_post(
