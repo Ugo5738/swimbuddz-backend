@@ -955,13 +955,12 @@ async def admin_walk_in_booking(
             detail="Member is missing auth_id — cannot create a booking.",
         )
 
-    # Enrollment owners must not be billed as ad-hoc guest walk-ins.
-    # Their prepaid/paid-extra entitlements require the Academy ledger route.
-    if (
-        session.session_type == SessionType.COHORT_CLASS
-        and session.cohort_id
-        and getattr(session, "cohort_fee_mode", "included") == "paid_extra"
-    ):
+    # A physical cohort session can include enrolled learners and visiting
+    # members. Only an enrolled learner is entitled to the cohort's tuition
+    # price. Visitors use an explicit guest price, never somebody else's credit.
+    cohort_visitor = False
+    included_class = False
+    if session.session_type == SessionType.COHORT_CLASS and session.cohort_id:
         from libs.common.config import get_settings
         from libs.common.service_client import internal_get
 
@@ -986,24 +985,25 @@ async def admin_walk_in_booking(
                 status_code=503,
                 detail="Academy membership could not be verified. No walk-in booking created.",
             ) from exc
-        if enrollment.get("enrolled"):
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "This swimmer belongs to the Academy cohort. Use Academy "
-                    "student participation to record the correct lesson entitlement."
-                ),
-            )
 
-    included_class = (
-        getattr(session.session_type, "value", session.session_type) == "cohort_class"
-        and getattr(session, "cohort_fee_mode", "included") != "paid_extra"
-    )
-    if included_class and payload.fee_amount_kobo not in (None, 0):
-        raise HTTPException(
-            422,
-            "This class is included in tuition. Designate a genuine paid extra class before recording an additional fee.",
-        )
+        enrolled = bool(enrollment.get("enrolled"))
+        cohort_visitor = not enrolled
+        if enrolled:
+            if getattr(session, "cohort_fee_mode", "included") == "paid_extra":
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "This swimmer belongs to the Academy cohort. Use Academy "
+                        "student participation for prepaid or paid extra lessons."
+                    ),
+                )
+            if payload.fee_amount_kobo not in (None, 0):
+                raise HTTPException(
+                    status_code=422,
+                    detail="A regular Academy class is included in tuition. Do not charge its enrolled students again.",
+                )
+            included_class = True
+
     resolved_access = None
     if (
         payload.fee_amount_kobo is None
@@ -1023,10 +1023,18 @@ async def admin_walk_in_booking(
         else (
             0
             if included_class
-            else int(
-                resolved_access.fee_amount_kobo
-                if resolved_access and resolved_access.fee_amount_kobo is not None
-                else session.pool_fee or 0
+            else (
+                int(
+                    session.guest_fee_kobo
+                    if session.guest_fee_kobo is not None
+                    else session.pool_fee or 0
+                )
+                if cohort_visitor
+                else int(
+                    resolved_access.fee_amount_kobo
+                    if resolved_access and resolved_access.fee_amount_kobo is not None
+                    else session.pool_fee or 0
+                )
             )
         )
     )
@@ -1094,10 +1102,14 @@ async def admin_walk_in_booking(
         # pricing/reporting truthful for walk-ins while booking_source records
         # that staff created the booking at the pool.
         access_source=(
-            resolved_access.access_source if resolved_access else "admin_walk_in"
+            resolved_access.access_source
+            if resolved_access
+            else ("academy_guest_visit" if cohort_visitor else "admin_walk_in")
         ),
         pricing_audience=(
-            resolved_access.pricing_audience if resolved_access else None
+            resolved_access.pricing_audience
+            if resolved_access
+            else ("guest" if cohort_visitor else None)
         ),
         pricing_source=(
             "admin_override"
