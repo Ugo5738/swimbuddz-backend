@@ -33,6 +33,7 @@ class ClassBaselineInput(BaseModel):
 
 
 class ClassAllocationInput(BaseModel):
+    member_id: uuid.UUID
     session_id: uuid.UUID
     kind: str = Field(pattern="^(prepaid|paid_extra|makeup|support)$")
     agreed_fee_kobo: int = Field(default=0, ge=0)
@@ -128,7 +129,7 @@ async def configure_class_baseline(
 async def reserve_class_allocation(
     enrollment_id: uuid.UUID,
     payload: ClassAllocationInput,
-    actor: AuthUser = Depends(require_admin),
+    actor: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Reserve a learner-specific entitlement, idempotently.
@@ -141,6 +142,8 @@ async def reserve_class_allocation(
     ).scalar_one_or_none()
     if enrollment is None or enrollment.cohort_id is None:
         raise HTTPException(404, "Cohort enrollment not found")
+    if enrollment.member_id != payload.member_id:
+        raise HTTPException(409, "Member and Academy enrollment do not match")
     if enrollment.status != EnrollmentStatus.ENROLLED or enrollment.access_suspended or enrollment.paused_at:
         raise HTTPException(409, "Enrollment is not currently entitled to Academy sessions")
     plan = (
