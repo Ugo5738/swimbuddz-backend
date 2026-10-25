@@ -154,6 +154,7 @@ async def test_admin_walk_in_does_not_charge_regular_class_pool_cost(
 
     session = cohort_session(1500000)
     session.cohort_fee_mode = mode
+    session.allows_guests = True
     db = SimpleNamespace(
         execute=AsyncMock(
             side_effect=[
@@ -176,6 +177,7 @@ async def test_admin_walk_in_does_not_charge_regular_class_pool_cost(
     )
     monkeypatch.setattr(service_client, "internal_get", AsyncMock(return_value=check))
     monkeypatch.setattr(bookings, "_record_walk_in_attendance", AsyncMock())
+    monkeypatch.setattr(bookings, "assert_booking_capacity", AsyncMock())
     result = await bookings.admin_walk_in_booking(
         session.id, AdminWalkInRequest(member_id=uuid.uuid4()), make_admin_user(), db
     )
@@ -219,7 +221,7 @@ async def test_paid_extra_enrolled_student_cannot_bypass_class_allocation(monkey
             make_admin_user(),
             db,
         )
-    assert exc.value.status_code == 409
+    assert exc.value.status_code == 403
     db.add.assert_not_called()
     db.commit.assert_not_awaited()
 
@@ -255,11 +257,14 @@ async def test_included_cohort_enrolled_student_has_zero_walk_in_charge(monkeypa
         service_client, "internal_get", AsyncMock(return_value=enrolled_response)
     )
     monkeypatch.setattr(bookings, "_record_walk_in_attendance", AsyncMock())
-    booking = await bookings.admin_walk_in_booking(
-        session.id, AdminWalkInRequest(member_id=uuid.uuid4()), make_admin_user(), db
-    )
-    assert booking.fee_amount_kobo == 0
-    assert booking.access_source == "admin_walk_in"
+    monkeypatch.setattr(bookings, "assert_booking_capacity", AsyncMock())
+    with pytest.raises(HTTPException) as exc:
+        await bookings.admin_walk_in_booking(
+            session.id, AdminWalkInRequest(member_id=uuid.uuid4()), make_admin_user(), db
+        )
+    assert exc.value.status_code == 403
+    db.add.assert_not_called()
+    db.commit.assert_not_awaited()
 
 
 async def test_regular_cohort_visitor_uses_explicit_guest_fee(monkeypatch):
@@ -270,6 +275,7 @@ async def test_regular_cohort_visitor_uses_explicit_guest_fee(monkeypatch):
     session = cohort_session(1500000)
     session.cohort_fee_mode = "included"
     session.guest_fee_kobo = 2200000
+    session.allows_guests = True
     db = SimpleNamespace(
         execute=AsyncMock(
             side_effect=[
@@ -294,6 +300,7 @@ async def test_regular_cohort_visitor_uses_explicit_guest_fee(monkeypatch):
         service_client, "internal_get", AsyncMock(return_value=visitor_response)
     )
     monkeypatch.setattr(bookings, "_record_walk_in_attendance", AsyncMock())
+    monkeypatch.setattr(bookings, "assert_booking_capacity", AsyncMock())
     result = await bookings.admin_walk_in_booking(
         session.id, AdminWalkInRequest(member_id=uuid.uuid4()), make_admin_user(), db
     )
@@ -336,7 +343,7 @@ async def test_walk_in_cannot_charge_an_included_class_even_with_explicit_client
             make_admin_user(),
             db,
         )
-    assert exc.value.status_code == 422
+    assert exc.value.status_code == 403
     db.commit.assert_not_awaited()
 
 
