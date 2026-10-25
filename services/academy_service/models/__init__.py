@@ -1,5 +1,9 @@
 """Academy Service models package."""
 
+from services.academy_service.models.class_entitlement import (
+    AcademyClassAllocation,
+    AcademyClassPlan,
+)
 from services.academy_service.models.cohort import (
     Cohort,
     CohortExtensionRequest,
@@ -67,6 +71,8 @@ from services.academy_service.models.progress import (
 )
 
 __all__ = [
+    "AcademyClassAllocation",
+    "AcademyClassPlan",
     "AcademyEnrollmentDeletionAudit",
     "AcademyQuiz",
     "AcademyQuizAssignment",

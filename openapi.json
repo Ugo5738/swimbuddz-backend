@@ -11894,6 +11894,62 @@
         }
       }
     },
+    "/api/v1/sessions/{session_id}/admin/academy-participation": {
+      "post": {
+        "tags": [
+          "academy-session-participation"
+        ],
+        "summary": "Record Academy Participation",
+        "operationId": "record_academy_participation_sessions__session_id__admin_academy_participation_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcademyClassAdminBooking"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/sessions/{session_id}/roster": {
       "get": {
         "tags": [
@@ -19764,6 +19820,233 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ConfirmDelete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}/class-entitlements": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Class Entitlements",
+        "operationId": "class_entitlements_academy_admin_enrollments__enrollment_id__class_entitlements_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}/class-entitlements/baseline": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Configure Class Baseline",
+        "description": "One-time verified opening balance; never reset consumed classes.",
+        "operationId": "configure_class_baseline_academy_admin_enrollments__enrollment_id__class_entitlements_baseline_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassBaselineInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}/class-entitlements/allocations": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Reserve Class Allocation",
+        "description": "Reserve a learner-specific entitlement, idempotently.\n\nThis intentionally does not create a booking or charge a member. The\ncorresponding Sessions-service write is a separate step and may fail.",
+        "operationId": "reserve_class_allocation_academy_admin_enrollments__enrollment_id__class_entitlements_allocations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassAllocationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/internal/enrollments/{enrollment_id}/class-allocations/{allocation_id}/apply": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Apply Class Allocation",
+        "description": "Sessions service confirms a durable booking was written.\n\nThe allocation is reserved until this call. A retry with the same booking\nis safe; an alternate booking ID is a reconciliation conflict.",
+        "operationId": "apply_class_allocation_academy_internal_enrollments__enrollment_id__class_allocations__allocation_id__apply_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          },
+          {
+            "name": "allocation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Allocation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassAllocationApply"
               }
             }
           }
@@ -80292,6 +80575,45 @@
         "title": "MemberMembershipResponse",
         "description": "Membership tiers, billing, and gamification."
       },
+      "AcademyClassAdminBooking": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "kind": {
+            "type": "string",
+            "pattern": "^(prepaid|paid_extra)$",
+            "title": "Kind"
+          },
+          "agreed_fee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Agreed Fee Kobo",
+            "default": 0
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "enrollment_id",
+          "kind",
+          "reason"
+        ],
+        "title": "AcademyClassAdminBooking"
+      },
       "AdminGuestWalkInCreate": {
         "properties": {
           "full_name": {
@@ -90251,6 +90573,101 @@
           "message"
         ],
         "title": "ChangeCohortResult"
+      },
+      "ClassAllocationApply": {
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Booking Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "booking_id"
+        ],
+        "title": "ClassAllocationApply"
+      },
+      "ClassAllocationInput": {
+        "properties": {
+          "actor_auth_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Actor Auth Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "kind": {
+            "type": "string",
+            "pattern": "^(prepaid|paid_extra|makeup|support)$",
+            "title": "Kind"
+          },
+          "agreed_fee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Agreed Fee Kobo",
+            "default": 0
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "actor_auth_id",
+          "member_id",
+          "session_id",
+          "kind",
+          "reason"
+        ],
+        "title": "ClassAllocationInput"
+      },
+      "ClassBaselineInput": {
+        "properties": {
+          "purchased_classes": {
+            "type": "integer",
+            "maximum": 500.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Purchased Classes"
+          },
+          "previously_consumed": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 0.0,
+            "title": "Previously Consumed"
+          },
+          "opening_as_of": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Opening As Of"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 15,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purchased_classes",
+          "previously_consumed",
+          "opening_as_of",
+          "reason"
+        ],
+        "title": "ClassBaselineInput"
       },
       "CoachAssignmentCreate": {
         "properties": {
