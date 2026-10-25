@@ -52,7 +52,13 @@ async def test_admin_quote_uses_service_access_price(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "reason",
-    ["membership_required", "club_required", "community_dropins_disabled", "pod_required", "event_access_required"],
+    [
+        "membership_required",
+        "club_required",
+        "community_dropins_disabled",
+        "pod_required",
+        "event_access_required",
+    ],
 )
 async def test_admin_quote_denies_unentitled_session_visits(monkeypatch, reason):
     session = SimpleNamespace(
