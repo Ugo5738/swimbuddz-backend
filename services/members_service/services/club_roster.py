@@ -88,6 +88,7 @@ async def club_session_roster(
                 name=f"{row['first_name']} {row['last_name']}".strip(),
                 email=row["email"],
                 access_source=allowed[str(row["id"])]["source"],
+                fee_amount_kobo=allowed[str(row["id"])].get("fee_amount_kobo"),
             )
             for row in batch
             if str(row["id"]) in allowed

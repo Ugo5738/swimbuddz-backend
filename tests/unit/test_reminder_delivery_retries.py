@@ -57,6 +57,7 @@ async def test_partial_reminder_failure_retries_only_unsent_member(monkeypatch):
         "build_session_email_contexts",
         AsyncMock(
             return_value=NS(
+                member_prices={},
                 sessions={
                     str(session_id): {
                         "id": str(session_id),
@@ -65,7 +66,7 @@ async def test_partial_reminder_failure_retries_only_unsent_member(monkeypatch):
                         "time": "10:00",
                         "location": "Yaba",
                     }
-                }
+                },
             )
         ),
     )

@@ -14608,6 +14608,52 @@
         }
       }
     },
+    "/api/v1/internal/sessions/member-prices": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Member Prices",
+        "operationId": "member_prices_internal_sessions_member_prices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPricesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberPricesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/internal/sessions/participants/{participant_id}/settlement-context": {
       "get": {
         "tags": [
@@ -70635,6 +70681,18 @@
           "access_source": {
             "type": "string",
             "title": "Access Source"
+          },
+          "fee_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount Kobo"
           }
         },
         "type": "object",
@@ -83589,6 +83647,113 @@
         ],
         "title": "MakeupStatus",
         "description": "Lifecycle of a MakeupBooking (individual-learner make-up / reschedule)."
+      },
+      "MemberPriceCheck": {
+        "properties": {
+          "context_key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Context Key"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "context_key",
+          "session_id",
+          "member_id"
+        ],
+        "title": "MemberPriceCheck"
+      },
+      "MemberPriceResponse": {
+        "properties": {
+          "context_key": {
+            "type": "string",
+            "title": "Context Key"
+          },
+          "fee_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount Kobo"
+          },
+          "pricing_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Source"
+          },
+          "price_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "context_key"
+        ],
+        "title": "MemberPriceResponse"
+      },
+      "MemberPricesRequest": {
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/MemberPriceCheck"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "checks"
+        ],
+        "title": "MemberPricesRequest"
+      },
+      "MemberPricesResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberPriceResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "MemberPricesResponse"
       },
       "MemberSessionAccessResponse": {
         "properties": {

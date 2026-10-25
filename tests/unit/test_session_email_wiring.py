@@ -79,6 +79,7 @@ async def test_daily_prompt_passes_shared_context_to_template(monkeypatch):
         session=session,
         active_members=[member],
         email_context=_context(),
+        member_prices={MEMBER_ID: {"fee_amount_kobo": 1_000_000}},
         is_follow_up=True,
     )
 
@@ -87,6 +88,8 @@ async def test_daily_prompt_passes_shared_context_to_template(monkeypatch):
     assert sent_context["id"] == SESSION_ID
     assert sent_context["is_booked"] is False
     assert sent_context["state_label"] == "Available for you to book"
+    assert sent_context["pool_fee"] == 10000
+    assert sent_context["fee_text"] == "NGN 10,000"
     assert send_email.await_args.kwargs["is_follow_up"] is True
 
 
@@ -146,6 +149,7 @@ async def test_timed_reminder_passes_shared_context_to_template(monkeypatch):
                 audience_configs={},
                 pods_by_session={},
                 pod_member_ids_by_session={},
+                member_prices={SESSION_ID: {MEMBER_ID: {"fee_amount_kobo": 1_000_000}}},
             )
         ),
     )
@@ -162,4 +166,5 @@ async def test_timed_reminder_passes_shared_context_to_template(monkeypatch):
     assert sent_context["id"] == SESSION_ID
     assert sent_context["is_booked"] is True
     assert sent_context["state_label"] == "You are booked"
+    assert sent_context["fee_text"] == "NGN 10,000"
     assert notification.status == ScheduledNotificationStatus.SENT

@@ -83,6 +83,11 @@ from services.sessions_service.services.session_access import (
 )
 
 router = APIRouter(prefix="/internal/sessions", tags=["internal"])
+from services.sessions_service.routers.member_prices import (
+    router as member_prices_router,
+)
+
+router.include_router(member_prices_router)
 logger = get_logger(__name__)
 
 
