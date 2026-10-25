@@ -955,6 +955,46 @@ async def admin_walk_in_booking(
             detail="Member is missing auth_id — cannot create a booking.",
         )
 
+    # Enrollment owners must not be billed as ad-hoc guest walk-ins.
+    # Their prepaid/paid-extra entitlements require the Academy ledger route.
+    if (
+        session.session_type == SessionType.COHORT_CLASS
+        and session.cohort_id
+        and getattr(session, "cohort_fee_mode", "included") == "paid_extra"
+    ):
+        from libs.common.config import get_settings
+        from libs.common.service_client import internal_get
+
+        try:
+            check = await internal_get(
+                service_url=get_settings().ACADEMY_SERVICE_URL,
+                path=(
+                    f"/internal/cohorts/{session.cohort_id}/check-enrollment/"
+                    f"{payload.member_id}"
+                ),
+                calling_service="sessions",
+            )
+            check.raise_for_status()
+            enrollment = check.json()
+        except Exception as exc:
+            logger.warning(
+                "Unable to validate Academy cohort enrollment for walk-in %s: %s",
+                payload.member_id,
+                exc,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Academy membership could not be verified. No walk-in booking created.",
+            ) from exc
+        if enrollment.get("enrolled"):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This swimmer belongs to the Academy cohort. Use Academy "
+                    "student participation to record the correct lesson entitlement."
+                ),
+            )
+
     included_class = (
         getattr(session.session_type, "value", session.session_type) == "cohort_class"
         and getattr(session, "cohort_fee_mode", "included") != "paid_extra"
