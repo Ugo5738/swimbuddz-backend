@@ -78,6 +78,11 @@ async def record_academy_participation(
     if not member or not member.get("auth_id"):
         raise HTTPException(404, "Registered member profile not found")
 
+    if existing is None:
+        await assert_booking_capacity(
+            db, session=session, member_id=payload.member_id, new_party_size=1
+        )
+
     try:
         response = await internal_post(
             service_url=get_settings().ACADEMY_SERVICE_URL,
@@ -97,9 +102,6 @@ async def record_academy_participation(
         raise HTTPException(response.status_code, response.text)
     reservation = response.json()
     if existing is None:
-        await assert_booking_capacity(
-            db, session=session, member_id=payload.member_id, new_party_size=1
-        )
         now = utc_now()
         existing = SessionBooking(
             session_id=session_id,
