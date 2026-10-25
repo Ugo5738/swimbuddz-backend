@@ -11,6 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
+from libs.common.config import get_settings
+from libs.common.service_client import internal_get
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
@@ -162,6 +164,21 @@ async def reserve_class_allocation(
         ):
             raise HTTPException(409, "Existing allocation differs; reviewed correction required")
         return {"id": str(previous.id), "status": previous.status, "idempotent": True}
+    try:
+        response = await internal_get(
+            service_url=get_settings().SESSIONS_SERVICE_URL,
+            path=f"/internal/sessions/{payload.session_id}",
+            calling_service="academy",
+        )
+        response.raise_for_status()
+        session = response.json()
+    except Exception as exc:
+        raise HTTPException(503, "Cannot verify the physical session. Allocation unchanged") from exc
+    if (
+        str(session.get("cohort_id")) != str(enrollment.cohort_id)
+        or session.get("session_type") != "cohort_class"
+    ):
+        raise HTTPException(409, "The session does not belong to this Academy cohort")
     if payload.kind == "prepaid":
         if payload.agreed_fee_kobo:
             raise HTTPException(422, "Prepaid classes cannot incur an additional fee")
