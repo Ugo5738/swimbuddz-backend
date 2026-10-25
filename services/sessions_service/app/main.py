@@ -13,6 +13,9 @@ from services.sessions_service.routers.club_reservations import (
 )
 from services.sessions_service.routers.club_holds import router as club_holds_router
 from services.sessions_service.routers.bookings import router as bookings_router
+from services.sessions_service.routers.academy_participation import (
+    router as academy_participation_router,
+)
 from services.sessions_service.routers.bundles import router as bundles_router
 from services.sessions_service.routers.club_operations import (
     router as club_operations_router,
@@ -75,6 +78,7 @@ def create_app() -> FastAPI:
     # /sessions/{id}/book would otherwise hit the {id} catch-all first.
     app.include_router(member_booking_details_router)
     app.include_router(bookings_router)
+    app.include_router(academy_participation_router)
     app.include_router(session_roster_router)
     app.include_router(participants_router)
     app.include_router(guest_booking_admin_router)
