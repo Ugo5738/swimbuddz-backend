@@ -1048,31 +1048,6 @@ async def admin_walk_in_booking(
             detail="Member is missing auth_id — cannot create a booking.",
         )
 
-    quote = await _admin_member_admission_quote(session, payload.member_id, db)
-    if not quote["allowed"]:
-        raise HTTPException(status_code=403, detail=quote["reason"])
-    standard_fee = quote["fee_amount_kobo"]
-    if payload.fee_amount_kobo is not None and payload.fee_amount_kobo != standard_fee:
-        if (
-            not payload.fee_override_reason
-            or len(payload.fee_override_reason.strip()) < 10
-        ):
-            raise HTTPException(
-                422,
-                "An agreed fee different from the member's authorised rate requires a reason (10+ characters)",
-            )
-    fee_kobo = (
-        payload.fee_amount_kobo if payload.fee_amount_kobo is not None else standard_fee
-    )
-    if (
-        session.session_type == SessionType.COHORT_CLASS
-        and quote["pricing_audience"] == "academy"
-    ):
-        raise HTTPException(409, "Use Academy class allocation for enrolled students")
-    # An administrator may document a legitimate commercial exception but
-    # cannot override admission denial, membership or cohort access.
-    resolved_source = quote["access_source"]
-
     # An expired checkout only released a reservation. It must not prevent
     # an admin recording the member's actual attendance against the same row.
     existing = (
@@ -1122,6 +1097,31 @@ async def admin_walk_in_booking(
             ),
         )
 
+    quote = await _admin_member_admission_quote(session, payload.member_id, db)
+    if not quote["allowed"]:
+        raise HTTPException(status_code=403, detail=quote["reason"])
+    standard_fee = quote["fee_amount_kobo"]
+    if payload.fee_amount_kobo is not None and payload.fee_amount_kobo != standard_fee:
+        if (
+            not payload.fee_override_reason
+            or len(payload.fee_override_reason.strip()) < 10
+        ):
+            raise HTTPException(
+                422,
+                "An agreed fee different from the member's authorised rate requires a reason (10+ characters)",
+            )
+    fee_kobo = (
+        payload.fee_amount_kobo if payload.fee_amount_kobo is not None else standard_fee
+    )
+    if (
+        session.session_type == SessionType.COHORT_CLASS
+        and quote["pricing_audience"] == "academy"
+    ):
+        raise HTTPException(409, "Use Academy class allocation for enrolled students")
+    # An administrator may document a legitimate commercial exception but
+    # cannot override admission denial, membership or cohort access.
+    resolved_source = quote["access_source"]
+
     await assert_booking_capacity(
         db, session=session, member_id=payload.member_id, new_party_size=1
     )
@@ -1145,8 +1145,8 @@ async def admin_walk_in_booking(
             if payload.fee_amount_kobo is not None
             else ("admin_admission_quote")
         ),
-        rate_id=(None),
-        rate_code=("admin_override" if payload.fee_amount_kobo is not None else (None)),
+        rate_id=None,
+        rate_code="admin_override" if payload.fee_amount_kobo is not None else None,
         booking_source="admin_walk_in",
         notes=(
             "; ".join(
