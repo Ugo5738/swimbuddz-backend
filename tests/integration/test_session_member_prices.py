@@ -104,9 +104,11 @@ async def test_batch_quote_honors_agreements_inclusions_and_saved_bookings(
     )
     await db_session.refresh(booking)
     assert booking.fee_amount_kobo == 1_500_000
-    assert (await db_session.execute(select(SessionBooking))).scalars().all() == [
-        booking
-    ]
+    assert (
+        await db_session.execute(
+            select(SessionBooking).where(SessionBooking.session_id == session_id)
+        )
+    ).scalars().all() == [booking]
 
 
 async def test_missing_session_or_access_has_unknown_price(
