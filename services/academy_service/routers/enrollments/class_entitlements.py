@@ -132,9 +132,12 @@ async def _summary(
     enrollment = (
         await db.execute(select(Enrollment).where(Enrollment.id == plan.enrollment_id))
     ).scalar_one()
-    routine_used, unverified = await _routine_consumption(
-        enrollment, plan, rows, exclude_session_id=exclude_session_id
-    )
+    if exclude_session_id is None:
+        routine_used, unverified = await _routine_consumption(enrollment, plan, rows)
+    else:
+        routine_used, unverified = await _routine_consumption(
+            enrollment, plan, rows, exclude_session_id=exclude_session_id
+        )
     remaining = (
         plan.purchased_classes - plan.opening_consumed - used - reserved - routine_used
     )
