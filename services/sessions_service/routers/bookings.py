@@ -939,14 +939,21 @@ async def _admin_member_admission_quote(
                 "pricing_audience": "academy",
             }
         if not session.allows_guests:
-            return {"allowed": False, "reason": "This class does not permit visiting guests",
-                    "access_source": None, "fee_amount_kobo": 0, "pricing_audience": "guest"}
+            return {
+                "allowed": False,
+                "reason": "This class does not permit visiting guests",
+                "access_source": None,
+                "fee_amount_kobo": 0,
+                "pricing_audience": "guest",
+            }
         return {
-            "allowed": True, "reason": "Visiting member at an Academy class",
+            "allowed": True,
+            "reason": "Visiting member at an Academy class",
             "access_source": "academy_guest_visit",
             "fee_amount_kobo": int(
                 session.guest_fee_kobo
-                if session.guest_fee_kobo is not None else session.pool_fee or 0
+                if session.guest_fee_kobo is not None
+                else session.pool_fee or 0
             ),
             "pricing_audience": "guest",
         }
@@ -958,13 +965,15 @@ async def _admin_member_admission_quote(
     # recording an actual attendance after the fact. Admission eligibility is
     # represented by sign_in_eligible; the exclusion reason is still respected.
     eligible = bool(decision.sign_in_eligible) and decision.reason in (
-        None, "session_unavailable",
+        None,
+        "session_unavailable",
     )
     return {
         "allowed": eligible,
         "reason": (
             str(decision.price_label or decision.access_source or "Eligible")
-            if eligible else denial_message(decision.reason)
+            if eligible
+            else denial_message(decision.reason)
         ),
         "access_source": decision.access_source,
         "fee_amount_kobo": int(decision.fee_amount_kobo or 0),
@@ -1138,7 +1147,21 @@ async def admin_walk_in_booking(
             else (None)
         ),
         booking_source="admin_walk_in",
-        notes=("; ".join(part for part in [payload.notes, f"Fee override: {payload.fee_override_reason.strip()}" if payload.fee_override_reason else None] if part) or None),
+        notes=(
+            "; ".join(
+                part
+                for part in [
+                    payload.notes,
+                    (
+                        f"Fee override: {payload.fee_override_reason.strip()}"
+                        if payload.fee_override_reason
+                        else None
+                    ),
+                ]
+                if part
+            )
+            or None
+        ),
         booked_at=now,
         confirmed_at=now,
     )
