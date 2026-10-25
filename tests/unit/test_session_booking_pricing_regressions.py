@@ -183,6 +183,42 @@ async def test_admin_walk_in_does_not_charge_regular_class_pool_cost(
     assert result.access_source == "admin_walk_in"
 
 
+async def test_paid_extra_enrolled_student_cannot_bypass_class_allocation(monkeypatch):
+    from libs.common import service_client
+    from services.sessions_service.schemas.booking import AdminWalkInRequest
+    from tests.conftest import make_admin_user
+
+    session = cohort_session(1500000)
+    session.cohort_fee_mode = "paid_extra"
+    db = SimpleNamespace(
+        execute=AsyncMock(
+            return_value=SimpleNamespace(scalar_one_or_none=lambda: session)
+        ),
+        add=Mock(),
+        commit=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        service_client,
+        "get_member_by_id",
+        AsyncMock(return_value={"auth_id": "member-auth"}),
+    )
+    enrollment_response = SimpleNamespace(
+        raise_for_status=lambda: None,
+        json=lambda: {"enrolled": True, "status": "enrolled"},
+    )
+    monkeypatch.setattr(service_client, "internal_get", AsyncMock(return_value=enrollment_response))
+    with pytest.raises(HTTPException) as exc:
+        await bookings.admin_walk_in_booking(
+            session.id,
+            AdminWalkInRequest(member_id=uuid.uuid4(), fee_amount_kobo=1500000),
+            make_admin_user(),
+            db,
+        )
+    assert exc.value.status_code == 409
+    db.add.assert_not_called()
+    db.commit.assert_not_awaited()
+
+
 async def test_walk_in_cannot_charge_an_included_class_even_with_explicit_client_fee(
     monkeypatch,
 ):
