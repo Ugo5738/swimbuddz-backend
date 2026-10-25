@@ -11432,6 +11432,63 @@
         ]
       }
     },
+    "/api/v1/sessions/{session_id}/admin/member-admission/{member_id}": {
+      "get": {
+        "tags": [
+          "bookings"
+        ],
+        "summary": "Preview Admin Member Admission",
+        "description": "Show an administrator the current eligibility and standard price.",
+        "operationId": "preview_admin_member_admission_sessions__session_id__admin_member_admission__member_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sessions/{session_id}/admin/walk-in": {
       "post": {
         "tags": [
@@ -81072,6 +81129,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "fee_override_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Override Reason"
           }
         },
         "type": "object",

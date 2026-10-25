@@ -226,6 +226,7 @@ class AdminWalkInRequest(BaseModel):
     member_id: uuid.UUID
     fee_amount_kobo: Optional[int] = Field(default=None, ge=0)
     notes: Optional[str] = Field(default=None, max_length=500)
+    fee_override_reason: Optional[str] = Field(default=None, max_length=500)
 
 
 class WalkInAttendanceReconcileRequest(BaseModel):

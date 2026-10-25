@@ -12,6 +12,7 @@ from libs.common.datetime_utils import utc_now
 from services.sessions_service.models import (
     GuestPass,
     Session,
+    SessionParticipant,
     SessionBooking,
     SessionBookingStatus,
 )
@@ -64,10 +65,22 @@ async def assert_booking_capacity(
             )
         )
     ).scalar_one()
+    guest_walk_ins = (
+        await db.execute(
+            select(func.count(SessionParticipant.id)).where(
+                SessionParticipant.session_id == session.id,
+                SessionParticipant.participant_kind == "guest",
+                SessionParticipant.source == "walk_in",
+            )
+        )
+    ).scalar_one()
     from services.sessions_service.services.club_holds import held_club_seats
 
     used = (
-        int(used) + int(guest_holds) + await held_club_seats(db, session.id, member_id)
+        int(used)
+        + int(guest_holds)
+        + int(guest_walk_ins)
+        + await held_club_seats(db, session.id, member_id)
     )
     if int(used) + new_party_size > session.capacity:
         raise HTTPException(
