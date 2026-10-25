@@ -96,5 +96,38 @@ allocation with original attendance timestamp and actor audit.
 13. Feature is disabled until both services deploy compatibly and the
     historical reconciliation is signed off.
 
-**Do not merge the present draft branch as a finished feature.** The pure
-classification rules/tests alone do not satisfy these release gates.
+**Do not treat the pure classification rules as the implementation.** The first-release scope and remaining integration boundaries are set out below.
+
+
+## Implementation boundary for first release (October 2026)
+
+The first integrated admin control supports the two directly requested classifications:
+`prepaid` (one purchased class, no additional charge) and `paid_extra`
+(separately agreed positive fee, no prepaid deduction). It works on one
+physical Academy cohort session and stores one enrollment/session allocation.
+Paid extras remain unpaid until normal verified payment fulfillment; attendance
+is not a receipt. Routine included cohort classes after the verified opening
+cutoff are counted from actual present/late attendance and excluded if an
+explicit allocation already exists. Missing and absent/excused attendance
+remains flagged as unverified; further prepaid consumption fails closed until
+reviewed, rather than creating a new entitlement by inference.
+
+Existing make-up bookings must continue through their already implemented
+make-up and payout workflows. Support-class approvals likewise remain under
+existing processes. Although the allocation schema reserves identifiers for
+`makeup` and `support`, the integrated admin booking route **rejects**
+those types; they are not implemented as a new universal credit ledger. A
+separate integration is required before claiming that all four sources share
+the new booking UI.
+
+Release operations: the Academy administrator must verify one historical
+opening balance per enrollment, with a time cutoff before the target session.
+The front-end then uses Admin Attendance to classify each participant; enter
+the true per-student fee, do not represent money already received as a discount.
+Do not backdate an opening balance to make unresolved regular attendance
+disappear. Deploy compatible sessions/academy services and frontend together
+with migrations first; test a real staging cohort before production.
+
+This document describes the full design target above and the narrower,
+explicit first-release behavior here. Approval of this first release does
+not imply completion of every future make-up/support/reversal requirement.
