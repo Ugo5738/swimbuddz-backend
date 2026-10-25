@@ -260,7 +260,10 @@ async def test_included_cohort_enrolled_student_has_zero_walk_in_charge(monkeypa
     monkeypatch.setattr(bookings, "assert_booking_capacity", AsyncMock())
     with pytest.raises(HTTPException) as exc:
         await bookings.admin_walk_in_booking(
-            session.id, AdminWalkInRequest(member_id=uuid.uuid4()), make_admin_user(), db
+            session.id,
+            AdminWalkInRequest(member_id=uuid.uuid4()),
+            make_admin_user(),
+            db,
         )
     assert exc.value.status_code == 403
     db.add.assert_not_called()
