@@ -78,7 +78,8 @@ async def _routine_consumption(
         and datetime.fromisoformat(item["starts_at"].replace("Z", "+00:00")) <= now
         and (
             enrollment.enrolled_at is None
-            or datetime.fromisoformat(item["starts_at"].replace("Z", "+00:00")) >= enrollment.enrolled_at
+            or datetime.fromisoformat(item["starts_at"].replace("Z", "+00:00"))
+            >= enrollment.enrolled_at
         )
         and item.get("id") not in allocated_ids
     ]
@@ -103,7 +104,9 @@ async def _routine_consumption(
         for session_id in ids
         if statuses.get(session_id) not in {"present", "late"}
     ]
-    return sum(statuses.get(session_id) in {"present", "late"} for session_id in ids), unverified
+    return sum(
+        statuses.get(session_id) in {"present", "late"} for session_id in ids
+    ), unverified
 
 
 async def _summary(db: AsyncSession, plan: AcademyClassPlan) -> dict:
@@ -125,7 +128,9 @@ async def _summary(db: AsyncSession, plan: AcademyClassPlan) -> dict:
         await db.execute(select(Enrollment).where(Enrollment.id == plan.enrollment_id))
     ).scalar_one()
     routine_used, unverified = await _routine_consumption(enrollment, plan, rows)
-    remaining = plan.purchased_classes - plan.opening_consumed - used - reserved - routine_used
+    remaining = (
+        plan.purchased_classes - plan.opening_consumed - used - reserved - routine_used
+    )
     return {
         "enrollment_id": str(plan.enrollment_id),
         "purchased_classes": plan.purchased_classes,
@@ -301,7 +306,10 @@ async def reserve_class_allocation(
             raise HTTPException(422, "Prepaid classes cannot incur an additional fee")
         summary = await _summary(db, plan)
         if not summary["balance_verified"]:
-            raise HTTPException(409, "Reconcile missing routine class attendance before using more prepaid lessons")
+            raise HTTPException(
+                409,
+                "Reconcile missing routine class attendance before using more prepaid lessons",
+            )
         if summary["remaining"] <= 0:
             raise HTTPException(409, "No prepaid classes remain")
     elif payload.kind == "paid_extra":
