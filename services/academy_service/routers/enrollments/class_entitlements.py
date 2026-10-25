@@ -3,6 +3,7 @@
 Allocation reservation never marks a class paid or changes attendance. The
 Sessions service must verify and reconcile the physical booking independently.
 """
+
 import uuid
 from datetime import datetime
 
@@ -44,13 +45,17 @@ class ClassAllocationInput(BaseModel):
 
 async def _summary(db: AsyncSession, plan: AcademyClassPlan) -> dict:
     rows = (
-        await db.execute(
-            select(AcademyClassAllocation).where(
-                AcademyClassAllocation.enrollment_id == plan.enrollment_id,
-                AcademyClassAllocation.status != "reversed",
+        (
+            await db.execute(
+                select(AcademyClassAllocation).where(
+                    AcademyClassAllocation.enrollment_id == plan.enrollment_id,
+                    AcademyClassAllocation.status != "reversed",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     used = sum(row.kind == "prepaid" and row.status == "applied" for row in rows)
     reserved = sum(row.kind == "prepaid" and row.status == "reserved" for row in rows)
     remaining = plan.purchased_classes - plan.opening_consumed - used - reserved
@@ -84,7 +89,9 @@ async def class_entitlements(
 ):
     plan = (
         await db.execute(
-            select(AcademyClassPlan).where(AcademyClassPlan.enrollment_id == enrollment_id)
+            select(AcademyClassPlan).where(
+                AcademyClassPlan.enrollment_id == enrollment_id
+            )
         )
     ).scalar_one_or_none()
     if plan is None:
@@ -101,21 +108,31 @@ async def configure_class_baseline(
 ):
     """One-time verified opening balance; never reset consumed classes."""
     enrollment = (
-        await db.execute(select(Enrollment).where(Enrollment.id == enrollment_id).with_for_update())
+        await db.execute(
+            select(Enrollment).where(Enrollment.id == enrollment_id).with_for_update()
+        )
     ).scalar_one_or_none()
     if enrollment is None or enrollment.cohort_id is None:
         raise HTTPException(404, "Cohort enrollment not found")
     existing = (
         await db.execute(
-            select(AcademyClassPlan).where(AcademyClassPlan.enrollment_id == enrollment_id)
+            select(AcademyClassPlan).where(
+                AcademyClassPlan.enrollment_id == enrollment_id
+            )
         )
     ).scalar_one_or_none()
     if existing is not None:
-        raise HTTPException(409, "Class baseline already configured; do not reset history")
+        raise HTTPException(
+            409, "Class baseline already configured; do not reset history"
+        )
     if payload.opening_as_of.tzinfo is None or payload.opening_as_of > utc_now():
-        raise HTTPException(422, "Opening balance cutoff must be a past timestamp with timezone")
+        raise HTTPException(
+            422, "Opening balance cutoff must be a past timestamp with timezone"
+        )
     if payload.previously_consumed > payload.purchased_classes:
-        raise HTTPException(422, "Previously consumed classes exceed the purchased quantity")
+        raise HTTPException(
+            422, "Previously consumed classes exceed the purchased quantity"
+        )
     plan = AcademyClassPlan(
         enrollment_id=enrollment_id,
         purchased_classes=payload.purchased_classes,
@@ -142,19 +159,33 @@ async def reserve_class_allocation(
     corresponding Sessions-service write is a separate step and may fail.
     """
     enrollment = (
-        await db.execute(select(Enrollment).where(Enrollment.id == enrollment_id).with_for_update())
+        await db.execute(
+            select(Enrollment).where(Enrollment.id == enrollment_id).with_for_update()
+        )
     ).scalar_one_or_none()
     if enrollment is None or enrollment.cohort_id is None:
         raise HTTPException(404, "Cohort enrollment not found")
     if enrollment.member_id != payload.member_id:
         raise HTTPException(409, "Member and Academy enrollment do not match")
-    if enrollment.status != EnrollmentStatus.ENROLLED or enrollment.access_suspended or enrollment.paused_at:
-        raise HTTPException(409, "Enrollment is not currently entitled to Academy sessions")
+    if (
+        enrollment.status != EnrollmentStatus.ENROLLED
+        or enrollment.access_suspended
+        or enrollment.paused_at
+    ):
+        raise HTTPException(
+            409, "Enrollment is not currently entitled to Academy sessions"
+        )
     plan = (
-        await db.execute(select(AcademyClassPlan).where(AcademyClassPlan.enrollment_id == enrollment_id))
+        await db.execute(
+            select(AcademyClassPlan).where(
+                AcademyClassPlan.enrollment_id == enrollment_id
+            )
+        )
     ).scalar_one_or_none()
     if plan is None:
-        raise HTTPException(409, "Review and configure the historical class baseline first")
+        raise HTTPException(
+            409, "Review and configure the historical class baseline first"
+        )
     previous = (
         await db.execute(
             select(AcademyClassAllocation).where(
@@ -169,7 +200,9 @@ async def reserve_class_allocation(
             or previous.agreed_fee_kobo != payload.agreed_fee_kobo
             or previous.status == "reversed"
         ):
-            raise HTTPException(409, "Existing allocation differs; reviewed correction required")
+            raise HTTPException(
+                409, "Existing allocation differs; reviewed correction required"
+            )
         return {"id": str(previous.id), "status": previous.status, "idempotent": True}
     try:
         response = await internal_get(
@@ -180,7 +213,9 @@ async def reserve_class_allocation(
         response.raise_for_status()
         session = response.json()
     except Exception as exc:
-        raise HTTPException(503, "Cannot verify the physical session. Allocation unchanged") from exc
+        raise HTTPException(
+            503, "Cannot verify the physical session. Allocation unchanged"
+        ) from exc
     if (
         str(session.get("cohort_id")) != str(enrollment.cohort_id)
         or session.get("session_type") != "cohort_class"
@@ -188,7 +223,9 @@ async def reserve_class_allocation(
         raise HTTPException(409, "The session does not belong to this Academy cohort")
     session_start = datetime.fromisoformat(session["starts_at"].replace("Z", "+00:00"))
     if session_start < plan.opening_as_of:
-        raise HTTPException(409, "Session predates verified opening balance; review baseline")
+        raise HTTPException(
+            409, "Session predates verified opening balance; review baseline"
+        )
     if payload.kind == "prepaid":
         if payload.agreed_fee_kobo:
             raise HTTPException(422, "Prepaid classes cannot incur an additional fee")
@@ -222,7 +259,9 @@ class ClassAllocationApply(BaseModel):
     booking_id: uuid.UUID
 
 
-@router.post("/internal/enrollments/{enrollment_id}/class-allocations/{allocation_id}/apply")
+@router.post(
+    "/internal/enrollments/{enrollment_id}/class-allocations/{allocation_id}/apply"
+)
 async def apply_class_allocation(
     enrollment_id: uuid.UUID,
     allocation_id: uuid.UUID,
