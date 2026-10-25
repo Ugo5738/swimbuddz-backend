@@ -76,6 +76,10 @@ async def _routine_consumption(
         and item.get("cohort_fee_mode", "included") == "included"
         and item.get("status") in {"scheduled", "in_progress", "completed"}
         and datetime.fromisoformat(item["starts_at"].replace("Z", "+00:00")) <= now
+        and (
+            enrollment.enrolled_at is None
+            or datetime.fromisoformat(item["starts_at"].replace("Z", "+00:00")) >= enrollment.enrolled_at
+        )
         and item.get("id") not in allocated_ids
     ]
     if not routine:
@@ -94,7 +98,11 @@ async def _routine_consumption(
         for item in records
         if item.get("session_id") in ids
     }
-    unverified = [session_id for session_id in ids if session_id not in statuses]
+    unverified = [
+        session_id
+        for session_id in ids
+        if statuses.get(session_id) not in {"present", "late"}
+    ]
     return sum(statuses.get(session_id) in {"present", "late"} for session_id in ids), unverified
 
 
