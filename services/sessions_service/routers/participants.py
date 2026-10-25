@@ -4,7 +4,7 @@ import uuid
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import _service_role_jwt, require_admin
@@ -140,20 +140,10 @@ async def add_guest_walk_in(
         notes=participant_notes,
         created_by=admin.user_id,
     )
-    guest_walk_in_count = (
-        await db.execute(
-            select(func.count(SessionParticipant.id)).where(
-                SessionParticipant.session_id == session.id,
-                SessionParticipant.participant_kind == "guest",
-                SessionParticipant.source == "walk_in",
-            )
-        )
-    ).scalar_one()
+    # The shared capacity service now counts this unregistered participant
+    # along with booking parties and reserved guest passes.
     await assert_booking_capacity(
-        db,
-        session=session,
-        member_id=uuid.UUID(int=0),
-        new_party_size=int(guest_walk_in_count),
+        db, session=session, member_id=uuid.UUID(int=0), new_party_size=0
     )
     await db.commit()
     await db.refresh(participant)
