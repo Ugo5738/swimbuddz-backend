@@ -2,7 +2,7 @@
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -88,9 +88,7 @@ async def test_manual_paid_allocation_excludes_included_session_from_routine(mon
         enrolled_at=now - timedelta(days=3),
     )
     plan = SimpleNamespace(opening_as_of=now - timedelta(days=2))
-    allocation = SimpleNamespace(session_id=uuid4())
-    allocation.session_id = uuid4()
-    allocation = SimpleNamespace(session_id=__import__("uuid").UUID(sid))
+    allocation = SimpleNamespace(session_id=UUID(sid))
     count, unverified = await class_entitlements._routine_consumption(
         enrollment, plan, [allocation]
     )
