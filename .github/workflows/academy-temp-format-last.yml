@@ -1,0 +1,22 @@
+name: Temporary Academy formatter
+on:
+  push:
+    branches: [feature/academy-per-student-session-entitlements]
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Print Ruff normalized updated files
+        run: |
+          pip install ruff==0.4.10
+          ruff format services/academy_service/routers/enrollments/class_entitlements.py tests/integration/test_academy_class_entitlements.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          paths = ['services/academy_service/routers/enrollments/class_entitlements.py', 'tests/integration/test_academy_class_entitlements.py']
+          print('ACADEMY_FORMAT_JSON:' + json.dumps({p: Path(p).read_text() for p in paths}))
+          PY
