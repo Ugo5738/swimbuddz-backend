@@ -1,4 +1,5 @@
 """Regular weekly attendance counts separately from paid extra sessions."""
+
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -60,7 +61,9 @@ async def test_regular_present_and_late_count_but_extra_does_not(monkeypatch):
     assert ids[2] not in get_attendance.await_args.kwargs["session_ids"]
 
 
-async def test_manual_paid_allocation_excludes_included_session_from_routine(monkeypatch):
+async def test_manual_paid_allocation_excludes_included_session_from_routine(
+    monkeypatch,
+):
     now = utc_now()
     sid = str(uuid4())
     monkeypatch.setattr(
