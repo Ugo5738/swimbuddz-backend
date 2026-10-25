@@ -4,6 +4,7 @@ Allocation reservation never marks a class paid or changes attendance. The
 Sessions service must verify and reconcile the physical booking independently.
 """
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -29,6 +30,7 @@ router = APIRouter()
 class ClassBaselineInput(BaseModel):
     purchased_classes: int = Field(gt=0, le=500)
     previously_consumed: int = Field(ge=0, le=500)
+    opening_as_of: datetime
     reason: str = Field(min_length=15, max_length=1000)
 
 
@@ -110,13 +112,15 @@ async def configure_class_baseline(
     ).scalar_one_or_none()
     if existing is not None:
         raise HTTPException(409, "Class baseline already configured; do not reset history")
+    if payload.opening_as_of.tzinfo is None or payload.opening_as_of > utc_now():
+        raise HTTPException(422, "Opening balance cutoff must be a past timestamp with timezone")
     if payload.previously_consumed > payload.purchased_classes:
         raise HTTPException(422, "Previously consumed classes exceed the purchased quantity")
     plan = AcademyClassPlan(
         enrollment_id=enrollment_id,
         purchased_classes=payload.purchased_classes,
         opening_consumed=payload.previously_consumed,
-        opening_as_of=utc_now(),
+        opening_as_of=payload.opening_as_of,
         baseline_reason=payload.reason,
         baseline_actor_id=actor.user_id,
     )
@@ -182,6 +186,9 @@ async def reserve_class_allocation(
         or session.get("session_type") != "cohort_class"
     ):
         raise HTTPException(409, "The session does not belong to this Academy cohort")
+    session_start = datetime.fromisoformat(session["starts_at"].replace("Z", "+00:00"))
+    if session_start < plan.opening_as_of:
+        raise HTTPException(409, "Session predates verified opening balance; review baseline")
     if payload.kind == "prepaid":
         if payload.agreed_fee_kobo:
             raise HTTPException(422, "Prepaid classes cannot incur an additional fee")
