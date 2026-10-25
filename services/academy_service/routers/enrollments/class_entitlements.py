@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import require_admin
+from libs.auth.dependencies import require_admin, require_service_role
 from libs.common.config import get_settings
 from libs.common.service_client import internal_get
 from libs.auth.models import AuthUser
@@ -206,3 +206,53 @@ async def reserve_class_allocation(
     db.add(row)
     await db.commit()
     return {"id": str(row.id), "status": "reserved", "idempotent": False}
+
+
+class ClassAllocationApply(BaseModel):
+    booking_id: uuid.UUID
+
+
+@router.post("/internal/enrollments/{enrollment_id}/class-allocations/{allocation_id}/apply")
+async def apply_class_allocation(
+    enrollment_id: uuid.UUID,
+    allocation_id: uuid.UUID,
+    payload: ClassAllocationApply,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Sessions service confirms a durable booking was written.
+
+    The allocation is reserved until this call. A retry with the same booking
+    is safe; an alternate booking ID is a reconciliation conflict.
+    """
+    enrollment = (
+        await db.execute(
+            select(Enrollment).where(Enrollment.id == enrollment_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if enrollment is None:
+        raise HTTPException(404, "Enrollment not found")
+    allocation = (
+        await db.execute(
+            select(AcademyClassAllocation).where(
+                AcademyClassAllocation.id == allocation_id,
+                AcademyClassAllocation.enrollment_id == enrollment_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if allocation is None:
+        raise HTTPException(404, "Class allocation not found")
+    if allocation.status == "reversed":
+        raise HTTPException(409, "A reversed allocation cannot be applied")
+    if allocation.booking_id and allocation.booking_id != payload.booking_id:
+        raise HTTPException(409, "Allocation already linked to a different booking")
+    allocation.booking_id = payload.booking_id
+    allocation.status = "applied"
+    if allocation.applied_at is None:
+        allocation.applied_at = utc_now()
+    await db.commit()
+    return {
+        "id": str(allocation.id),
+        "status": allocation.status,
+        "booking_id": str(allocation.booking_id),
+    }
