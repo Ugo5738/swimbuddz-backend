@@ -9,7 +9,7 @@ previously issued hosted checkout.
 import uuid
 
 from fastapi import HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from libs.common.currency import naira_to_kobo
 from libs.common.datetime_utils import utc_now
@@ -37,11 +37,21 @@ async def booking_payments(db, booking_id: uuid.UUID) -> list[Payment]:
             await db.execute(
                 select(Payment)
                 .where(
-                    Payment.purpose == PaymentPurpose.SESSION_BOOKING,
                     or_(
-                        Payment.session_booking_id == booking_id,
-                        Payment.payment_metadata["booking_id"].astext
-                        == str(booking_id),
+                        and_(
+                            Payment.purpose == PaymentPurpose.SESSION_BOOKING,
+                            or_(
+                                Payment.session_booking_id == booking_id,
+                                Payment.payment_metadata["booking_id"].astext
+                                == str(booking_id),
+                            ),
+                        ),
+                        and_(
+                            Payment.purpose == PaymentPurpose.SESSION_BUNDLE,
+                            Payment.payment_metadata["booking_ids"].contains(
+                                [str(booking_id)]
+                            ),
+                        ),
                     ),
                 )
                 .order_by(Payment.created_at, Payment.id)
@@ -105,6 +115,11 @@ async def existing_booking_attempt(
     if not relevant:
         return None
     payment = relevant[0]
+    if payment.purpose == PaymentPurpose.SESSION_BUNDLE:
+        raise HTTPException(
+            409,
+            "This booking is part of a combined payment. Use the combined payment link.",
+        )
     if payment.status not in {PaymentStatus.PENDING, PaymentStatus.PENDING_REVIEW}:
         if replacement_reference:
             from services.payments_service.services.booking_checkout_retry import (

@@ -89,7 +89,10 @@ def _payment_revenue_mapping(payment: Payment) -> tuple[str | None, str | None]:
         PaymentPurpose.SESSION_FEE,
         PaymentPurpose.SESSION_BOOKING,
         PaymentPurpose.GUEST_PASS,
-    }:
+    } or (
+        payment.purpose == PaymentPurpose.SESSION_BUNDLE
+        and "admin_session_settlement" in (payment.payment_metadata or {})
+    ):
         session_type = str(
             (payment.payment_metadata or {}).get("session_type") or ""
         ).lower()

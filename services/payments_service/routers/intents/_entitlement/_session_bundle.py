@@ -21,6 +21,14 @@ logger = get_logger(__name__)
 
 
 async def apply_session_bundle(payment: Payment) -> None:
+    from services.payments_service.services.session_settlement import (
+        METADATA_KEY,
+        apply_session_settlement,
+    )
+
+    if METADATA_KEY in (payment.payment_metadata or {}):
+        await apply_session_settlement(payment)
+        return
     session_ids = (payment.payment_metadata or {}).get("session_ids") or []
     booking_ids = (payment.payment_metadata or {}).get("booking_ids") or []
     if not session_ids:
