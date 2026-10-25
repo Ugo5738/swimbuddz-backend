@@ -142,7 +142,9 @@ def test_new_cohort_sessions_default_to_included_and_extra_mode_is_cohort_only()
         )
 
 
-@pytest.mark.parametrize("mode,expected", [("included", 1500000), ("paid_extra", 1500000)])
+@pytest.mark.parametrize(
+    "mode,expected", [("included", 1500000), ("paid_extra", 1500000)]
+)
 async def test_admin_walk_in_does_not_charge_regular_class_pool_cost(
     monkeypatch, mode, expected
 ):
