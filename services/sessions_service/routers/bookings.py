@@ -51,6 +51,7 @@ from services.sessions_service.models import (
     Session,
     SessionBooking,
     SessionBookingStatus,
+    SessionStatus,
     SessionType,
 )
 from services.sessions_service.schemas import (
@@ -906,6 +907,85 @@ async def _record_walk_in_attendance(
         )
 
 
+async def _admin_member_admission_quote(
+    session: Session, member_id: uuid.UUID, db: AsyncSession
+) -> dict:
+    """One server-authoritative admission decision for preview and recording."""
+    if session.status not in (SessionStatus.SCHEDULED, SessionStatus.COMPLETED):
+        raise HTTPException(409, "Only scheduled or completed sessions accept attendance")
+    if session.session_type == SessionType.COHORT_CLASS and session.cohort_id:
+        from libs.common.config import get_settings
+        from libs.common.service_client import internal_get
+
+        try:
+            check = await internal_get(
+                service_url=get_settings().ACADEMY_SERVICE_URL,
+                path=(
+                    f"/internal/cohorts/{session.cohort_id}/check-enrollment/"
+                    f"{member_id}"
+                ),
+                calling_service="sessions",
+            )
+            check.raise_for_status()
+            enrollment = check.json()
+        except Exception as exc:
+            raise HTTPException(503, "Academy enrollment could not be verified") from exc
+        if enrollment.get("enrolled"):
+            return {
+                "allowed": False,
+                "reason": "Use Academy student participation for this enrolled swimmer",
+                "access_source": "academy_enrollment",
+                "fee_amount_kobo": 0,
+                "pricing_audience": "academy",
+            }
+        if not session.allows_guests:
+            return {"allowed": False, "reason": "This class does not permit visiting guests",
+                    "access_source": None, "fee_amount_kobo": 0, "pricing_audience": "guest"}
+        return {
+            "allowed": True, "reason": "Visiting member at an Academy class",
+            "access_source": "academy_guest_visit",
+            "fee_amount_kobo": int(
+                session.guest_fee_kobo
+                if session.guest_fee_kobo is not None else session.pool_fee or 0
+            ),
+            "pricing_audience": "guest",
+        }
+
+    decision = await evaluate_member_session_access(
+        session=session, member_id=member_id, now=utc_now(), db=db
+    )
+    # Bookability excludes sessions that have started, though the admin is
+    # recording an actual attendance after the fact. Admission eligibility is
+    # represented by sign_in_eligible; the exclusion reason is still respected.
+    eligible = bool(decision.sign_in_eligible) and decision.reason in (
+        None, "session_unavailable",
+    )
+    return {
+        "allowed": eligible,
+        "reason": (
+            str(decision.price_label or decision.access_source or "Eligible")
+            if eligible else denial_message(decision.reason)
+        ),
+        "access_source": decision.access_source,
+        "fee_amount_kobo": int(decision.fee_amount_kobo or 0),
+        "pricing_audience": decision.pricing_audience,
+    }
+
+
+@router.get("/sessions/{session_id}/admin/member-admission/{member_id}")
+async def preview_admin_member_admission(
+    session_id: uuid.UUID,
+    member_id: uuid.UUID,
+    _admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Show an administrator the current eligibility and standard price."""
+    session = await db.get(Session, session_id)
+    if session is None:
+        raise HTTPException(404, "Session not found")
+    return await _admin_member_admission_quote(session, member_id, db)
+
+
 @router.post(
     "/sessions/{session_id}/admin/walk-in",
     response_model=SessionBookingResponse,
@@ -955,89 +1035,24 @@ async def admin_walk_in_booking(
             detail="Member is missing auth_id — cannot create a booking.",
         )
 
-    # A physical cohort session can include enrolled learners and visiting
-    # members. Only an enrolled learner is entitled to the cohort's tuition
-    # price. Visitors use an explicit guest price, never somebody else's credit.
-    cohort_visitor = False
-    included_class = False
-    if session.session_type == SessionType.COHORT_CLASS and session.cohort_id:
-        from libs.common.config import get_settings
-        from libs.common.service_client import internal_get
-
-        try:
-            check = await internal_get(
-                service_url=get_settings().ACADEMY_SERVICE_URL,
-                path=(
-                    f"/internal/cohorts/{session.cohort_id}/check-enrollment/"
-                    f"{payload.member_id}"
-                ),
-                calling_service="sessions",
-            )
-            check.raise_for_status()
-            enrollment = check.json()
-        except Exception as exc:
-            logger.warning(
-                "Unable to validate Academy cohort enrollment for walk-in %s: %s",
-                payload.member_id,
-                exc,
-            )
+    quote = await _admin_member_admission_quote(session, payload.member_id, db)
+    if not quote["allowed"]:
+        raise HTTPException(status_code=403, detail=quote["reason"])
+    standard_fee = quote["fee_amount_kobo"]
+    if payload.fee_amount_kobo is not None and payload.fee_amount_kobo != standard_fee:
+        if not payload.fee_override_reason or len(payload.fee_override_reason.strip()) < 10:
             raise HTTPException(
-                status_code=503,
-                detail="Academy membership could not be verified. No walk-in booking created.",
-            ) from exc
-
-        enrolled = bool(enrollment.get("enrolled"))
-        cohort_visitor = not enrolled
-        if enrolled:
-            if getattr(session, "cohort_fee_mode", "included") == "paid_extra":
-                raise HTTPException(
-                    status_code=409,
-                    detail=(
-                        "This swimmer belongs to the Academy cohort. Use Academy "
-                        "student participation for prepaid or paid extra lessons."
-                    ),
-                )
-            if payload.fee_amount_kobo not in (None, 0):
-                raise HTTPException(
-                    status_code=422,
-                    detail="A regular Academy class is included in tuition. Do not charge its enrolled students again.",
-                )
-            included_class = True
-
-    resolved_access = None
-    if (
-        payload.fee_amount_kobo is None
-        and not included_class
-        and session.session_type != SessionType.COHORT_CLASS
-    ):
-        resolved_access = await evaluate_member_session_access(
-            session=session,
-            member_id=payload.member_id,
-            now=utc_now(),
-            db=db,
-        )
-
+                422, "An agreed fee different from the member's authorised rate requires a reason (10+ characters)"
+            )
     fee_kobo = (
         payload.fee_amount_kobo
-        if payload.fee_amount_kobo is not None
-        else (
-            0
-            if included_class
-            else (
-                int(
-                    session.guest_fee_kobo
-                    if session.guest_fee_kobo is not None
-                    else session.pool_fee or 0
-                )
-                if cohort_visitor
-                else int(
-                    resolved_access.fee_amount_kobo
-                    if resolved_access and resolved_access.fee_amount_kobo is not None
-                    else session.pool_fee or 0
-                )
-            )
-        )
+        if payload.fee_amount_kobo is not None else standard_fee
     )
+    if session.session_type == SessionType.COHORT_CLASS and quote["pricing_audience"] == "academy":
+        raise HTTPException(409, "Use Academy class allocation for enrolled students")
+    # An administrator may document a legitimate commercial exception but
+    # cannot override admission denial, membership or cohort access.
+    resolved_source = quote["access_source"]
 
     # An expired checkout only released a reservation. It must not prevent
     # an admin recording the member's actual attendance against the same row.
@@ -1102,34 +1117,28 @@ async def admin_walk_in_booking(
         # pricing/reporting truthful for walk-ins while booking_source records
         # that staff created the booking at the pool.
         access_source=(
-            resolved_access.access_source
-            if resolved_access
-            else ("academy_guest_visit" if cohort_visitor else "admin_walk_in")
+            resolved_source or "admin_walk_in"
         ),
         pricing_audience=(
-            resolved_access.pricing_audience
-            if resolved_access
-            else ("guest" if cohort_visitor else None)
+            quote["pricing_audience"]
         ),
         pricing_source=(
             "admin_override"
             if payload.fee_amount_kobo is not None
             else (
-                resolved_access.pricing_source if resolved_access else "legacy_session"
+                "admin_admission_quote"
             )
         ),
         rate_id=(
-            uuid.UUID(resolved_access.rate_id)
-            if resolved_access and resolved_access.rate_id
-            else None
+            None
         ),
         rate_code=(
             "admin_override"
             if payload.fee_amount_kobo is not None
-            else (resolved_access.rate_code if resolved_access else None)
+            else (None)
         ),
         booking_source="admin_walk_in",
-        notes=payload.notes,
+        notes=("; ".join(part for part in [payload.notes, f"Fee override: {payload.fee_override_reason.strip()}" if payload.fee_override_reason else None] if part) or None),
         booked_at=now,
         confirmed_at=now,
     )
