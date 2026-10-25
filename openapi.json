@@ -10553,6 +10553,100 @@
         }
       }
     },
+    "/api/v1/internal/sessions/settlements/quote": {
+      "post": {
+        "tags": [
+          "internal-settlements"
+        ],
+        "summary": "Quote Settlement",
+        "operationId": "quote_settlement_internal_sessions_settlements_quote_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionSettlementQuoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSettlementQuoteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/sessions/settlements/confirm": {
+      "post": {
+        "tags": [
+          "internal-settlements"
+        ],
+        "summary": "Confirm Settlement",
+        "operationId": "confirm_settlement_internal_sessions_settlements_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionSettlementConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Confirm Settlement Internal Sessions Settlements Confirm Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/sessions/club-operations/pods/{pod_id}": {
       "get": {
         "tags": [
@@ -11784,6 +11878,62 @@
                   },
                   "title": "Response List Session Bookings Sessions  Session Id  Bookings Get"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/admin/academy-participation": {
+      "post": {
+        "tags": [
+          "academy-session-participation"
+        ],
+        "summary": "Record Academy Participation",
+        "operationId": "record_academy_participation_sessions__session_id__admin_academy_participation_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcademyClassAdminBooking"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -14606,6 +14756,52 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/internal/sessions/member-prices": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Member Prices",
+        "operationId": "member_prices_internal_sessions_member_prices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPricesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberPricesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/internal/sessions/participants/{participant_id}/settlement-context": {
@@ -19624,6 +19820,233 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ConfirmDelete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}/class-entitlements": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Class Entitlements",
+        "operationId": "class_entitlements_academy_admin_enrollments__enrollment_id__class_entitlements_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}/class-entitlements/baseline": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Configure Class Baseline",
+        "description": "One-time verified opening balance; never reset consumed classes.",
+        "operationId": "configure_class_baseline_academy_admin_enrollments__enrollment_id__class_entitlements_baseline_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassBaselineInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}/class-entitlements/allocations": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Reserve Class Allocation",
+        "description": "Reserve a learner-specific entitlement, idempotently.\n\nThis intentionally does not create a booking or charge a member. The\ncorresponding Sessions-service write is a separate step and may fail.",
+        "operationId": "reserve_class_allocation_academy_admin_enrollments__enrollment_id__class_entitlements_allocations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassAllocationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/internal/enrollments/{enrollment_id}/class-allocations/{allocation_id}/apply": {
+      "post": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Apply Class Allocation",
+        "description": "Sessions service confirms a durable booking was written.\n\nThe allocation is reserved until this call. A retry with the same booking\nis safe; an alternate booking ID is a reconciliation conflict.",
+        "operationId": "apply_class_allocation_academy_internal_enrollments__enrollment_id__class_allocations__allocation_id__apply_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          },
+          {
+            "name": "allocation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Allocation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassAllocationApply"
               }
             }
           }
@@ -25895,6 +26318,52 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/payments/admin/session-settlements": {
+      "post": {
+        "tags": [
+          "session-settlements"
+        ],
+        "summary": "Create Session Settlement",
+        "operationId": "create_session_settlement_payments_admin_session_settlements_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSessionSettlementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSessionSettlementResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/payments/charges": {
@@ -70635,6 +71104,18 @@
           "access_source": {
             "type": "string",
             "title": "Access Source"
+          },
+          "fee_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount Kobo"
           }
         },
         "type": "object",
@@ -80094,6 +80575,45 @@
         "title": "MemberMembershipResponse",
         "description": "Membership tiers, billing, and gamification."
       },
+      "AcademyClassAdminBooking": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "kind": {
+            "type": "string",
+            "pattern": "^(prepaid|paid_extra)$",
+            "title": "Kind"
+          },
+          "agreed_fee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Agreed Fee Kobo",
+            "default": 0
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "enrollment_id",
+          "kind",
+          "reason"
+        ],
+        "title": "AcademyClassAdminBooking"
+      },
       "AdminGuestWalkInCreate": {
         "properties": {
           "full_name": {
@@ -83590,6 +84110,113 @@
         "title": "MakeupStatus",
         "description": "Lifecycle of a MakeupBooking (individual-learner make-up / reschedule)."
       },
+      "MemberPriceCheck": {
+        "properties": {
+          "context_key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Context Key"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "context_key",
+          "session_id",
+          "member_id"
+        ],
+        "title": "MemberPriceCheck"
+      },
+      "MemberPriceResponse": {
+        "properties": {
+          "context_key": {
+            "type": "string",
+            "title": "Context Key"
+          },
+          "fee_amount_kobo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Amount Kobo"
+          },
+          "pricing_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Source"
+          },
+          "price_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "context_key"
+        ],
+        "title": "MemberPriceResponse"
+      },
+      "MemberPricesRequest": {
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/MemberPriceCheck"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "checks"
+        ],
+        "title": "MemberPricesRequest"
+      },
+      "MemberPricesResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberPriceResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "MemberPricesResponse"
+      },
       "MemberSessionAccessResponse": {
         "properties": {
           "required_tier": {
@@ -86571,6 +87198,193 @@
           "attendance_available"
         ],
         "title": "SessionRosterResponse"
+      },
+      "SessionSettlementConfirmRequest": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "booking_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Booking Ids"
+          },
+          "guest_participant_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Guest Participant Ids"
+          },
+          "payment_intent_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Payment Intent Id"
+          },
+          "payment_reference": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Payment Reference"
+          },
+          "paid_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paid At"
+          },
+          "total_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Total Kobo"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSettlementLine"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Lines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "booking_ids",
+          "payment_intent_id",
+          "payment_reference",
+          "paid_at",
+          "total_kobo",
+          "lines"
+        ],
+        "title": "SessionSettlementConfirmRequest"
+      },
+      "SessionSettlementLine": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "booking",
+              "guest_walk_in"
+            ],
+            "title": "Kind"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "session_title": {
+            "type": "string",
+            "title": "Session Title"
+          },
+          "session_starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Session Starts At"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "amount_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Kobo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "session_id",
+          "session_title",
+          "session_starts_at",
+          "name",
+          "amount_kobo"
+        ],
+        "title": "SessionSettlementLine"
+      },
+      "SessionSettlementQuoteRequest": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "booking_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Booking Ids"
+          },
+          "guest_participant_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Guest Participant Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "booking_ids"
+        ],
+        "title": "SessionSettlementQuoteRequest"
+      },
+      "SessionSettlementQuoteResponse": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "session_type": {
+            "type": "string",
+            "title": "Session Type"
+          },
+          "total_kobo": {
+            "type": "integer",
+            "title": "Total Kobo"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSettlementLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "session_type",
+          "total_kobo",
+          "lines"
+        ],
+        "title": "SessionSettlementQuoteResponse"
       },
       "SessionStatus": {
         "type": "string",
@@ -89759,6 +90573,101 @@
           "message"
         ],
         "title": "ChangeCohortResult"
+      },
+      "ClassAllocationApply": {
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Booking Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "booking_id"
+        ],
+        "title": "ClassAllocationApply"
+      },
+      "ClassAllocationInput": {
+        "properties": {
+          "actor_auth_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Actor Auth Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "kind": {
+            "type": "string",
+            "pattern": "^(prepaid|paid_extra|makeup|support)$",
+            "title": "Kind"
+          },
+          "agreed_fee_kobo": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Agreed Fee Kobo",
+            "default": 0
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "actor_auth_id",
+          "member_id",
+          "session_id",
+          "kind",
+          "reason"
+        ],
+        "title": "ClassAllocationInput"
+      },
+      "ClassBaselineInput": {
+        "properties": {
+          "purchased_classes": {
+            "type": "integer",
+            "maximum": 500.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Purchased Classes"
+          },
+          "previously_consumed": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 0.0,
+            "title": "Previously Consumed"
+          },
+          "opening_as_of": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Opening As Of"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 15,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purchased_classes",
+          "previously_consumed",
+          "opening_as_of",
+          "reason"
+        ],
+        "title": "ClassBaselineInput"
       },
       "CoachAssignmentCreate": {
         "properties": {
@@ -96621,6 +97530,109 @@
         "type": "object",
         "title": "AdminReviewRequest",
         "description": "Admin review action for a manual payment."
+      },
+      "AdminSessionSettlementRequest": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "booking_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Booking Ids"
+          },
+          "guest_participant_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Guest Participant Ids"
+          },
+          "expected_total_kobo": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Total Kobo"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Idempotency Key"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "booking_ids",
+          "expected_total_kobo",
+          "idempotency_key",
+          "note"
+        ],
+        "title": "AdminSessionSettlementRequest"
+      },
+      "AdminSessionSettlementResponse": {
+        "properties": {
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "authorization_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Url"
+          },
+          "lines": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reference",
+          "amount",
+          "currency",
+          "status",
+          "authorization_url",
+          "lines"
+        ],
+        "title": "AdminSessionSettlementResponse"
       },
       "AdoptSettledAcademyReceiptRequest": {
         "properties": {

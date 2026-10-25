@@ -417,6 +417,7 @@ async def send_session_booking_prompts() -> None:
                     active_members=all_members,
                     send_prospect_invites=True,
                     email_context=email_contexts.sessions.get(str(session["id"])),
+                    member_prices=email_contexts.member_prices.get(str(session["id"])),
                     is_follow_up=True,
                 )
 
@@ -444,6 +445,7 @@ async def _send_booking_prompt_for_session(
     send_prospect_invites: bool = False,
     email_context: dict | None = None,
     is_follow_up: bool = False,
+    member_prices: dict[str, dict] | None = None,
 ) -> int:
     session_id = UUID(session["id"])
     now = utc_now()
@@ -482,6 +484,15 @@ async def _send_booking_prompt_for_session(
             known_people=[*active_members, *accessible_members],
         )
         email_context = context_batch.sessions[str(session_id)]
+        member_prices = context_batch.member_prices.get(str(session_id))
+    elif member_prices is None:
+        from services.communications_service.services.member_session_prices import (
+            load_member_session_prices,
+        )
+
+        member_prices = (
+            await load_member_session_prices([session], accessible_members)
+        ).get(str(session_id))
     email_context = with_booking_state(email_context, is_booked=False)
 
     sent_member_ids: list[str] = []
@@ -554,7 +565,11 @@ async def _send_booking_prompt_for_session(
             success = await send_session_announcement_email(
                 to_email=member["email"],
                 member_name=member["first_name"],
-                session=email_context,
+                session=with_booking_state(
+                    email_context,
+                    is_booked=False,
+                    member_price=(member_prices or {}).get(str(member_id)),
+                ),
                 is_short_notice=is_short_notice,
                 short_notice_message=short_notice_message,
                 is_follow_up=is_follow_up,
@@ -779,6 +794,9 @@ async def _process_single_notification(
             member_context = with_booking_state(
                 email_context,
                 is_booked=str(member["id"]) in booked_member_ids,
+                member_price=context_batch.member_prices.get(
+                    str(notification.session_id), {}
+                ).get(str(member["id"])),
             )
             success = await send_session_reminder_email(
                 to_email=member["email"],
@@ -1060,6 +1078,13 @@ async def _get_session_announcement_members(
             [
                 {
                     "context_key": str(member["id"]),
+                    "session_id": str(session["id"]),
+                    "club_access_mode": session.get(
+                        "club_access_mode", "plan_included"
+                    ),
+                    "allows_visiting_club_members": bool(
+                        session.get("allows_visiting_club_members")
+                    ),
                     "member_id": str(member["id"]),
                     "at": session_start,
                     "club_id": session.get("club_id"),
@@ -1397,6 +1422,13 @@ async def send_weekly_session_digest() -> None:
                 [
                     {
                         "context_key": f"{member['id']}:{session['id']}",
+                        "session_id": str(session["id"]),
+                        "club_access_mode": session.get(
+                            "club_access_mode", "plan_included"
+                        ),
+                        "allows_visiting_club_members": bool(
+                            session.get("allows_visiting_club_members")
+                        ),
                         "member_id": str(member["id"]),
                         "at": session["starts_at"],
                         "club_id": session.get("club_id"),
@@ -1473,6 +1505,9 @@ async def send_weekly_session_digest() -> None:
                         member_context = with_booking_state(
                             base_context,
                             is_booked=is_booked,
+                            member_price=email_contexts.member_prices.get(
+                                session_id, {}
+                            ).get(member_id),
                         )
                         member_context["date"] = base_context["digest_date"]
                         member_context["time"] = base_context["time_range"]

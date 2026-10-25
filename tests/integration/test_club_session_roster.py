@@ -69,6 +69,61 @@ async def enroll(db, member, club, *, starts, ends, mode="transition_per_session
 
 
 @pytest.mark.asyncio
+async def test_roster_exposes_only_applicable_dated_commercial_fee(
+    members_client, db_session
+):
+    from services.members_service.models import ClubCommercialAdjustment
+
+    now = utc_now()
+    member = MemberFactory.create(first_name="AY")
+    club = Club(name="VI", slug=f"vi-{uuid.uuid4()}", default_pool_id=uuid.uuid4())
+    db_session.add_all([member, club])
+    await db_session.flush()
+    enrollment = await enroll(
+        db_session,
+        member,
+        club,
+        starts=now - timedelta(days=3),
+        ends=now + timedelta(days=30),
+    )
+    db_session.add(
+        ClubCommercialAdjustment(
+            id=uuid.uuid4(),
+            enrollment_id=enrollment.id,
+            actor_auth_id="admin",
+            reason="Agreed regular practice fee for this member",
+            original_terms={"standard_session_fee_kobo": 1_500_000},
+            approved_terms={},
+            session_fee_kobo=1_000_000,
+            valid_from=now - timedelta(days=1),
+            valid_until=now + timedelta(days=10),
+        )
+    )
+    await db_session.flush()
+    context = ClubSessionRosterContext(
+        session_id=uuid.uuid4(), at=now, club_id=club.id, pool_id=club.default_pool_id
+    )
+    rows = await club_session_roster(db_session, context)
+    assert (
+        next(row for row in rows if row.member_id == member.id).fee_amount_kobo
+        == 1_000_000
+    )
+    expired = await club_session_roster(
+        db_session, context.model_copy(update={"at": now + timedelta(days=11)})
+    )
+    assert (
+        next(row for row in expired if row.member_id == member.id).fee_amount_kobo
+        is None
+    )
+    addon = await club_session_roster(
+        db_session, context.model_copy(update={"club_access_mode": "paid_addon"})
+    )
+    assert (
+        next(row for row in addon if row.member_id == member.id).fee_amount_kobo is None
+    )
+
+
+@pytest.mark.asyncio
 async def test_roster_includes_transition_and_legacy_but_not_academy_only(
     members_client, db_session
 ):

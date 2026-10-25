@@ -21,7 +21,7 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin
@@ -212,18 +212,34 @@ def _participant_payment_reference(participant_id: uuid.UUID) -> str:
 async def _existing_participant_payment(
     db: AsyncSession, participant_id: uuid.UUID
 ) -> Payment | None:
-    return (
+    payment = (
         await db.execute(
             select(Payment)
             .where(
-                Payment.purpose == PaymentPurpose.GUEST_PASS,
-                Payment.payment_metadata["session_participant_id"].astext
-                == str(participant_id),
+                or_(
+                    and_(
+                        Payment.purpose == PaymentPurpose.GUEST_PASS,
+                        Payment.payment_metadata["session_participant_id"].astext
+                        == str(participant_id),
+                    ),
+                    and_(
+                        Payment.purpose == PaymentPurpose.SESSION_BUNDLE,
+                        Payment.payment_metadata["admin_session_settlement"][
+                            "guest_participant_ids"
+                        ].contains([str(participant_id)]),
+                    ),
+                ),
             )
             .order_by(Payment.created_at.desc())
             .limit(1)
         )
     ).scalar_one_or_none()
+    if payment is not None and payment.purpose == PaymentPurpose.SESSION_BUNDLE:
+        raise HTTPException(
+            409,
+            "This guest is part of a combined payment. Use the combined payment link.",
+        )
+    return payment
 
 
 def _participant_payment_metadata(
@@ -470,11 +486,20 @@ async def _find_paid_booking_payment(
     result = await db.execute(
         select(Payment)
         .where(
-            Payment.purpose == PaymentPurpose.SESSION_BOOKING,
             Payment.status == PaymentStatus.PAID,
             or_(
-                Payment.session_booking_id == booking_id,
-                Payment.payment_metadata["booking_id"].astext == str(booking_id),
+                and_(
+                    Payment.purpose == PaymentPurpose.SESSION_BOOKING,
+                    or_(
+                        Payment.session_booking_id == booking_id,
+                        Payment.payment_metadata["booking_id"].astext
+                        == str(booking_id),
+                    ),
+                ),
+                and_(
+                    Payment.purpose == PaymentPurpose.SESSION_BUNDLE,
+                    Payment.payment_metadata["booking_ids"].contains([str(booking_id)]),
+                ),
             ),
         )
         .order_by(Payment.paid_at.desc())

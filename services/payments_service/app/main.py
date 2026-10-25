@@ -12,6 +12,9 @@ from services.payments_service.routers import (
     webhooks_router,
 )
 from services.payments_service.routers.payout import admin_router as payout_admin_router
+from services.payments_service.routers.session_settlements import (
+    router as session_settlements_router,
+)
 from services.payments_service.routers.manual_recording import (
     router as manual_recording_router,
 )
@@ -42,6 +45,7 @@ def create_app() -> FastAPI:
 
     # Include split payments routers
     app.include_router(intents_router)
+    app.include_router(session_settlements_router)
     app.include_router(charges_router)
     app.include_router(webhooks_router)
     app.include_router(discounts_router)

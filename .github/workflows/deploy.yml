@@ -123,6 +123,7 @@ jobs:
           pytest -v tests/integration/test_session_reminder_recovery.py
           pytest -v tests/integration/test_operational_email_outbox.py
           pytest -v tests/integration/test_club_session_roster.py
+          pytest -v tests/integration/test_session_member_prices.py
           pytest -v \
             tests/integration/test_members_pods.py::test_admin_pod_transfer_rejects_cross_club_move
 
@@ -165,6 +166,7 @@ jobs:
 
           pytest -v \
             tests/integration/test_booking_payment_attempts.py \
+            tests/integration/test_session_settlement.py \
             tests/integration/test_checkout_reconciliation.py
 
           pytest -v \
@@ -190,6 +192,7 @@ jobs:
           pytest -v tests/integration/test_academy_verified_credit.py
           pytest -v tests/integration/test_academy_reviewed_paid_transfer.py
           pytest -v tests/integration/test_academy_commercial_terms.py
+          pytest -v tests/integration/test_academy_class_entitlements.py
           pytest -v tests/integration/test_academy_delete_empty.py
 
       - name: Verify Pool Access booking integration invariants

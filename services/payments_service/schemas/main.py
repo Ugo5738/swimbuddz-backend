@@ -2,7 +2,14 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from services.payments_service.models import PaymentPurpose, PaymentStatus
 from services.payments_service.schemas.enums import (
@@ -113,6 +120,13 @@ class CreatePaymentIntentRequest(BaseModel):
 
     # Accept "metadata" for backwards-compat, store internally as payment_metadata.
     payment_metadata: Optional[dict] = Field(default=None, alias="metadata")
+
+    @field_validator("payment_metadata")
+    @classmethod
+    def reject_admin_settlement_metadata(cls, value):
+        if value and "admin_session_settlement" in value:
+            raise ValueError("Combined settlements must be issued by Admin")
+        return value
 
     model_config = ConfigDict(populate_by_name=True)
 

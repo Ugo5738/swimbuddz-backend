@@ -35,6 +35,7 @@ from . import change_cohort as _change_cohort
 from . import paid_transfer as _paid_transfer
 from . import commercial_terms as _commercial_terms
 from . import delete_empty as _delete_empty
+from . import class_entitlements as _class_entitlements
 
 router = APIRouter(tags=["academy"])
 
@@ -44,6 +45,7 @@ router.include_router(_change_cohort.router)
 router.include_router(_paid_transfer.router)
 router.include_router(_commercial_terms.router)
 router.include_router(_delete_empty.router)
+router.include_router(_class_entitlements.router)
 router.include_router(_me.router)
 router.include_router(_admin_payments.router)
 router.include_router(_by_cohort.router)

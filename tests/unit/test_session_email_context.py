@@ -6,6 +6,13 @@ import pytest
 from services.communications_service.services import session_email_context
 
 
+@pytest.fixture(autouse=True)
+def mock_member_prices(monkeypatch):
+    monkeypatch.setattr(
+        session_email_context, "load_member_session_prices", AsyncMock(return_value={})
+    )
+
+
 class _ConfigResult:
     def __init__(self, rows):
         self.rows = rows
