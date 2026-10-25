@@ -165,6 +165,7 @@ jobs:
 
           pytest -v \
             tests/integration/test_booking_payment_attempts.py \
+            tests/integration/test_session_settlement.py \
             tests/integration/test_checkout_reconciliation.py
 
           pytest -v \
