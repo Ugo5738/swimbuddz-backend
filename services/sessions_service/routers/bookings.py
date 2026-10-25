@@ -1122,6 +1122,9 @@ async def admin_walk_in_booking(
             ),
         )
 
+    await assert_booking_capacity(
+        db, session=session, member_id=payload.member_id, new_party_size=1
+    )
     now = utc_now()
     booking = SessionBooking(
         session_id=session_id,
