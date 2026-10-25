@@ -168,6 +168,13 @@ async def test_admin_walk_in_does_not_charge_regular_class_pool_cost(
         "get_member_by_id",
         AsyncMock(return_value={"auth_id": "member-auth"}),
     )
+    check = SimpleNamespace(
+        raise_for_status=lambda: None,
+        json=lambda: {"enrolled": False, "status": None},
+    )
+    monkeypatch.setattr(
+        service_client, "internal_get", AsyncMock(return_value=check)
+    )
     monkeypatch.setattr(bookings, "_record_walk_in_attendance", AsyncMock())
     result = await bookings.admin_walk_in_booking(
         session.id, AdminWalkInRequest(member_id=uuid.uuid4()), make_admin_user(), db
