@@ -166,7 +166,6 @@ async def add_guest_walk_in(
     )
 
 
-
 @router.get(
     "/admin/sessions/{session_id}/participants",
     response_model=list[SessionParticipantResponse],
