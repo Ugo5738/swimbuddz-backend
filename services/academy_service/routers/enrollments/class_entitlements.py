@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin, require_service_role
 from libs.common.config import get_settings
-from libs.common.service_client import internal_get
+from libs.common.service_client import get_member_attendance, internal_get
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
@@ -44,6 +44,60 @@ class ClassAllocationInput(BaseModel):
     reason: str = Field(min_length=10, max_length=1000)
 
 
+async def _routine_consumption(
+    enrollment: Enrollment,
+    plan: AcademyClassPlan,
+    allocations: list[AcademyClassAllocation],
+) -> tuple[int, list[str]]:
+    """Use attendance as the source of truth for normal included cohort classes.
+
+    An absent/unreconciled record never silently becomes a consumed lesson.
+    Ambiguous missing records block new prepaid allocations rather than giving
+    a learner more available credit than they have purchased.
+    """
+    try:
+        response = await internal_get(
+            service_url=get_settings().SESSIONS_SERVICE_URL,
+            path=f"/internal/sessions/cohorts/{enrollment.cohort_id}/sessions",
+            calling_service="academy",
+            params={"start_date": plan.opening_as_of.isoformat()},
+        )
+        response.raise_for_status()
+        sessions = response.json()
+    except Exception as exc:
+        raise HTTPException(503, "Could not inspect routine Academy sessions") from exc
+
+    allocated_ids = {str(item.session_id) for item in allocations}
+    now = utc_now()
+    routine = [
+        item
+        for item in sessions
+        if item.get("session_type") == "cohort_class"
+        and item.get("cohort_fee_mode", "included") == "included"
+        and item.get("status") in {"scheduled", "in_progress", "completed"}
+        and datetime.fromisoformat(item["starts_at"].replace("Z", "+00:00")) <= now
+        and item.get("id") not in allocated_ids
+    ]
+    if not routine:
+        return 0, []
+    ids = [item["id"] for item in routine]
+    try:
+        records = await get_member_attendance(
+            str(enrollment.member_id),
+            session_ids=ids,
+            calling_service="academy",
+        )
+    except Exception as exc:
+        raise HTTPException(503, "Could not verify routine Academy attendance") from exc
+    statuses = {
+        item["session_id"]: item["status"]
+        for item in records
+        if item.get("session_id") in ids
+    }
+    unverified = [session_id for session_id in ids if session_id not in statuses]
+    return sum(statuses.get(session_id) in {"present", "late"} for session_id in ids), unverified
+
+
 async def _summary(db: AsyncSession, plan: AcademyClassPlan) -> dict:
     rows = (
         (
@@ -59,12 +113,19 @@ async def _summary(db: AsyncSession, plan: AcademyClassPlan) -> dict:
     )
     used = sum(row.kind == "prepaid" and row.status == "applied" for row in rows)
     reserved = sum(row.kind == "prepaid" and row.status == "reserved" for row in rows)
-    remaining = plan.purchased_classes - plan.opening_consumed - used - reserved
+    enrollment = (
+        await db.execute(select(Enrollment).where(Enrollment.id == plan.enrollment_id))
+    ).scalar_one()
+    routine_used, unverified = await _routine_consumption(enrollment, plan, rows)
+    remaining = plan.purchased_classes - plan.opening_consumed - used - reserved - routine_used
     return {
         "enrollment_id": str(plan.enrollment_id),
         "purchased_classes": plan.purchased_classes,
         "opening_consumed": plan.opening_consumed,
         "applied_prepaid": used,
+        "routine_attendance_consumed": routine_used,
+        "unverified_routine_session_ids": unverified,
+        "balance_verified": not unverified,
         "reserved_prepaid": reserved,
         "remaining": remaining,
         "baseline_as_of": plan.opening_as_of.isoformat(),
@@ -231,6 +292,8 @@ async def reserve_class_allocation(
         if payload.agreed_fee_kobo:
             raise HTTPException(422, "Prepaid classes cannot incur an additional fee")
         summary = await _summary(db, plan)
+        if not summary["balance_verified"]:
+            raise HTTPException(409, "Reconcile missing routine class attendance before using more prepaid lessons")
         if summary["remaining"] <= 0:
             raise HTTPException(409, "No prepaid classes remain")
     elif payload.kind == "paid_extra":
