@@ -197,7 +197,10 @@ async def test_paid_extra_enrolled_student_cannot_bypass_class_allocation(monkey
     session.cohort_fee_mode = "paid_extra"
     db = SimpleNamespace(
         execute=AsyncMock(
-            return_value=SimpleNamespace(scalar_one_or_none=lambda: session)
+            side_effect=[
+                SimpleNamespace(scalar_one_or_none=lambda: session),
+                SimpleNamespace(scalar_one_or_none=lambda: None),
+            ]
         ),
         add=Mock(),
         commit=AsyncMock(),
@@ -323,7 +326,10 @@ async def test_walk_in_cannot_charge_an_included_class_even_with_explicit_client
     session.cohort_fee_mode = "included"
     db = SimpleNamespace(
         execute=AsyncMock(
-            return_value=SimpleNamespace(scalar_one_or_none=lambda: session)
+            side_effect=[
+                SimpleNamespace(scalar_one_or_none=lambda: session),
+                SimpleNamespace(scalar_one_or_none=lambda: None),
+            ]
         ),
         commit=AsyncMock(),
     )
