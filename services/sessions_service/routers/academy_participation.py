@@ -85,6 +85,7 @@ async def record_academy_participation(
             calling_service="sessions",
             json={
                 "session_id": str(session_id),
+                "member_id": str(payload.member_id),
                 "kind": payload.kind,
                 "agreed_fee_kobo": payload.agreed_fee_kobo,
                 "reason": payload.reason,
