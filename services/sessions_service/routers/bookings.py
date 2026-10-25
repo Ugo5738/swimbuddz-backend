@@ -957,7 +957,11 @@ async def admin_walk_in_booking(
 
     # Enrollment owners must not be billed as ad-hoc guest walk-ins.
     # Their prepaid/paid-extra entitlements require the Academy ledger route.
-    if session.session_type == SessionType.COHORT_CLASS and session.cohort_id:
+    if (
+        session.session_type == SessionType.COHORT_CLASS
+        and session.cohort_id
+        and getattr(session, "cohort_fee_mode", "included") == "paid_extra"
+    ):
         from libs.common.config import get_settings
         from libs.common.service_client import internal_get
 
