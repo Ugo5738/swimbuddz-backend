@@ -19925,6 +19925,80 @@
               "format": "uuid",
               "title": "Enrollment Id"
             }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/enrollments/{enrollment_id}/class-entitlements/preview": {
+      "get": {
+        "tags": [
+          "academy"
+        ],
+        "summary": "Preview Class Baseline",
+        "description": "Suggest a historical opening balance from authoritative records.\n\nSuggestions are *not* approved balances. Programme duration is not a\npurchased-class contract and missing attendance must be reviewed.",
+        "operationId": "preview_class_baseline_academy_admin_enrollments__enrollment_id__class_entitlements_preview_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
           }
         ],
         "responses": {
