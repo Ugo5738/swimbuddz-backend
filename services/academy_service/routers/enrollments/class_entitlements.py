@@ -113,7 +113,10 @@ async def _routine_consumption(
 
 
 async def _summary(
-    db: AsyncSession, plan: AcademyClassPlan, *, exclude_session_id: uuid.UUID | None = None
+    db: AsyncSession,
+    plan: AcademyClassPlan,
+    *,
+    exclude_session_id: uuid.UUID | None = None,
 ) -> dict:
     rows = (
         (
@@ -184,13 +187,17 @@ async def class_entitlements(
         # Paid extras can be recorded without consuming a purchased class.
         # Show earlier allocations even when there is not yet a verified plan.
         rows = (
-            await db.execute(
-                select(AcademyClassAllocation).where(
-                    AcademyClassAllocation.enrollment_id == enrollment_id,
-                    AcademyClassAllocation.status != "reversed",
+            (
+                await db.execute(
+                    select(AcademyClassAllocation).where(
+                        AcademyClassAllocation.enrollment_id == enrollment_id,
+                        AcademyClassAllocation.status != "reversed",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return {
             "enrollment_id": str(enrollment_id),
             "configured": False,
@@ -205,7 +212,10 @@ async def class_entitlements(
                 for row in rows
             ],
         }
-    return {"configured": True, **(await _summary(db, plan, exclude_session_id=session_id))}
+    return {
+        "configured": True,
+        **(await _summary(db, plan, exclude_session_id=session_id)),
+    }
 
 
 @router.get("/admin/enrollments/{enrollment_id}/class-entitlements/preview")
@@ -226,15 +236,21 @@ async def preview_class_baseline(
     if enrollment is None or enrollment.cohort_id is None:
         raise HTTPException(404, "Cohort enrollment not found")
     existing = (
-        await db.execute(select(AcademyClassPlan).where(
-            AcademyClassPlan.enrollment_id == enrollment_id
-        ))
+        await db.execute(
+            select(AcademyClassPlan).where(
+                AcademyClassPlan.enrollment_id == enrollment_id
+            )
+        )
     ).scalar_one_or_none()
     if existing is not None:
         raise HTTPException(409, "Opening balance is already configured")
     program = (
-        await db.execute(select(Program).where(Program.id == enrollment.program_id))
-    ).scalar_one_or_none() if enrollment.program_id else None
+        (
+            await db.execute(select(Program).where(Program.id == enrollment.program_id))
+        ).scalar_one_or_none()
+        if enrollment.program_id
+        else None
+    )
 
     try:
         response = await internal_get(
@@ -244,14 +260,11 @@ async def preview_class_baseline(
         )
         response.raise_for_status()
         target = response.json()
-        if (
-            target.get("session_type") != "cohort_class"
-            or str(target.get("cohort_id")) != str(enrollment.cohort_id)
-        ):
+        if target.get("session_type") != "cohort_class" or str(
+            target.get("cohort_id")
+        ) != str(enrollment.cohort_id):
             raise HTTPException(409, "Selected session is not in this student's cohort")
-        cutoff = datetime.fromisoformat(
-            target["starts_at"].replace("Z", "+00:00")
-        )
+        cutoff = datetime.fromisoformat(target["starts_at"].replace("Z", "+00:00"))
         if cutoff.tzinfo is None:
             raise HTTPException(503, "Session timestamp lacks timezone")
         response = await internal_get(
@@ -260,8 +273,11 @@ async def preview_class_baseline(
             calling_service="academy",
             params={
                 "end_date": cutoff.isoformat(),
-                **({"start_date": enrollment.enrolled_at.isoformat()}
-                   if enrollment.enrolled_at else {}),
+                **(
+                    {"start_date": enrollment.enrolled_at.isoformat()}
+                    if enrollment.enrolled_at
+                    else {}
+                ),
             },
         )
         response.raise_for_status()
@@ -272,7 +288,8 @@ async def preview_class_baseline(
         raise HTTPException(503, "Could not retrieve Academy session history") from exc
 
     prior = [
-        row for row in sessions
+        row
+        for row in sessions
         if row.get("id") != str(session_id)
         and row.get("session_type") == "cohort_class"
         and row.get("status") in {"scheduled", "in_progress", "completed"}
@@ -282,29 +299,41 @@ async def preview_class_baseline(
     # Explicit allocations distinguish a paid extra from a purchased lesson,
     # even if an older session happened to have an "included" default.
     allocations = (
-        await db.execute(select(AcademyClassAllocation).where(
-            AcademyClassAllocation.enrollment_id == enrollment_id,
-            AcademyClassAllocation.status != "reversed",
-        ))
-    ).scalars().all()
+        (
+            await db.execute(
+                select(AcademyClassAllocation).where(
+                    AcademyClassAllocation.enrollment_id == enrollment_id,
+                    AcademyClassAllocation.status != "reversed",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     by_session = {str(row.session_id): row for row in allocations}
     ordinary_ids = [row["id"] for row in prior if row["id"] not in by_session]
     try:
         attendance = (
-            await get_member_attendance(
-                str(enrollment.member_id),
-                session_ids=ordinary_ids,
-                calling_service="academy",
+            (
+                await get_member_attendance(
+                    str(enrollment.member_id),
+                    session_ids=ordinary_ids,
+                    calling_service="academy",
+                )
             )
-        ) if ordinary_ids else []
+            if ordinary_ids
+            else []
+        )
     except Exception as exc:
         raise HTTPException(503, "Could not retrieve recorded attendance") from exc
     statuses = {
         item["session_id"]: item.get("status")
-        for item in attendance if item.get("session_id") in ordinary_ids
+        for item in attendance
+        if item.get("session_id") in ordinary_ids
     }
     attended_ids = [
-        session for session in ordinary_ids
+        session
+        for session in ordinary_ids
         if statuses.get(session) in {"present", "late"}
     ]
     unresolved = [
@@ -313,14 +342,20 @@ async def preview_class_baseline(
         if statuses.get(session) not in {"present", "late"}
     ]
     prior_applied = [
-        row for row in allocations
+        row
+        for row in allocations
         if row.kind == "prepaid"
         and row.status == "applied"
-        and any(str(row.session_id) == session["id"] for session in sessions
-                if datetime.fromisoformat(session["starts_at"].replace("Z", "+00:00")) < cutoff)
+        and any(
+            str(row.session_id) == session["id"]
+            for session in sessions
+            if datetime.fromisoformat(session["starts_at"].replace("Z", "+00:00"))
+            < cutoff
+        )
     ]
     prior_reserved = [
-        str(row.session_id) for row in allocations
+        str(row.session_id)
+        for row in allocations
         if row.kind == "prepaid" and row.status == "reserved"
     ]
     used = len(attended_ids) + len(prior_applied)
