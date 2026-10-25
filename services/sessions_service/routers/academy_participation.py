@@ -15,7 +15,11 @@ from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
-from libs.common.service_client import get_member_by_id, internal_post
+from libs.common.service_client import (
+    get_member_attendance,
+    get_member_by_id,
+    internal_post,
+)
 from libs.db.session import get_async_db
 from services.sessions_service.models import (
     BookingChannel,
@@ -52,6 +56,8 @@ async def record_academy_participation(
         raise HTTPException(404, "Session not found")
     if session.session_type != SessionType.COHORT_CLASS or not session.cohort_id:
         raise HTTPException(422, "Only a real cohort class may use Academy allocation")
+    if session.starts_at > utc_now():
+        raise HTTPException(409, "Use this attendance reconciliation flow only after class starts")
     if payload.kind == "prepaid" and payload.agreed_fee_kobo:
         raise HTTPException(422, "Prepaid lessons must have zero additional charge")
     if payload.kind == "paid_extra" and payload.agreed_fee_kobo <= 0:
@@ -127,6 +133,25 @@ async def record_academy_participation(
         db.add(existing)
         await db.commit()
         await db.refresh(existing)
+    await _record_walk_in_attendance(session_id, payload.member_id)
+    try:
+        recorded = await get_member_attendance(
+            str(payload.member_id),
+            session_ids=[str(session_id)],
+            calling_service="sessions",
+        )
+    except Exception as exc:
+        raise HTTPException(
+            503, "Booking saved, but attendance verification is unavailable. Retry safely."
+        ) from exc
+    if not any(
+        entry.get("session_id") == str(session_id)
+        and entry.get("status") in {"present", "late"}
+        for entry in recorded
+    ):
+        raise HTTPException(
+            503, "Booking saved, but attendance was not confirmed. Retry after recording attendance."
+        )
     try:
         confirmed = await internal_post(
             service_url=get_settings().ACADEMY_SERVICE_URL,
@@ -143,7 +168,6 @@ async def record_academy_participation(
             503,
             "Booking saved, but class allocation confirmation needs retry; no additional charge collected.",
         ) from exc
-    await _record_walk_in_attendance(session_id, payload.member_id)
     return {
         "session_id": str(session_id),
         "member_id": str(payload.member_id),
