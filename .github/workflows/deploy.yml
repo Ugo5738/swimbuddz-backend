@@ -192,6 +192,7 @@ jobs:
           pytest -v tests/integration/test_academy_verified_credit.py
           pytest -v tests/integration/test_academy_reviewed_paid_transfer.py
           pytest -v tests/integration/test_academy_commercial_terms.py
+          pytest -v tests/integration/test_academy_class_entitlements.py
           pytest -v tests/integration/test_academy_delete_empty.py
 
       - name: Verify Pool Access booking integration invariants
