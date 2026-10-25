@@ -1,0 +1,28 @@
+name: Academy PR formatting inspect
+on:
+  push:
+    branches: [feature/academy-per-student-session-entitlements]
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Format candidate files and print results
+        run: |
+          pip install ruff==0.4.10
+          ruff format services/academy_service/models/class_entitlement.py services/academy_service/routers/enrollments/class_entitlements.py services/sessions_service/routers/academy_participation.py services/sessions_service/services/academy_classification.py tests/unit/test_academy_classification.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          paths = [
+            'services/academy_service/models/class_entitlement.py',
+            'services/academy_service/routers/enrollments/class_entitlements.py',
+            'services/sessions_service/routers/academy_participation.py',
+            'services/sessions_service/services/academy_classification.py',
+            'tests/unit/test_academy_classification.py',
+          ]
+          print("ACADEMY_FORMAT_JSON:" + json.dumps({p: Path(p).read_text() for p in paths}))
+          PY
