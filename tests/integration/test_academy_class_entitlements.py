@@ -1,4 +1,5 @@
 """PostgreSQL checks for one class with distinct learner financial treatment."""
+
 import uuid
 from datetime import timedelta
 from unittest.mock import AsyncMock
@@ -13,7 +14,12 @@ from services.academy_service.models import (
     EnrollmentStatus,
 )
 from services.academy_service.routers.enrollments import class_entitlements as service
-from tests.factories import CohortFactory, EnrollmentFactory, MemberFactory, ProgramFactory
+from tests.factories import (
+    CohortFactory,
+    EnrollmentFactory,
+    MemberFactory,
+    ProgramFactory,
+)
 from sqlalchemy import select
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
@@ -38,9 +44,7 @@ class SessionResponse:
         }
 
 
-async def test_same_session_separates_prepaid_and_paid_extra(
-    db_session, monkeypatch
-):
+async def test_same_session_separates_prepaid_and_paid_extra(db_session, monkeypatch):
     program = ProgramFactory.create(duration_weeks=12)
     cohort = CohortFactory.create(program_id=program.id)
     member_a = MemberFactory.create()
@@ -96,10 +100,16 @@ async def test_same_session_separates_prepaid_and_paid_extra(
         agreed_fee_kobo=1_500_000,
         reason="Additional Saturday session, separately agreed",
     )
-    first = await service.reserve_class_allocation(enrollment_a.id, prepaid, actor, db_session)
-    second = await service.reserve_class_allocation(enrollment_b.id, extra, actor, db_session)
+    first = await service.reserve_class_allocation(
+        enrollment_a.id, prepaid, actor, db_session
+    )
+    second = await service.reserve_class_allocation(
+        enrollment_b.id, extra, actor, db_session
+    )
     assert first["status"] == second["status"] == "reserved"
-    replay = await service.reserve_class_allocation(enrollment_a.id, prepaid, actor, db_session)
+    replay = await service.reserve_class_allocation(
+        enrollment_a.id, prepaid, actor, db_session
+    )
     assert replay["idempotent"]
     assert replay["id"] == first["id"]
     await service.apply_class_allocation(
@@ -123,15 +133,17 @@ async def test_same_session_separates_prepaid_and_paid_extra(
     assert a["applied_prepaid"] == 1
     assert b["applied_prepaid"] == 0
     rows = (
-        await db_session.execute(
-            select(AcademyClassAllocation).where(
-                AcademyClassAllocation.session_id == session_id
+        (
+            await db_session.execute(
+                select(AcademyClassAllocation).where(
+                    AcademyClassAllocation.session_id == session_id
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 2
     assert {row.kind for row in rows} == {"prepaid", "paid_extra"}
     assert sorted(row.agreed_fee_kobo for row in rows) == [0, 1_500_000]
-    assert (
-        await db_session.execute(select(AcademyClassPlan))
-    ).scalars().all()
+    assert (await db_session.execute(select(AcademyClassPlan))).scalars().all()
