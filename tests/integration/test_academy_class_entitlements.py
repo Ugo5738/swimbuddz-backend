@@ -67,6 +67,9 @@ async def test_same_session_separates_prepaid_and_paid_extra(db_session, monkeyp
     await db_session.commit()
     session_id = uuid.uuid4()
     monkeypatch.setattr(
+        service, "_routine_consumption", AsyncMock(return_value=(0, []))
+    )
+    monkeypatch.setattr(
         service,
         "internal_get",
         AsyncMock(return_value=SessionResponse(session_id, cohort.id)),
