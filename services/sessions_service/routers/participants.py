@@ -4,7 +4,7 @@ import uuid
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import _service_role_jwt, require_admin
@@ -19,6 +19,7 @@ from services.sessions_service.schemas.participant import (
     SessionParticipantResponse,
     WalkInPaymentReconcile,
 )
+from services.sessions_service.services.booking_capacity import assert_booking_capacity
 from services.sessions_service.services.participants import (
     create_guest_walk_in,
     ensure_session_participants,
@@ -76,6 +77,16 @@ async def add_guest_walk_in(
             status_code=409, detail="Walk-ins cannot be added to this session"
         )
 
+    if not session.allows_guests and session.guest_booking_mode == "disabled":
+        raise HTTPException(
+            status_code=403,
+            detail="Guest admission is disabled for this session; enable it before recording guests.",
+        )
+    # Serialize walk-in guest admission with other booking capacity checks.
+    await db.execute(
+        select(Session.id).where(Session.id == session.id).with_for_update()
+    )
+
     guest_rate = (
         (
             await db.execute(
@@ -129,19 +140,41 @@ async def add_guest_walk_in(
         notes=participant_notes,
         created_by=admin.user_id,
     )
+    guest_walk_in_count = (
+        await db.execute(
+            select(func.count(SessionParticipant.id)).where(
+                SessionParticipant.session_id == session.id,
+                SessionParticipant.participant_kind == "guest",
+                SessionParticipant.source == "walk_in",
+            )
+        )
+    ).scalar_one()
+    await assert_booking_capacity(
+        db,
+        session=session,
+        member_id=uuid.UUID(int=0),
+        new_party_size=int(guest_walk_in_count),
+    )
     await db.commit()
     await db.refresh(participant)
 
-    attendance_recorded = await _record_participant_attendance(
-        session.id,
-        participant.id,
-        participant_notes,
+    # A recorded guest is not automatically admitted to the water: unsigned
+    # safety consent remains pending and cannot be silently marked present.
+    attendance_recorded = (
+        await _record_participant_attendance(
+            session.id,
+            participant.id,
+            participant_notes,
+        )
+        if participant.waiver_status == "accepted"
+        else False
     )
     data = SessionParticipantResponse.model_validate(participant).model_dump()
     return AdminGuestWalkInResponse(
         **data,
         attendance_recorded=attendance_recorded,
     )
+
 
 
 @router.get(
