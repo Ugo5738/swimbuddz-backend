@@ -206,7 +206,9 @@ async def test_paid_extra_enrolled_student_cannot_bypass_class_allocation(monkey
         raise_for_status=lambda: None,
         json=lambda: {"enrolled": True, "status": "enrolled"},
     )
-    monkeypatch.setattr(service_client, "internal_get", AsyncMock(return_value=enrollment_response))
+    monkeypatch.setattr(
+        service_client, "internal_get", AsyncMock(return_value=enrollment_response)
+    )
     with pytest.raises(HTTPException) as exc:
         await bookings.admin_walk_in_booking(
             session.id,
