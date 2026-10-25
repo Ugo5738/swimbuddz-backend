@@ -3,6 +3,7 @@
 Physical session is shared; the agreed charge and class consumption are per
 enrollment. Always reserve entitlement before recording attendance.
 """
+
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -97,7 +98,9 @@ async def record_academy_participation(
             },
         )
     except Exception as exc:
-        raise HTTPException(503, "Class entitlement service unavailable; booking unchanged") from exc
+        raise HTTPException(
+            503, "Class entitlement service unavailable; booking unchanged"
+        ) from exc
     if response.status_code >= 400:
         raise HTTPException(response.status_code, response.text)
     reservation = response.json()
