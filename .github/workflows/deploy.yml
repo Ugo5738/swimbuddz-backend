@@ -123,6 +123,7 @@ jobs:
           pytest -v tests/integration/test_session_reminder_recovery.py
           pytest -v tests/integration/test_operational_email_outbox.py
           pytest -v tests/integration/test_club_session_roster.py
+          pytest -v tests/integration/test_session_member_prices.py
           pytest -v \
             tests/integration/test_members_pods.py::test_admin_pod_transfer_rejects_cross_club_move
 

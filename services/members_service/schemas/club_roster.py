@@ -3,7 +3,7 @@
 from typing import Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel
+from pydantic import AwareDatetime, BaseModel, Field
 
 
 class ClubSessionRosterContext(BaseModel):
@@ -23,6 +23,8 @@ class ClubSessionRosterMember(BaseModel):
     name: str
     email: str
     access_source: str
+    # None means use the session rate card; zero is a real included fee.
+    fee_amount_kobo: int | None = Field(default=None, ge=0)
 
 
 class ClubSessionRosterResponse(BaseModel):

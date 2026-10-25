@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Sequence
 from urllib.parse import urlencode
@@ -20,6 +20,9 @@ from services.communications_service.models import WeeklyDigestConfig
 from services.communications_service.services.session_weather import (
     get_session_weather_summary,
     session_timezone,
+)
+from services.communications_service.services.member_session_prices import (
+    load_member_session_prices,
 )
 
 logger = get_logger(__name__)
@@ -58,6 +61,7 @@ class SessionEmailContextBatch:
     audience_configs: dict[str, dict]
     pods_by_session: dict[str, dict]
     pod_member_ids_by_session: dict[str, set[str]]
+    member_prices: dict[str, dict[str, dict]] = field(default_factory=dict)
 
 
 def session_audience(session_type: str | None) -> str:
@@ -380,6 +384,9 @@ async def build_session_email_contexts(
         audience_configs=audience_configs,
         pods_by_session=pods_by_session,
         pod_member_ids_by_session=pod_member_ids_by_session,
+        member_prices=await load_member_session_prices(
+            list(sessions), list(known_people)
+        ),
     )
 
 
@@ -388,9 +395,20 @@ def with_booking_state(
     *,
     is_booked: bool,
     action_url: str | None = None,
+    member_price: dict | None = None,
 ) -> dict:
     """Add recipient-specific booking state to a shared session context."""
     enriched = dict(context)
+    if context.get("session_type") == "club":
+        fee = (member_price or {}).get("fee_amount_kobo")
+        enriched["pool_fee"] = fee / 100 if fee is not None else None
+        enriched["fee_text"] = (
+            f"NGN {fee / 100:,.0f}"
+            if fee
+            else "No additional pool fee"
+            if fee == 0
+            else "Your fee will be confirmed when booking"
+        )
     enriched.update(
         {
             "is_booked": is_booked,
