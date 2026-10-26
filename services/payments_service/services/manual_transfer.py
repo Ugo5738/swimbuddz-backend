@@ -47,7 +47,9 @@ async def validate_receipt_media(media_id, payment, actor) -> None:
         raise HTTPException(422, "Receipt file is unavailable")
     media = response.json()
     metadata = media.get("metadata") or media.get("metadata_info") or {}
-    guest_principal = str(uuid.uuid5(uuid.NAMESPACE_URL, f"swimbuddz:payment-proof:{payment.id}"))
+    guest_principal = str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f"swimbuddz:payment-proof:{payment.id}")
+    )
     if metadata.get("purpose") != "payment_proof" or str(
         media.get("uploaded_by")
     ) not in {str(actor.user_id), str(payment.member_auth_id), guest_principal}:
