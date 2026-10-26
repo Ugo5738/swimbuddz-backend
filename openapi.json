@@ -80729,6 +80729,30 @@
             "title": "Agreed Fee Kobo",
             "default": 0
           },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          },
+          "expected_standard_fee_kobo": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Standard Fee Kobo"
+          },
           "reason": {
             "type": "string",
             "maxLength": 1000,
