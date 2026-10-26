@@ -37,11 +37,8 @@ class OfflinePaymentRecord(BaseModel):
         if (
             self.payment_method in {"bank_transfer", "pos"}
             and not self.external_reference
-            and not self.proof_media_id
         ):
-            raise ValueError(
-                "Bank transfer/POS requires a transaction reference or receipt"
-            )
+            raise ValueError("Verified transaction reference is required for bank transfer/POS")
         return self
 
 
