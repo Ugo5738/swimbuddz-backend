@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
-from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.datetime_utils import utc_now
 from libs.common.currency import naira_to_kobo
@@ -14,7 +13,6 @@ from services.payments_service.schemas.manual_recording import OfflinePaymentRec
 from services.payments_service.services.manual_transfer import settle_offline, validate_receipt_media
 from libs.db.session import get_async_db
 from services.payments_service.models import Payment, PaymentStatus
-from services.payments_service.routers.intents import _apply_entitlement_with_tracking
 from services.payments_service.routers.intents._helpers import (
     _clear_pending_tier_payment_for_payment,
     _set_pending_tier_payment_for_payment,
