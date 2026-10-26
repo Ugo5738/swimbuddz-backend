@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - feature/payment-proof-flexible-verification-20261025
+env:
+  DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
 permissions:
   contents: write
 jobs:
