@@ -533,8 +533,12 @@ async def test_guest_recovery_refreshes_transfer_deadline_without_changing_bill(
     assert payment.payment_metadata["booking_mode"] == "settlement"
 
 
-@pytest.mark.parametrize("with_receipt,with_reference", [(True, False), (False, True), (True, True)])
-async def test_transfer_submission_accepts_either_evidence(with_receipt, with_reference):
+@pytest.mark.parametrize(
+    "with_receipt,with_reference", [(True, False), (False, True), (True, True)]
+)
+async def test_transfer_submission_accepts_either_evidence(
+    with_receipt, with_reference
+):
     payment = row(proof_of_payment_media_id=uuid4() if with_receipt else None)
     db = db_for(payment)
     body = TransferReceipt(
