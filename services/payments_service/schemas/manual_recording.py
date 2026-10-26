@@ -15,6 +15,7 @@ class TransferReceipt(TransferAccess):
     received_date: date
     note: str | None = Field(default=None, max_length=500)
 
+
 class OfflinePaymentRecord(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     amount_kobo: int = Field(gt=0)
