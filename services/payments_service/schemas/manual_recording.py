@@ -38,7 +38,9 @@ class OfflinePaymentRecord(BaseModel):
             self.payment_method in {"bank_transfer", "pos"}
             and not self.external_reference
         ):
-            raise ValueError("Verified transaction reference is required for bank transfer/POS")
+            raise ValueError(
+                "Verified transaction reference is required for bank transfer/POS"
+            )
         return self
 
 
