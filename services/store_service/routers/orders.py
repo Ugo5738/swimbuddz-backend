@@ -341,11 +341,13 @@ async def start_checkout(
 
     # Best-effort: check if this is the member's first store purchase
     first_order_check = await db.execute(
-        select(Order.id).where(
+        select(Order.id)
+        .where(
             Order.member_auth_id == current_user.user_id,
             Order.status.in_([OrderStatus.PAID, OrderStatus.PENDING_PAYMENT]),
             Order.id != order.id,
         )
+        .limit(1)
     )
     if first_order_check.scalar_one_or_none() is None:
         await emit_rewards_event(
