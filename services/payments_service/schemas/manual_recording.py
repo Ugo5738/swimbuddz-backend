@@ -15,6 +15,12 @@ class TransferReceipt(TransferAccess):
     received_date: date
     note: str | None = Field(default=None, max_length=500)
 
+    @model_validator(mode="after")
+    def normalize_reference(self):
+        if self.external_reference is not None:
+            self.external_reference = self.external_reference.strip() or None
+        return self
+
 
 class OfflinePaymentRecord(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
