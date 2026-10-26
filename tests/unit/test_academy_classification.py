@@ -65,3 +65,31 @@ def test_authorized_support_uses_neither_cash_nor_prepaid_balance():
         support_authorized=True,
     )
     assert (q.fee_kobo, q.consumes_prepaid_class) == (0, False)
+
+def test_academy_extra_booking_requires_override_reason():
+    from pydantic import ValidationError
+
+    from services.sessions_service.routers.academy_participation import (
+        AcademyClassAdminBooking,
+    )
+    from uuid import uuid4
+
+    booking = AcademyClassAdminBooking(
+        member_id=uuid4(),
+        enrollment_id=uuid4(),
+        kind="paid_extra",
+        agreed_fee_kobo=1_000_000,
+        expected_standard_fee_kobo=1_500_000,
+        override_reason="Approved price reduction",
+        reason="Extra Saturday class",
+    )
+    assert booking.expected_standard_fee_kobo == 1_500_000
+    assert booking.override_reason == "Approved price reduction"
+    with pytest.raises(ValidationError):
+        AcademyClassAdminBooking(
+            member_id=uuid4(),
+            enrollment_id=uuid4(),
+            kind="paid_extra",
+            agreed_fee_kobo=-1,
+            reason="Extra Saturday class",
+        )
