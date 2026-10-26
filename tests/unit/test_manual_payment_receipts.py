@@ -36,14 +36,13 @@ def payment():
 
 async def test_submit_receipt_serializes_and_same_receipt_retry_succeeds(monkeypatch):
     row = payment()
-    from services.payments_service.services import manual_transfer
-    monkeypatch.setattr(manual_transfer, "validate_receipt_media", AsyncMock())
     db = SimpleNamespace(
         execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: row)),
         commit=AsyncMock(),
         refresh=AsyncMock(),
     )
     monkeypatch.setattr(manual, "_set_pending_tier_payment_for_payment", AsyncMock())
+    monkeypatch.setattr(manual, "validate_receipt_media", AsyncMock())
     proof = SubmitProofRequest(proof_media_id=str(uuid.uuid4()))
     saved = await manual.submit_proof_of_payment(
         row.reference, proof, make_member_user(), db
