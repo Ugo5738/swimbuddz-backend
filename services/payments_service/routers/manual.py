@@ -4,12 +4,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
-from libs.common.emails.client import get_email_client
 from libs.common.logging import get_logger
 from libs.common.datetime_utils import utc_now
+from libs.common.currency import naira_to_kobo
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from services.payments_service.schemas.manual_recording import OfflinePaymentRecord
+from services.payments_service.services.manual_transfer import (
+    settle_offline,
+    validate_receipt_media,
+)
 from libs.db.session import get_async_db
 from services.payments_service.models import Payment, PaymentStatus
-from services.payments_service.routers.intents import _apply_entitlement_with_tracking
 from services.payments_service.routers.intents._helpers import (
     _clear_pending_tier_payment_for_payment,
     _set_pending_tier_payment_for_payment,
@@ -79,8 +85,6 @@ async def submit_proof_of_payment(
             detail=f"Cannot upload proof for payment in status: {payment.status.value}",
         )
 
-    from services.payments_service.services.manual_transfer import validate_receipt_media
-
     await validate_receipt_media(payload.proof_media_id, payment, current_user)
     payment.proof_of_payment_media_id = payload.proof_media_id
     payment.status = PaymentStatus.PENDING_REVIEW
@@ -135,77 +139,48 @@ async def approve_manual_payment(
             detail=f"Cannot approve payment in status: {payment.status.value}",
         )
 
-    submitted = (payment.payment_metadata or {}).get("submitted_transfer")
-    if submitted:
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-        from libs.common.currency import naira_to_kobo
-        from services.payments_service.schemas.manual_recording import (
-            OfflinePaymentRecord,
+    submitted = (payment.payment_metadata or {}).get("submitted_transfer") or {}
+    bank_reference = (
+        payload.verified_bank_reference or submitted.get("external_reference") or ""
+    ).strip()
+    if not bank_reference:
+        raise HTTPException(
+            422,
+            "Verify the bank credit and enter its actual transaction reference before approval",
         )
-        from services.payments_service.services.manual_transfer import settle_offline
+    # An uploaded receipt is a claim, never proof of cleared funds.
+    # Every approval uses the same locked/idempotent offline settlement path.
+    if payload.verified_received_at:
+        received_at = payload.verified_received_at
+        if received_at.tzinfo is None:
+            raise HTTPException(422, "Verified receipt time must include a timezone")
+        time_note = "verified bank receipt time"
+    elif submitted.get("received_date"):
+        received_at = datetime.fromisoformat(submitted["received_date"]).replace(
+            tzinfo=ZoneInfo("Africa/Lagos")
+        )
+        time_note = "customer-supplied date; exact time unspecified"
+    else:
+        received_at = utc_now()
+        time_note = "recording time; actual bank transfer time unspecified"
 
-        return await settle_offline(
-            db,
-            payment,
-            OfflinePaymentRecord(
-                amount_kobo=naira_to_kobo(payment.amount),
-                payment_method="bank_transfer",
-                received_at=datetime.fromisoformat(submitted["received_date"]).replace(
-                    tzinfo=ZoneInfo("Africa/Lagos")
-                ),
-                external_reference=submitted.get("external_reference"),
-                proof_media_id=payment.proof_of_payment_media_id,
-                note=(payload.note or "Bank credit verified by Admin")[:440]
-                + "; received date supplied, exact time unspecified",
+    return await settle_offline(
+        db,
+        payment,
+        OfflinePaymentRecord(
+            amount_kobo=naira_to_kobo(payment.amount),
+            payment_method="bank_transfer",
+            received_at=received_at,
+            external_reference=bank_reference,
+            proof_media_id=payment.proof_of_payment_media_id,
+            note=(
+                (payload.note or "Bank credit verified by Admin")[:390]
+                + "; "
+                + time_note
             ),
-            current_user,
-        )
-
-    payment.status = PaymentStatus.PAID
-    payment.admin_payment_notification_required = bool(
-        payment.amount > 0 or (payment.payment_metadata or {}).get("bubbles_to_apply")
+        ),
+        current_user,
     )
-    payment.provider = "manual_transfer"
-    payment.paid_at = utc_now()
-    payment.admin_review_note = payload.note
-
-    await db.commit()
-    await db.refresh(payment)
-
-    logger.info(f"Payment {reference} approved by admin {current_user.email}")
-
-    # Apply entitlements (same logic as Paystack webhook) with durable retries.
-    await _apply_entitlement_with_tracking(payment)
-    await db.commit()
-    await db.refresh(payment)
-
-    # Mirror the cash-in to the ledger (best-effort + dead-letter; never affects
-    # this approved payment). provider="manual_transfer" debits the bank account
-    # rather than PSP clearing. Same idempotency key as the webhook path, so a
-    # payment can never double-post.
-    from services.payments_service.services.ledger_emit import emit_payment_to_ledger
-
-    await emit_payment_to_ledger(db, payment)
-
-    # Send email notification to member via centralized email service
-    if payment.payer_email:
-        try:
-            email_client = get_email_client()
-            await email_client.send_template(
-                template_type="payment_approved",
-                to_email=payment.payer_email,
-                template_data={
-                    "payment_reference": payment.reference,
-                    "purpose": payment.purpose.value,
-                    "amount": payment.amount,
-                    "currency": payment.currency,
-                },
-            )
-        except Exception as e:
-            logger.warning(f"Failed to send approval email for {reference}: {e}")
-
-    return payment
 
 
 @router.post("/admin/{reference}/reject", response_model=PaymentResponse)

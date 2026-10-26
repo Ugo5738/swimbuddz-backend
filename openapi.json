@@ -97692,6 +97692,31 @@
               }
             ],
             "title": "Note"
+          },
+          "verified_bank_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified Bank Reference"
+          },
+          "verified_received_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified Received At"
           }
         },
         "type": "object",
@@ -102038,9 +102063,16 @@
             "title": "Access Token"
           },
           "external_reference": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 3,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "External Reference"
           },
           "received_date": {
@@ -102065,7 +102097,6 @@
         "type": "object",
         "required": [
           "access_token",
-          "external_reference",
           "received_date"
         ],
         "title": "TransferReceipt"
