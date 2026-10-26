@@ -25,7 +25,11 @@ async def payment_proof_metadata(
     return {
         "id": str(media.id),
         "uploaded_by": str(media.uploaded_by),
-        "metadata": {"purpose": "payment_proof"},
+        "metadata": {
+            "purpose": "payment_proof",
+            "linked_id": (media.metadata_info or {}).get("linked_id"),
+            "receipt_extraction": (media.metadata_info or {}).get("receipt_extraction"),
+        },
     }
 
 
