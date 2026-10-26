@@ -4,7 +4,9 @@ import io
 
 from PIL import Image
 
-from services.media_service.services.payment_receipt_extract import extract_receipt_hints
+from services.media_service.services.payment_receipt_extract import (
+    extract_receipt_hints,
+)
 
 
 def test_image_ocr_extracts_only_bounded_suggestions(monkeypatch):
