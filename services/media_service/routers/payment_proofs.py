@@ -11,7 +11,9 @@ from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.media_service.routers.media import upload_file
 from services.media_service.models import MediaItem
-from services.media_service.services.payment_receipt_extract import extract_receipt_hints
+from services.media_service.services.payment_receipt_extract import (
+    extract_receipt_hints,
+)
 
 router = APIRouter(prefix="/media/internal", tags=["internal"])
 
