@@ -349,3 +349,86 @@ async def test_mixed_checkout_creates_hold_at_payment_initialization(
     await db_session.refresh(order)
     assert order.wallet_hold_id == str(payment_hold_id)
     assert order.payment_reference == payment_response.json()["payment_reference"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.parametrize("prior_count", [0, 1, 2, 4])
+async def test_checkout_with_multiple_prior_orders(
+    store_client, db_session, monkeypatch, prior_count
+):
+    """Returning shoppers reach payment even with several earlier orders."""
+    from libs.auth.dependencies import get_current_user
+    from services.store_service.app.main import app
+    from services.store_service.models import FulfillmentType, Order, OrderStatus
+    import services.store_service.routers.cart as cart_router
+    import services.store_service.routers.orders as orders_router
+
+    actor = await app.dependency_overrides[get_current_user]()
+    member_lookup = AsyncMock(
+        return_value={
+            "id": str(uuid.uuid4()),
+            "auth_id": actor.user_id,
+            "email": "shopper@example.com",
+            "first_name": "Returning",
+            "last_name": "Shopper",
+            "membership_type": "community",
+        }
+    )
+    rewards = AsyncMock()
+    monkeypatch.setattr(cart_router, "get_member_by_auth_id", member_lookup)
+    monkeypatch.setattr(orders_router, "get_member_by_auth_id", member_lookup)
+    monkeypatch.setattr(orders_router, "emit_rewards_event", rewards)
+    for index in range(prior_count):
+        db_session.add(
+            Order(
+                order_number=f"TEST-{uuid.uuid4().hex[:12]}",
+                member_auth_id=actor.user_id,
+                customer_email="shopper@example.com",
+                customer_name="Returning Shopper",
+                subtotal_ngn=Decimal("15000"),
+                total_ngn=Decimal("15000"),
+                fulfillment_type=FulfillmentType.DELIVERY,
+                status=OrderStatus.PAID if index % 2 else OrderStatus.PENDING_PAYMENT,
+            )
+        )
+    await db_session.commit()
+    variant = await _seed_buyable(db_session)
+    add = await store_client.post(
+        "/store/cart/items",
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+    assert add.status_code == 200, add.text
+    response = await store_client.post(
+        "/store/checkout/start",
+        json={
+            "fulfillment_type": "delivery",
+            "delivery_address": {
+                "street": "1 Test Street",
+                "city": "Lagos",
+                "state": "Lagos",
+                "phone": "+2348000000000",
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["requires_payment"] is True
+    assert Decimal(str(response.json()["total_ngn"])) == Decimal("17000")
+    orders = (
+        (
+            await db_session.execute(
+                select(Order).where(Order.member_auth_id == actor.user_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(orders) == prior_count + 1
+    if prior_count:
+        rewards.assert_not_awaited()
+    else:
+        rewards.assert_awaited_once()
+        assert rewards.await_args.kwargs["event_type"] == "store.first_purchase"

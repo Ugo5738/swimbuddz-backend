@@ -132,7 +132,7 @@ async def test_recorded_nonattendance_resolves_balance_but_missing_does_not(
     enrollment = SimpleNamespace(cohort_id=uuid4(), member_id=uuid4(), enrolled_at=None)
     plan = SimpleNamespace(opening_as_of=now - timedelta(days=2))
     assert await class_entitlements._routine_consumption(enrollment, plan, []) == (
-        2,
+        3,
         ids[-2:],
     )
 
@@ -192,7 +192,9 @@ async def test_baseline_preview_does_not_flag_recorded_absences(monkeypatch):
     result = await class_entitlements.preview_class_baseline(
         enrollment_id, target_id, None, db
     )
-    assert result["suggested_previously_consumed"] == 2
+    assert result["suggested_previously_consumed"] == 3
+    assert result["recorded_regular_attendances"] == 2
+    assert result["recorded_unexcused_absences"] == 1
     assert result["unverified_sessions"] == [
         {"session_id": ids[-1], "status": "missing"}
     ]

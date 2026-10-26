@@ -28,8 +28,9 @@ from services.academy_service.models import (
 
 router = APIRouter()
 
-# A recorded absence/excuse/cancellation resolves attendance without consuming
-# a lesson. Only missing or unknown statuses need attendance reconciliation.
+# Present, late and unexcused absent records consume an assigned lesson.
+# Excused/cancelled records resolve attendance without consuming a lesson;
+# only missing or unknown statuses need attendance reconciliation.
 _RECORDED_ATTENDANCE_STATUSES = {"present", "late", "absent", "excused", "cancelled"}
 
 
@@ -57,7 +58,7 @@ async def _routine_consumption(
 ) -> tuple[int, list[str]]:
     """Use attendance as the source of truth for normal included cohort classes.
 
-    An absent/unreconciled record never silently becomes a consumed lesson.
+    Explicit unexcused absences consume a lesson; excused/cancelled records do not.
     Ambiguous missing records block new prepaid allocations rather than giving
     a learner more available credit than they have purchased.
     """
@@ -112,7 +113,7 @@ async def _routine_consumption(
         if statuses.get(session_id) not in _RECORDED_ATTENDANCE_STATUSES
     ]
     return sum(
-        statuses.get(session_id) in {"present", "late"} for session_id in ids
+        statuses.get(session_id) in {"present", "late", "absent"} for session_id in ids
     ), unverified
 
 
@@ -340,6 +341,9 @@ async def preview_class_baseline(
         for session in ordinary_ids
         if statuses.get(session) in {"present", "late"}
     ]
+    absent_ids = [
+        session for session in ordinary_ids if statuses.get(session) == "absent"
+    ]
     unresolved = [
         {"session_id": session, "status": statuses.get(session) or "missing"}
         for session in ordinary_ids
@@ -362,7 +366,7 @@ async def preview_class_baseline(
         for row in allocations
         if row.kind == "prepaid" and row.status == "reserved"
     ]
-    used = len(attended_ids) + len(prior_applied)
+    used = len(attended_ids) + len(absent_ids) + len(prior_applied)
     proposed_purchased = (
         int(program.duration_weeks)
         if program is not None and 0 < program.duration_weeks <= 500
@@ -375,6 +379,7 @@ async def preview_class_baseline(
         "suggested_previously_consumed": used,
         "suggested_opening_as_of": cutoff.isoformat(),
         "recorded_regular_attendances": len(attended_ids),
+        "recorded_unexcused_absences": len(absent_ids),
         "applied_prepaid_allocations": len(prior_applied),
         "ordinary_sessions_reviewed": len(ordinary_ids),
         "unverified_sessions": unresolved,
