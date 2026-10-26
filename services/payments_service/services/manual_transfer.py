@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+import uuid
 from datetime import timedelta
 from urllib.parse import quote
 
@@ -46,12 +47,25 @@ async def validate_receipt_media(media_id, payment, actor) -> None:
         raise HTTPException(422, "Receipt file is unavailable")
     media = response.json()
     metadata = media.get("metadata") or media.get("metadata_info") or {}
-    if metadata.get("purpose") != "payment_proof" or str(
-        media.get("uploaded_by")
-    ) not in {str(actor.user_id), payment.member_auth_id}:
-        raise HTTPException(
-            422, "Choose a private payment receipt uploaded by you or the payer"
+    if metadata.get("purpose") != "payment_proof":
+        raise HTTPException(422, "Choose a private payment receipt")
+    owner = str(media.get("uploaded_by"))
+    linked_id = metadata.get("linked_id")
+    capability_owner = str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f"swimbuddz:payment-proof:{payment.id}")
+    )
+    authorized = (
+        (
+            owner in {str(actor.user_id), str(payment.member_auth_id)}
+            and (not linked_id or linked_id == payment.reference)
         )
+        or (owner == capability_owner and linked_id == payment.reference)
+    )
+    if not authorized:
+        raise HTTPException(
+            422, "Choose a private receipt owned by the payer or this checkout"
+        )
+
 
 
 async def lock_external_reference(db, reference: str | None) -> None:
