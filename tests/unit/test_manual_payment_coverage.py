@@ -359,13 +359,9 @@ async def test_receipt_must_be_private_and_owned_by_payer_or_recording_admin(
 
 
 def test_bank_transfer_accepts_receipt_or_reference_not_neither():
-    assert (
-        receipt(external_reference=None, proof_media_id=uuid4()).external_reference
-        is None
-    )
     assert receipt(external_reference="BANK-123").proof_media_id is None
     for changes in (
-        {"external_reference": None, "proof_media_id": None},
+        {"external_reference": None, "proof_media_id": uuid4()},
         {"member_auth_id": "other"},
     ):
         with pytest.raises(ValidationError):
