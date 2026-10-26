@@ -28,6 +28,10 @@ from services.academy_service.models import (
 
 router = APIRouter()
 
+# A recorded absence/excuse/cancellation resolves attendance without consuming
+# a lesson. Only missing or unknown statuses need attendance reconciliation.
+_RECORDED_ATTENDANCE_STATUSES = {"present", "late", "absent", "excused", "cancelled"}
+
 
 class ClassBaselineInput(BaseModel):
     purchased_classes: int = Field(gt=0, le=500)
@@ -105,7 +109,7 @@ async def _routine_consumption(
     unverified = [
         session_id
         for session_id in ids
-        if statuses.get(session_id) not in {"present", "late"}
+        if statuses.get(session_id) not in _RECORDED_ATTENDANCE_STATUSES
     ]
     return sum(
         statuses.get(session_id) in {"present", "late"} for session_id in ids
@@ -339,7 +343,7 @@ async def preview_class_baseline(
     unresolved = [
         {"session_id": session, "status": statuses.get(session) or "missing"}
         for session in ordinary_ids
-        if statuses.get(session) not in {"present", "late"}
+        if statuses.get(session) not in _RECORDED_ATTENDANCE_STATUSES
     ]
     prior_applied = [
         row
