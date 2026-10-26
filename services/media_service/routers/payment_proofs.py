@@ -4,12 +4,14 @@ import uuid
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.media_service.routers.media import upload_file
 from services.media_service.models import MediaItem
+from services.media_service.services.payment_receipt_extract import extract_receipt_hints
 
 router = APIRouter(prefix="/media/internal", tags=["internal"])
 
@@ -40,6 +42,14 @@ async def upload_payment_proof(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_async_db),
 ):
+    # OCR is best-effort only; no raw receipt text is persisted.
+    data = await file.read(10 * 1024 * 1024 + 1)
+    await file.seek(0)
+    hints = (
+        await run_in_threadpool(extract_receipt_hints, data, file.content_type or "")
+        if len(data) <= 10 * 1024 * 1024
+        else {"status": "unavailable"}
+    )
     # A receipt-only system principal, not a guest pretending to be a member.
     owner = uuid.uuid5(uuid.NAMESPACE_URL, f"swimbuddz:payment-proof:{payment_id}")
     media = await upload_file(
@@ -51,4 +61,11 @@ async def upload_payment_proof(
         current_user=AuthUser(sub=str(owner), role="service_role"),
         db=db,
     )
+    row = await db.get(MediaItem, media.id)
+    if row is not None:
+        row.metadata_info = {
+            **(row.metadata_info or {}),
+            "receipt_extraction": hints,
+        }
+        await db.commit()
     return {"id": str(media.id)}
