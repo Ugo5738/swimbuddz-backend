@@ -1,6 +1,7 @@
 """Private transfer instructions and uniform, auditable offline settlement."""
 
 import hashlib
+import uuid
 import hmac
 from datetime import timedelta
 from urllib.parse import quote
@@ -46,9 +47,10 @@ async def validate_receipt_media(media_id, payment, actor) -> None:
         raise HTTPException(422, "Receipt file is unavailable")
     media = response.json()
     metadata = media.get("metadata") or media.get("metadata_info") or {}
+    guest_principal = str(uuid.uuid5(uuid.NAMESPACE_URL, f"swimbuddz:payment-proof:{payment.id}"))
     if metadata.get("purpose") != "payment_proof" or str(
         media.get("uploaded_by")
-    ) not in {str(actor.user_id), payment.member_auth_id}:
+    ) not in {str(actor.user_id), str(payment.member_auth_id), guest_principal}:
         raise HTTPException(
             422, "Choose a private payment receipt uploaded by you or the payer"
         )
