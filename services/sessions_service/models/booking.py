@@ -29,7 +29,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from libs.common.datetime_utils import utc_now
@@ -142,6 +142,13 @@ class SessionBooking(Base):
     )
 
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Immutable Academy extra-class pricing decision captured when the
+    # booking is created. Historic bookings retain NULL rather than having
+    # fabricated standard prices/override approvals backfilled later.
+    # Snapshot: standard_fee_kobo, agreed_fee_kobo, difference_kobo,
+    # override_reason, actor_auth_id and recorded_at.
+    academy_price_audit: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     booked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
