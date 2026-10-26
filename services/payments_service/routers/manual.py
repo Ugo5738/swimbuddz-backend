@@ -10,7 +10,10 @@ from libs.common.currency import naira_to_kobo
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from services.payments_service.schemas.manual_recording import OfflinePaymentRecord
-from services.payments_service.services.manual_transfer import settle_offline, validate_receipt_media
+from services.payments_service.services.manual_transfer import (
+    settle_offline,
+    validate_receipt_media,
+)
 from libs.db.session import get_async_db
 from services.payments_service.models import Payment, PaymentStatus
 from services.payments_service.routers.intents._helpers import (
@@ -137,7 +140,9 @@ async def approve_manual_payment(
         )
 
     submitted = (payment.payment_metadata or {}).get("submitted_transfer") or {}
-    bank_reference = (payload.verified_bank_reference or submitted.get("external_reference") or "").strip()
+    bank_reference = (
+        payload.verified_bank_reference or submitted.get("external_reference") or ""
+    ).strip()
     if not bank_reference:
         raise HTTPException(
             422,
