@@ -45,11 +45,11 @@ async def upload_payment_proof(
     # OCR is best-effort only; no raw receipt text is persisted.
     data = await file.read(10 * 1024 * 1024 + 1)
     await file.seek(0)
-    hints = (
-        await run_in_threadpool(extract_receipt_hints, data, file.content_type or "")
-        if len(data) <= 10 * 1024 * 1024
-        else {"status": "unavailable"}
-    )
+    hints = {"status": "unavailable"}
+    if len(data) <= 10 * 1024 * 1024:
+        hints = await run_in_threadpool(
+            extract_receipt_hints, data, file.content_type or ""
+        )
     # A receipt-only system principal, not a guest pretending to be a member.
     owner = uuid.uuid5(uuid.NAMESPACE_URL, f"swimbuddz:payment-proof:{payment_id}")
     media = await upload_file(
