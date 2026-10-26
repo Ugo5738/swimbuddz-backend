@@ -42,6 +42,7 @@ async def test_submit_receipt_serializes_and_same_receipt_retry_succeeds(monkeyp
         refresh=AsyncMock(),
     )
     monkeypatch.setattr(manual, "_set_pending_tier_payment_for_payment", AsyncMock())
+    monkeypatch.setattr(manual, "validate_receipt_media", AsyncMock())
     proof = SubmitProofRequest(proof_media_id=str(uuid.uuid4()))
     saved = await manual.submit_proof_of_payment(
         row.reference, proof, make_member_user(), db
