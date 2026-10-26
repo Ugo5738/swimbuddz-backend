@@ -54,18 +54,15 @@ async def validate_receipt_media(media_id, payment, actor) -> None:
     capability_owner = str(
         uuid.uuid5(uuid.NAMESPACE_URL, f"swimbuddz:payment-proof:{payment.id}")
     )
-    authorized = (
-        (
-            owner in {str(actor.user_id), str(payment.member_auth_id)}
-            and (not linked_id or linked_id == payment.reference)
-        )
-        or (owner == capability_owner and linked_id == payment.reference)
+    member_receipt = owner in {str(actor.user_id), str(payment.member_auth_id)} and (
+        not linked_id or linked_id == payment.reference
     )
+    guest_receipt = owner == capability_owner and linked_id == payment.reference
+    authorized = member_receipt or guest_receipt
     if not authorized:
         raise HTTPException(
             422, "Choose a private receipt owned by the payer or this checkout"
         )
-
 
 
 async def lock_external_reference(db, reference: str | None) -> None:
