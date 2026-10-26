@@ -120,6 +120,8 @@ async def settle_offline(db, payment, payload, actor):
         raise HTTPException(
             422, "Received time must include a timezone and cannot be in the future"
         )
+    if not payload.external_reference and not payload.proof_media_id:
+        raise HTTPException(422, "Receipt evidence is required without a bank reference")
     if payload.external_reference:
         duplicate = (
             await db.execute(
