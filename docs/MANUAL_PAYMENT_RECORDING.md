@@ -11,8 +11,12 @@ Bank transfer is NGN-only and cannot be combined with Bubbles. Existing product
 discount eligibility is unchanged.
 
 Manual checkout returns a private first-party transfer link. It shows the exact
-amount and company bank details, accepts the bank transaction reference/date and
-an optional image/PDF receipt, and submits the payment for Admin review. A receipt
+amount and company bank details, accepts a dated bank transaction reference, an image/PDF receipt, or both,
+and submits the payment for Admin review. Customer-entered bank references are
+optional when a receipt is attached. The system extracts best-effort OCR hints
+from supported image receipts and text-based PDFs; hints are untrusted and
+never authorize settlement. Admin still verifies the actual bank credit and
+records its reference before approving a bank-transfer payment. A receipt
 is **not** confirmation of payment, a ticket, a booking, or wallet credit.
 
 Reservation deadlines remain unchanged. The transfer page shows a saved deadline
