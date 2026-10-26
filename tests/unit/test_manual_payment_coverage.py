@@ -548,8 +548,9 @@ async def test_transfer_submission_accepts_either_evidence(
     )
     result = await manual_recording.submit_transfer(payment.reference, body, db)
     assert result.status == "pending_review"
-    assert (payment.payment_metadata or {})["submitted_transfer"]["external_reference"] == (
-        "BANK-ONE" if with_reference else None
+    assert (
+        (payment.payment_metadata or {})["submitted_transfer"]["external_reference"]
+        == ("BANK-ONE" if with_reference else None)
     )
 
 
