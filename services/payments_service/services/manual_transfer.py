@@ -140,6 +140,20 @@ async def settle_offline(db, payment, payload, actor):
                 409,
                 "This bank/receipt reference is already recorded; review its allocation",
             )
+    if payload.proof_media_id:
+        reused_receipt = (
+            await db.execute(
+                select(Payment)
+                .where(
+                    Payment.id != payment.id,
+                    Payment.status == PaymentStatus.PAID,
+                    Payment.proof_of_payment_media_id == payload.proof_media_id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if reused_receipt:
+            raise HTTPException(409, "Receipt already used for a settled payment; review allocation")
     booking_id = payment.session_booking_id or (payment.payment_metadata or {}).get(
         "booking_id"
     )
