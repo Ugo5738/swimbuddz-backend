@@ -11,7 +11,7 @@ class TransferAccess(BaseModel):
 
 
 class TransferReceipt(TransferAccess):
-    external_reference: str = Field(min_length=3, max_length=128)
+    external_reference: str | None = Field(default=None, min_length=3, max_length=128)
     received_date: date
     note: str | None = Field(default=None, max_length=500)
 
@@ -30,8 +30,9 @@ class OfflinePaymentRecord(BaseModel):
         if (
             self.payment_method in {"bank_transfer", "pos"}
             and not self.external_reference
+            and not self.proof_media_id
         ):
-            raise ValueError("Transaction reference is required for bank transfer/POS")
+            raise ValueError("Bank transfer/POS requires a transaction reference or receipt")
         return self
 
 
