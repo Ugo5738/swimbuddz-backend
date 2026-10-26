@@ -141,9 +141,7 @@ async def approve_manual_payment(
 
     submitted = (payment.payment_metadata or {}).get("submitted_transfer") or {}
     bank_reference = (
-        payload.verified_bank_reference
-        or submitted.get("external_reference")
-        or ""
+        payload.verified_bank_reference or submitted.get("external_reference") or ""
     ).strip()
     if not bank_reference:
         raise HTTPException(
