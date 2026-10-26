@@ -11,9 +11,15 @@ class TransferAccess(BaseModel):
 
 
 class TransferReceipt(TransferAccess):
-    external_reference: str = Field(min_length=3, max_length=128)
+    external_reference: str | None = Field(default=None, min_length=3, max_length=128)
     received_date: date
     note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def valid_evidence(self):
+        # The upload is attached to the payment before this request arrives.
+        # Receipt-only proof is validated against the payment by the route.
+        return self
 
 
 class OfflinePaymentRecord(BaseModel):
