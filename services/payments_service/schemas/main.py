@@ -246,6 +246,10 @@ class AdminReviewRequest(BaseModel):
     """Admin review action for a manual payment."""
 
     note: Optional[str] = Field(default=None, max_length=500)
+    verified_bank_reference: Optional[str] = Field(
+        default=None, min_length=3, max_length=128
+    )
+    verified_received_at: Optional[datetime] = None
 
 
 class RefundOwedItem(BaseModel):

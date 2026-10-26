@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     libjpeg62-turbo \
     zlib1g \
     ffmpeg \
+    tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install /usr/local
