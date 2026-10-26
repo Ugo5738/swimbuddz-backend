@@ -140,9 +140,13 @@ async def settle_offline(db, payment, payload, actor):
         raise HTTPException(
             422, "Received time must include a timezone and cannot be in the future"
         )
-    if payload.payment_method in {"bank_transfer", "pos"} and not payload.external_reference:
+    if (
+        payload.payment_method in {"bank_transfer", "pos"}
+        and not payload.external_reference
+    ):
         raise HTTPException(
-            422, "Verify the bank credit and provide its actual reference before settlement"
+            422,
+            "Verify the bank credit and provide its actual reference before settlement",
         )
     if payload.external_reference:
         duplicate = (
