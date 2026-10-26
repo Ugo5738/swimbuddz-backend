@@ -23,7 +23,6 @@ class TransferReceipt(TransferAccess):
         return value
 
 
-
 class OfflinePaymentRecord(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     amount_kobo: int = Field(gt=0)
