@@ -66,6 +66,7 @@ def test_authorized_support_uses_neither_cash_nor_prepaid_balance():
     )
     assert (q.fee_kobo, q.consumes_prepaid_class) == (0, False)
 
+
 def test_academy_extra_booking_requires_override_reason():
     from pydantic import ValidationError
 

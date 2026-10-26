@@ -148,9 +148,7 @@ class SessionBooking(Base):
     # fabricated standard prices/override approvals backfilled later.
     # Snapshot: standard_fee_kobo, agreed_fee_kobo, difference_kobo,
     # override_reason, actor_auth_id and recorded_at.
-    academy_price_audit: Mapped[Optional[dict]] = mapped_column(
-        JSONB, nullable=True
-    )
+    academy_price_audit: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     booked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now

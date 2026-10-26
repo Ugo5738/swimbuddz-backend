@@ -92,26 +92,43 @@ async def record_academy_participation(
     if existing and audit is not None:
         if (
             audit.get("agreed_fee_kobo") != payload.agreed_fee_kobo
-            or (payload.expected_standard_fee_kobo is not None
-                and audit.get("standard_fee_kobo") != payload.expected_standard_fee_kobo)
-            or (payload.override_reason is not None
-                and audit.get("override_reason") != payload.override_reason)
+            or (
+                payload.expected_standard_fee_kobo is not None
+                and audit.get("standard_fee_kobo") != payload.expected_standard_fee_kobo
+            )
+            or (
+                payload.override_reason is not None
+                and audit.get("override_reason") != payload.override_reason
+            )
         ):
-            raise HTTPException(409, "Existing price decision differs; financial review required")
+            raise HTTPException(
+                409, "Existing price decision differs; financial review required"
+            )
 
     if existing is None and payload.kind == "paid_extra":
         standard_fee_kobo = session.pool_fee
         if standard_fee_kobo is None or standard_fee_kobo <= 0:
             raise HTTPException(409, "Configure a positive session booking price first")
-        if (payload.expected_standard_fee_kobo is not None
-                and payload.expected_standard_fee_kobo != standard_fee_kobo):
-            raise HTTPException(409, "Session booking price changed; refresh before recording")
+        if (
+            payload.expected_standard_fee_kobo is not None
+            and payload.expected_standard_fee_kobo != standard_fee_kobo
+        ):
+            raise HTTPException(
+                409, "Session booking price changed; refresh before recording"
+            )
         changed = payload.agreed_fee_kobo != standard_fee_kobo
-        if changed and (not payload.override_reason or len(payload.override_reason.strip()) < 10):
-            raise HTTPException(422, "A price override requires a reason of at least 10 characters")
+        if changed and (
+            not payload.override_reason or len(payload.override_reason.strip()) < 10
+        ):
+            raise HTTPException(
+                422, "A price override requires a reason of at least 10 characters"
+            )
         if not changed and payload.override_reason:
-            raise HTTPException(422, "Override reason is only permitted when the price differs")
+            raise HTTPException(
+                422, "Override reason is only permitted when the price differs"
+            )
         from datetime import timezone
+
         audit = {
             "standard_fee_kobo": standard_fee_kobo,
             "agreed_fee_kobo": payload.agreed_fee_kobo,
@@ -163,8 +180,11 @@ async def record_academy_participation(
             member_fee_amount_kobo=payload.agreed_fee_kobo,
             access_source="academy_allocation",
             pricing_audience="academy",
-            pricing_source=("admin_override" if payload.kind == "paid_extra"
-                            and audit and audit["difference_kobo"] else "session_default"),
+            pricing_source=(
+                "admin_override"
+                if payload.kind == "paid_extra" and audit and audit["difference_kobo"]
+                else "session_default"
+            ),
             rate_code=payload.kind,
             booking_source="academy_entitlement",
             notes=payload.reason[:500],
