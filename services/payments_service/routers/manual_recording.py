@@ -138,7 +138,9 @@ async def submit_transfer(
     if payment.status not in {PaymentStatus.PENDING, PaymentStatus.FAILED}:
         raise HTTPException(409, "This payment has already been submitted or settled")
     if not body.external_reference and not payment.proof_of_payment_media_id:
-        raise HTTPException(422, "Upload a receipt or enter a bank transaction reference")
+        raise HTTPException(
+            422, "Upload a receipt or enter a bank transaction reference"
+        )
     if body.received_date > datetime.now(ZoneInfo("Africa/Lagos")).date():
         raise HTTPException(422, "Transfer date cannot be in the future")
     payment.payment_metadata = {
