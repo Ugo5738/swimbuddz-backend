@@ -38,7 +38,9 @@ class OfflinePaymentRecord(BaseModel):
             and not self.external_reference
             and not self.proof_media_id
         ):
-            raise ValueError("Bank transfer/POS requires a transaction reference or receipt")
+            raise ValueError(
+                "Bank transfer/POS requires a transaction reference or receipt"
+            )
         return self
 
 
