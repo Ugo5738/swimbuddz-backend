@@ -358,8 +358,9 @@ async def test_receipt_must_be_private_and_owned_by_payer_or_recording_admin(
                 await manual_transfer.validate_receipt_media(uuid4(), payment, admin)
 
 
-def test_bank_reference_required_and_arbitrary_fields_rejected():
-    for changes in ({"external_reference": None}, {"member_auth_id": "other"}):
+def test_bank_transfer_accepts_receipt_or_reference_not_neither():
+    assert receipt(external_reference=None, proof_media_id=uuid4()).external_reference is None
+    for changes in ({"external_reference": None, "proof_media_id": None}, {"member_auth_id": "other"}):
         with pytest.raises(ValidationError):
             receipt(**changes)
 
