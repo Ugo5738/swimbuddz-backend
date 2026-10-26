@@ -1,0 +1,30 @@
+name: Temporary payment PR formatting
+on:
+  push:
+    branches:
+      - feature/payment-proof-flexible-verification-20261025
+permissions:
+  contents: write
+jobs:
+  format-payment-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Format payment files with the CI Ruff version
+        run: |
+          python -m pip install ruff==0.4.10
+          ruff format services/payments_service/routers/manual.py tests/unit/test_manual_payment_coverage.py
+      - name: Commit formatting to feature branch
+        run: |
+          if ! git diff --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add services/payments_service/routers/manual.py tests/unit/test_manual_payment_coverage.py
+            git commit -m 'Apply canonical Ruff formatting to payment PR'
+            git push origin HEAD:feature/payment-proof-flexible-verification-20261025
+          fi
