@@ -1,8 +1,8 @@
 """Private transfer instructions and uniform, auditable offline settlement."""
 
 import hashlib
-import uuid
 import hmac
+import uuid
 from datetime import timedelta
 from urllib.parse import quote
 
@@ -47,14 +47,21 @@ async def validate_receipt_media(media_id, payment, actor) -> None:
         raise HTTPException(422, "Receipt file is unavailable")
     media = response.json()
     metadata = media.get("metadata") or media.get("metadata_info") or {}
-    guest_principal = str(
+    if metadata.get("purpose") != "payment_proof":
+        raise HTTPException(422, "Choose a private payment receipt")
+    owner = str(media.get("uploaded_by"))
+    linked_id = metadata.get("linked_id")
+    capability_owner = str(
         uuid.uuid5(uuid.NAMESPACE_URL, f"swimbuddz:payment-proof:{payment.id}")
     )
-    if metadata.get("purpose") != "payment_proof" or str(
-        media.get("uploaded_by")
-    ) not in {str(actor.user_id), str(payment.member_auth_id), guest_principal}:
+    member_receipt = owner in {str(actor.user_id), str(payment.member_auth_id)} and (
+        not linked_id or linked_id == payment.reference
+    )
+    guest_receipt = owner == capability_owner and linked_id == payment.reference
+    authorized = member_receipt or guest_receipt
+    if not authorized:
         raise HTTPException(
-            422, "Choose a private payment receipt uploaded by you or the payer"
+            422, "Choose a private receipt owned by the payer or this checkout"
         )
 
 
@@ -101,8 +108,12 @@ async def settle_offline(db, payment, payload, actor):
     if payment.status == PaymentStatus.PAID:
         if (
             payment.provider == "offline"
-            and payment.provider_reference == payload.external_reference
             and payment.payment_method == payload.payment_method
+            and payment.provider_reference == payload.external_reference
+            and (
+                payload.proof_media_id is None
+                or payment.proof_of_payment_media_id == payload.proof_media_id
+            )
         ):
             return payment
         raise HTTPException(409, "This payment is already paid; do not record it again")
@@ -124,6 +135,14 @@ async def settle_offline(db, payment, payload, actor):
         raise HTTPException(
             422, "Received time must include a timezone and cannot be in the future"
         )
+    if (
+        payload.payment_method in {"bank_transfer", "pos"}
+        and not payload.external_reference
+    ):
+        raise HTTPException(
+            422,
+            "Verify the bank credit and provide its actual reference before settlement",
+        )
     if payload.external_reference:
         duplicate = (
             await db.execute(
@@ -141,6 +160,22 @@ async def settle_offline(db, payment, payload, actor):
             raise HTTPException(
                 409,
                 "This bank/receipt reference is already recorded; review its allocation",
+            )
+    if payload.proof_media_id:
+        reused_receipt = (
+            await db.execute(
+                select(Payment)
+                .where(
+                    Payment.id != payment.id,
+                    Payment.status == PaymentStatus.PAID,
+                    Payment.proof_of_payment_media_id == payload.proof_media_id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if reused_receipt:
+            raise HTTPException(
+                409, "Receipt already used for a settled payment; review allocation"
             )
     booking_id = payment.session_booking_id or (payment.payment_metadata or {}).get(
         "booking_id"

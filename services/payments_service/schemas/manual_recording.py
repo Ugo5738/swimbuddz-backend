@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TransferAccess(BaseModel):
@@ -14,6 +14,13 @@ class TransferReceipt(TransferAccess):
     external_reference: str | None = Field(default=None, min_length=3, max_length=128)
     received_date: date
     note: str | None = Field(default=None, max_length=500)
+
+    @field_validator("external_reference", mode="before")
+    @classmethod
+    def normalize_reference(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
 
 class OfflinePaymentRecord(BaseModel):
@@ -31,7 +38,9 @@ class OfflinePaymentRecord(BaseModel):
             self.payment_method in {"bank_transfer", "pos"}
             and not self.external_reference
         ):
-            raise ValueError("Transaction reference is required for bank transfer/POS")
+            raise ValueError(
+                "Verified transaction reference is required for bank transfer/POS"
+            )
         return self
 
 

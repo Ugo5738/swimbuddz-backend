@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import _service_role_jwt, require_admin
 from libs.common.config import get_settings
+from libs.common.service_client import internal_get
 from libs.auth.models import AuthUser
 from libs.common.currency import naira_to_kobo
 from libs.db.session import get_async_db
@@ -138,9 +139,7 @@ async def submit_transfer(
     if payment.status not in {PaymentStatus.PENDING, PaymentStatus.FAILED}:
         raise HTTPException(409, "This payment has already been submitted or settled")
     if not body.external_reference and not payment.proof_of_payment_media_id:
-        raise HTTPException(
-            422, "Upload a receipt or enter a bank transaction reference"
-        )
+        raise HTTPException(422, "Upload a receipt or provide a transaction reference")
     if body.received_date > datetime.now(ZoneInfo("Africa/Lagos")).date():
         raise HTTPException(422, "Transfer date cannot be in the future")
     payment.payment_metadata = {
@@ -151,6 +150,31 @@ async def submit_transfer(
     payment.admin_review_note = None
     await db.commit()
     return summary(payment)
+
+
+@router.get("/admin/{reference}/receipt-hints", include_in_schema=False)
+async def admin_receipt_hints(
+    reference: str,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """OCR fields are untrusted hints only, accessible to authorized reviewers."""
+    payment = await find_payment(db, reference)
+    if payment.proof_of_payment_media_id is None:
+        return {"status": "no_receipt"}
+    response = await internal_get(
+        service_url=get_settings().MEDIA_SERVICE_URL,
+        path=f"/media/internal/payment-proof/{payment.proof_of_payment_media_id}",
+        calling_service="payments",
+    )
+    if response.status_code != 200:
+        raise HTTPException(422, "Receipt file unavailable")
+    hints = (response.json().get("metadata") or {}).get("receipt_extraction") or {}
+    return {
+        "status": hints.get("status", "unavailable"),
+        "reference_suggestion": hints.get("reference_suggestion"),
+        "amount_suggestion": hints.get("amount_suggestion"),
+    }
 
 
 @router.get("/admin/recording", response_model=list[PaymentResponse])

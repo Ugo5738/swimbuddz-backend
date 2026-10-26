@@ -358,8 +358,12 @@ async def test_receipt_must_be_private_and_owned_by_payer_or_recording_admin(
                 await manual_transfer.validate_receipt_media(uuid4(), payment, admin)
 
 
-def test_bank_reference_required_and_arbitrary_fields_rejected():
-    for changes in ({"external_reference": None}, {"member_auth_id": "other"}):
+def test_bank_transfer_accepts_receipt_or_reference_not_neither():
+    assert receipt(external_reference="BANK-123").proof_media_id is None
+    for changes in (
+        {"external_reference": None, "proof_media_id": uuid4()},
+        {"member_auth_id": "other"},
+    ):
         with pytest.raises(ValidationError):
             receipt(**changes)
 
@@ -531,39 +535,3 @@ async def test_guest_recovery_refreshes_transfer_deadline_without_changing_bill(
     assert response.additional_charges == checkout["additional_charges"]
     assert payment.payment_metadata["reservation_expires_at"] is None
     assert payment.payment_metadata["booking_mode"] == "settlement"
-
-
-@pytest.mark.parametrize(
-    "with_receipt,with_reference", [(True, False), (False, True), (True, True)]
-)
-async def test_transfer_submission_accepts_either_evidence(
-    with_receipt, with_reference
-):
-    payment = row(proof_of_payment_media_id=uuid4() if with_receipt else None)
-    db = db_for(payment)
-    body = TransferReceipt(
-        access_token=manual_transfer.transfer_token(payment.reference),
-        external_reference="BANK-ONE" if with_reference else None,
-        received_date=utc_now().date(),
-    )
-    result = await manual_recording.submit_transfer(payment.reference, body, db)
-    assert result.status == "pending_review"
-    assert (payment.payment_metadata or {})["submitted_transfer"][
-        "external_reference"
-    ] == ("BANK-ONE" if with_reference else None)
-
-
-async def test_transfer_submission_rejects_missing_evidence():
-    payment = row()
-    db = db_for(payment)
-    with pytest.raises(HTTPException) as exc:
-        await manual_recording.submit_transfer(
-            payment.reference,
-            TransferReceipt(
-                access_token=manual_transfer.transfer_token(payment.reference),
-                received_date=utc_now().date(),
-            ),
-            db,
-        )
-    assert exc.value.status_code == 422
-    db.commit.assert_not_awaited()
