@@ -111,8 +111,11 @@ async def settle_offline(db, payment, payload, actor):
     if payment.status == PaymentStatus.PAID:
         if (
             payment.provider == "offline"
-            and payment.provider_reference == payload.external_reference
             and payment.payment_method == payload.payment_method
+            and (
+                (payload.external_reference is not None and payment.provider_reference == payload.external_reference)
+                or (payload.proof_media_id is not None and payment.proof_of_payment_media_id == payload.proof_media_id)
+            )
         ):
             return payment
         raise HTTPException(409, "This payment is already paid; do not record it again")
