@@ -152,7 +152,7 @@ async def submit_transfer(
     return summary(payment)
 
 
-@router.get("/admin/{reference}/receipt-hints")
+@router.get("/admin/{reference}/receipt-hints", include_in_schema=False)
 async def admin_receipt_hints(
     reference: str,
     admin: AuthUser = Depends(require_admin),
