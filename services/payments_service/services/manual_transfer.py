@@ -109,15 +109,10 @@ async def settle_offline(db, payment, payload, actor):
         if (
             payment.provider == "offline"
             and payment.payment_method == payload.payment_method
+            and payment.provider_reference == payload.external_reference
             and (
-                (
-                    payload.external_reference is not None
-                    and payment.provider_reference == payload.external_reference
-                )
-                or (
-                    payload.proof_media_id is not None
-                    and payment.proof_of_payment_media_id == payload.proof_media_id
-                )
+                payload.proof_media_id is None
+                or payment.proof_of_payment_media_id == payload.proof_media_id
             )
         ):
             return payment
