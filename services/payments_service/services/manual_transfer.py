@@ -113,8 +113,14 @@ async def settle_offline(db, payment, payload, actor):
             payment.provider == "offline"
             and payment.payment_method == payload.payment_method
             and (
-                (payload.external_reference is not None and payment.provider_reference == payload.external_reference)
-                or (payload.proof_media_id is not None and payment.proof_of_payment_media_id == payload.proof_media_id)
+                (
+                    payload.external_reference is not None
+                    and payment.provider_reference == payload.external_reference
+                )
+                or (
+                    payload.proof_media_id is not None
+                    and payment.proof_of_payment_media_id == payload.proof_media_id
+                )
             )
         ):
             return payment
@@ -138,7 +144,9 @@ async def settle_offline(db, payment, payload, actor):
             422, "Received time must include a timezone and cannot be in the future"
         )
     if not payload.external_reference and not payload.proof_media_id:
-        raise HTTPException(422, "Receipt evidence is required without a bank reference")
+        raise HTTPException(
+            422, "Receipt evidence is required without a bank reference"
+        )
     if payload.external_reference:
         duplicate = (
             await db.execute(
@@ -170,7 +178,9 @@ async def settle_offline(db, payment, payload, actor):
             )
         ).scalar_one_or_none()
         if reused_receipt:
-            raise HTTPException(409, "Receipt already used for a settled payment; review allocation")
+            raise HTTPException(
+                409, "Receipt already used for a settled payment; review allocation"
+            )
     booking_id = payment.session_booking_id or (payment.payment_metadata or {}).get(
         "booking_id"
     )
