@@ -82,6 +82,7 @@ async def submit_proof_of_payment(
             detail=f"Cannot upload proof for payment in status: {payment.status.value}",
         )
 
+    await validate_receipt_media(payload.proof_media_id, payment, current_user)
     payment.proof_of_payment_media_id = payload.proof_media_id
     payment.status = PaymentStatus.PENDING_REVIEW
     payment.admin_review_note = None  # Clear any previous rejection note
