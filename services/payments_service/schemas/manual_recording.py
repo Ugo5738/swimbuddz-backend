@@ -15,13 +15,6 @@ class TransferReceipt(TransferAccess):
     received_date: date
     note: str | None = Field(default=None, max_length=500)
 
-    @model_validator(mode="after")
-    def valid_evidence(self):
-        # The upload is attached to the payment before this request arrives.
-        # Receipt-only proof is validated against the payment by the route.
-        return self
-
-
 class OfflinePaymentRecord(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     amount_kobo: int = Field(gt=0)
