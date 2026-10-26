@@ -79,6 +79,9 @@ async def submit_proof_of_payment(
             detail=f"Cannot upload proof for payment in status: {payment.status.value}",
         )
 
+    from services.payments_service.services.manual_transfer import validate_receipt_media
+
+    await validate_receipt_media(payload.proof_media_id, payment, current_user)
     payment.proof_of_payment_media_id = payload.proof_media_id
     payment.status = PaymentStatus.PENDING_REVIEW
     payment.admin_review_note = None  # Clear any previous rejection note
@@ -151,7 +154,8 @@ async def approve_manual_payment(
                 received_at=datetime.fromisoformat(submitted["received_date"]).replace(
                     tzinfo=ZoneInfo("Africa/Lagos")
                 ),
-                external_reference=submitted["external_reference"],
+                external_reference=submitted.get("external_reference"),
+                proof_media_id=payment.proof_of_payment_media_id,
                 note=(payload.note or "Bank credit verified by Admin")[:440]
                 + "; received date supplied, exact time unspecified",
             ),
