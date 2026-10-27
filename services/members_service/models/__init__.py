@@ -1,3 +1,5 @@
+from services.members_service.models.name_change import MemberNameChange  # noqa: F401
+
 """Members Service models package.
 
 Re-exports all models and enums so that:

@@ -1069,6 +1069,8 @@ async def _get_session_attendees_and_coaches(
             if row.get("member_id")
             and str(row.get("status", "")).lower() in {"enrolled", "active"}
             and not row.get("access_suspended", False)
+            and not row.get("paused_at")
+            and not row.get("dropped_at")
         ]
         if assigned_ids:
             assigned = await get_members_bulk(
