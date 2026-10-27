@@ -43,7 +43,10 @@ from services.payments_service.models import (
 from services.payments_service.schemas import (
     PaymentResponse,
 )
-from services.payments_service.schemas.manual_recording import OfflinePaymentRecord
+from services.payments_service.schemas.manual_recording import (
+    AdminEvidenceSubmission,
+    OfflinePaymentRecord,
+)
 from services.payments_service.services.additional_charges import (
     calculate_additional_charges,
 )
@@ -506,6 +509,95 @@ async def _find_paid_booking_payment(
         .limit(1)
     )
     return result.scalar_one_or_none()
+
+
+@router.post(
+    "/admin/bookings/{booking_id}/evidence",
+    response_model=PaymentResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+)
+async def admin_submit_booking_evidence(
+    booking_id: uuid.UUID,
+    payload: AdminEvidenceSubmission,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Stage a walk-in's bank receipt for review, never settle or grant access."""
+    booking = await get_booking_by_id(str(booking_id), calling_service="payments")
+    if not booking:
+        raise HTTPException(404, "Booking not found")
+    if str(booking.get("status") or "").lower() not in {"pending", "confirmed"}:
+        raise HTTPException(409, "This booking is not open for reconciliation")
+    fee_kobo = int(booking.get("fee_amount_kobo") or 0)
+    if fee_kobo <= 0:
+        raise HTTPException(409, "This booking has no outstanding fee")
+    if booking.get("payment_intent_id") or booking.get("wallet_transaction_id"):
+        raise HTTPException(409, "This booking has already been settled")
+
+    await lock_external_reference(db, f"booking:{booking_id}")
+    from services.payments_service.services.booking_payment_attempts import (
+        booking_payments,
+        blocks_new_attempt,
+    )
+
+    attempts = await booking_payments(db, booking_id)
+    if any(blocks_new_attempt(row) for row in attempts):
+        raise HTTPException(
+            409, "This booking has an open payment; review it instead of creating another"
+        )
+    if await _find_paid_booking_payment(db, booking_id):
+        raise HTTPException(409, "This booking has already been paid")
+
+    member_id = booking.get("member_id")
+    member_auth_id = booking.get("member_auth_id")
+    session_id = booking.get("session_id")
+    if not member_id or not member_auth_id or not session_id:
+        raise HTTPException(502, "Booking member or session information is incomplete")
+    member = await get_member_by_id(str(member_id), calling_service="payments")
+    if not member:
+        raise HTTPException(404, "Member not found")
+
+    payment = Payment(
+        reference=Payment.generate_reference(),
+        member_auth_id=str(member_auth_id),
+        payer_email=member.get("email"),
+        purpose=PaymentPurpose.SESSION_BOOKING,
+        amount=fee_kobo / 100,
+        currency="NGN",
+        status=PaymentStatus.PENDING_REVIEW,
+        payment_method="manual_transfer",
+        session_booking_id=booking_id,
+        payment_metadata={
+            "booking_id": str(booking_id),
+            "session_id": str(session_id),
+            "member_id": str(member_id),
+            "admin_submitted_evidence": {
+                "external_reference": payload.external_reference,
+                "proof_media_id": str(payload.proof_media_id) if payload.proof_media_id else None,
+                "note": payload.note,
+            },
+            "admin_evidence_submitted_by": current_user.user_id,
+            "admin_evidence_submitted_at": utc_now().isoformat(),
+        },
+    )
+    if payload.proof_media_id:
+        from services.payments_service.services.manual_transfer import (
+            validate_receipt_media,
+        )
+
+        await validate_receipt_media(payload.proof_media_id, payment, current_user)
+        payment.proof_of_payment_media_id = payload.proof_media_id
+    db.add(payment)
+    await db.commit()
+    await db.refresh(payment)
+    logger.info(
+        "Admin %s submitted review evidence %s for booking %s",
+        current_user.user_id,
+        payment.reference,
+        booking_id,
+    )
+    return payment
 
 
 @router.post(
