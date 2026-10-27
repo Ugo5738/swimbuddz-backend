@@ -539,7 +539,10 @@ async def test_guest_recovery_refreshes_transfer_deadline_without_changing_bill(
 
 
 def test_admin_evidence_submission_requires_receipt_or_reference():
-    assert AdminEvidenceSubmission(external_reference=" BANK-12 ").external_reference == "BANK-12"
+    assert (
+        AdminEvidenceSubmission(external_reference=" BANK-12 ").external_reference
+        == "BANK-12"
+    )
     assert AdminEvidenceSubmission(proof_media_id=uuid4()).external_reference is None
     with pytest.raises(ValidationError):
         AdminEvidenceSubmission()
@@ -560,7 +563,10 @@ async def test_admin_evidence_marks_for_review_without_settlement(monkeypatch):
     assert payment.status == PaymentStatus.PENDING_REVIEW
     assert payment.provider_reference is None
     assert payment.entitlement_applied_at is None
-    assert payment.payment_metadata["admin_submitted_evidence"]["external_reference"] == "BANK-12"
+    assert (
+        payment.payment_metadata["admin_submitted_evidence"]["external_reference"]
+        == "BANK-12"
+    )
     db.commit.assert_awaited_once()
 
 
