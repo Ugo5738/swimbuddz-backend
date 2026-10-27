@@ -201,7 +201,11 @@ async def search_recordable_payments(
     return result.scalars().all()
 
 
-@router.post("/admin/{reference}/evidence", response_model=PaymentResponse)
+@router.post(
+    "/admin/{reference}/evidence",
+    response_model=PaymentResponse,
+    include_in_schema=False,
+)
 async def submit_admin_payment_evidence(
     reference: str,
     body: AdminEvidenceSubmission,
