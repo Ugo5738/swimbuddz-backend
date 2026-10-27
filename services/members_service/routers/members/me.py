@@ -477,14 +477,16 @@ async def update_current_member(
 
     db.add(member)
     if original_names != (member.first_name, member.last_name):
-        db.add(MemberNameChange(
-            member_id=member.id,
-            actor_auth_id=current_user.user_id,
-            old_first_name=original_names[0],
-            old_last_name=original_names[1],
-            new_first_name=member.first_name,
-            new_last_name=member.last_name,
-        ))
+        db.add(
+            MemberNameChange(
+                member_id=member.id,
+                actor_auth_id=current_user.user_id,
+                old_first_name=original_names[0],
+                old_last_name=original_names[1],
+                new_first_name=member.first_name,
+                new_last_name=member.last_name,
+            )
+        )
     await db.commit()
     await db.refresh(member)
 
