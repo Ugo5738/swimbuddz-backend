@@ -1046,6 +1046,29 @@ async def _get_session_attendees_and_coaches(
         else []
     )
 
+    # Cohort classes are assigned by enrollment, not separate SessionBooking.
+    # Fetch active cohort students for reminders (never booking prompts).
+    if session.get("session_type") == "cohort_class" and session.get("cohort_id"):
+        response = await internal_get(
+            service_url=get_settings().ACADEMY_SERVICE_URL,
+            path=f"/internal/academy/cohorts/{session['cohort_id']}/enrolled-students",
+            calling_service="communications",
+        )
+        if response.status_code != 200:
+            raise RuntimeError("Could not load assigned Academy students for reminder")
+        assigned_ids = [
+            str(row["member_id"]) for row in response.json()
+            if row.get("member_id")
+            and str(row.get("status", "")).lower() in {"enrolled", "active"}
+            and not row.get("access_suspended", False)
+        ]
+        if assigned_ids:
+            assigned = await get_members_bulk(assigned_ids, calling_service="communications")
+            attendees.extend(assigned)
+            session["confirmed_booking_member_ids"] = list(
+                {str(x) for x in booked_member_ids} | set(assigned_ids)
+            )
+
     # Combine and deduplicate
     seen: set[str] = set()
     all_members = []
