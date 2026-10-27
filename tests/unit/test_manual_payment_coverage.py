@@ -15,6 +15,7 @@ from services.payments_service.routers import internal, manual_recording
 from services.payments_service.routers.intents import _entitlement
 from services.payments_service.schemas import InternalInitializeRequest
 from services.payments_service.schemas.manual_recording import (
+    AdminEvidenceSubmission,
     AttachPaymentReceipt,
     OfflinePaymentRecord,
     TransferAccess,
@@ -535,3 +536,48 @@ async def test_guest_recovery_refreshes_transfer_deadline_without_changing_bill(
     assert response.additional_charges == checkout["additional_charges"]
     assert payment.payment_metadata["reservation_expires_at"] is None
     assert payment.payment_metadata["booking_mode"] == "settlement"
+
+
+def test_admin_evidence_submission_requires_receipt_or_reference():
+    assert (
+        AdminEvidenceSubmission(external_reference=" BANK-12 ").external_reference
+        == "BANK-12"
+    )
+    assert AdminEvidenceSubmission(proof_media_id=uuid4()).external_reference is None
+    with pytest.raises(ValidationError):
+        AdminEvidenceSubmission()
+    with pytest.raises(ValidationError):
+        AdminEvidenceSubmission(external_reference="  ")
+
+
+@pytest.mark.asyncio
+async def test_admin_evidence_marks_for_review_without_settlement(monkeypatch):
+    payment = row()
+    db = db_for(payment)
+    await manual_recording.submit_admin_payment_evidence(
+        payment.reference,
+        AdminEvidenceSubmission(external_reference="BANK-12", note="To review"),
+        make_admin_user(),
+        db,
+    )
+    assert payment.status == PaymentStatus.PENDING_REVIEW
+    assert payment.provider_reference is None
+    assert payment.entitlement_applied_at is None
+    assert (
+        payment.payment_metadata["admin_submitted_evidence"]["external_reference"]
+        == "BANK-12"
+    )
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_admin_evidence_rejects_paid_checkout():
+    payment = row(status=PaymentStatus.PAID)
+    with pytest.raises(HTTPException) as error:
+        await manual_recording.submit_admin_payment_evidence(
+            payment.reference,
+            AdminEvidenceSubmission(external_reference="BANK-12"),
+            make_admin_user(),
+            db_for(payment),
+        )
+    assert error.value.status_code == 409

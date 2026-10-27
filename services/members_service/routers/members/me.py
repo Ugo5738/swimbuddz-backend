@@ -19,6 +19,7 @@ from services.members_service.models import (
     Club,
     ClubEnrollment,
     Member,
+    MemberNameChange,
 )
 from services.members_service.routers._helpers import (
     member_eager_load_options,
@@ -377,8 +378,24 @@ async def update_current_member(
         )
 
     update_data = member_in.model_dump(exclude_unset=True)
+    if member_in.email is not None or member_in.is_active is not None:
+        raise HTTPException(
+            status_code=403, detail="Account activation or email cannot be edited here"
+        )
+    for name_field in ("first_name", "last_name"):
+        candidate = update_data.get(name_field)
+        if name_field in update_data:
+            if (
+                not isinstance(candidate, str)
+                or not candidate.strip()
+                or len(candidate.strip()) > 100
+            ):
+                raise HTTPException(
+                    status_code=422, detail="Names must be 1–100 characters"
+                )
+            update_data[name_field] = candidate.strip()
 
-    logger.warning(f"PATCH /me received update_data: {update_data}")
+    logger.info("Profile update requested")
     if "profile_photo_media_id" in update_data:
         logger.warning(
             f"profile_photo_media_id value: {update_data['profile_photo_media_id']}"
@@ -398,10 +415,11 @@ async def update_current_member(
     # be None when the member hasn't been profiled yet; default to None.
     _old_city = member.profile.city if member.profile else None
 
+    original_names = (member.first_name, member.last_name)
     # Update core Member fields
     for field, value in update_data.items():
         if hasattr(member, field):
-            logger.warning(f"Setting member.{field} = {value}")
+            logger.debug("Updating member field %s", field)
             setattr(member, field, value)
 
     # Update profile sub-record
@@ -458,6 +476,17 @@ async def update_current_member(
                 setattr(member.preferences, field, value)
 
     db.add(member)
+    if original_names != (member.first_name, member.last_name):
+        db.add(
+            MemberNameChange(
+                member_id=member.id,
+                actor_auth_id=current_user.user_id,
+                old_first_name=original_names[0],
+                old_last_name=original_names[1],
+                new_first_name=member.first_name,
+                new_last_name=member.last_name,
+            )
+        )
     await db.commit()
     await db.refresh(member)
 
