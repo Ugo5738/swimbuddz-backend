@@ -378,12 +378,20 @@ async def update_current_member(
 
     update_data = member_in.model_dump(exclude_unset=True)
     if member_in.email is not None or member_in.is_active is not None:
-        raise HTTPException(status_code=403, detail="Account activation or email cannot be edited here")
+        raise HTTPException(
+            status_code=403, detail="Account activation or email cannot be edited here"
+        )
     for name_field in ("first_name", "last_name"):
         candidate = update_data.get(name_field)
         if name_field in update_data:
-            if not isinstance(candidate, str) or not candidate.strip() or len(candidate.strip()) > 100:
-                raise HTTPException(status_code=422, detail="Names must be 1–100 characters")
+            if (
+                not isinstance(candidate, str)
+                or not candidate.strip()
+                or len(candidate.strip()) > 100
+            ):
+                raise HTTPException(
+                    status_code=422, detail="Names must be 1–100 characters"
+                )
             update_data[name_field] = candidate.strip()
 
     logger.info("Profile update requested")
