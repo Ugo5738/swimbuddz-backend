@@ -96,9 +96,11 @@ def _local_date(value: datetime) -> date:
 
 
 def _is_booking_prompt_session(session: dict) -> bool:
-    return (
-        str(session.get("session_type") or "").lower() in BOOKING_PROMPT_SESSION_TYPES
-    )
+    session_type = str(session.get("session_type") or "").lower()
+    if session_type == "cohort_class" and session.get("cohort_fee_mode") != "paid_extra":
+        # Assigned Academy classes do not require an individual booking.
+        return False
+    return session_type in BOOKING_PROMPT_SESSION_TYPES
 
 
 async def _get_active_members() -> list[dict]:
@@ -348,6 +350,8 @@ async def send_session_announcement(
                 logger.error(f"Session {session_id} not found for booking prompt")
                 return
 
+            if not _is_booking_prompt_session(session):
+                return
             all_members = await _get_active_members()
             sent_count = await _send_booking_prompt_for_session(
                 db,
