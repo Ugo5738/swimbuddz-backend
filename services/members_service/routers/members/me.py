@@ -377,8 +377,16 @@ async def update_current_member(
         )
 
     update_data = member_in.model_dump(exclude_unset=True)
+    if member_in.email is not None or member_in.is_active is not None:
+        raise HTTPException(status_code=403, detail="Account activation or email cannot be edited here")
+    for name_field in ("first_name", "last_name"):
+        candidate = update_data.get(name_field)
+        if name_field in update_data:
+            if not isinstance(candidate, str) or not candidate.strip() or len(candidate.strip()) > 100:
+                raise HTTPException(status_code=422, detail="Names must be 1–100 characters")
+            update_data[name_field] = candidate.strip()
 
-    logger.warning(f"PATCH /me received update_data: {update_data}")
+    logger.info("Profile update requested")
     if "profile_photo_media_id" in update_data:
         logger.warning(
             f"profile_photo_media_id value: {update_data['profile_photo_media_id']}"
@@ -401,7 +409,7 @@ async def update_current_member(
     # Update core Member fields
     for field, value in update_data.items():
         if hasattr(member, field):
-            logger.warning(f"Setting member.{field} = {value}")
+            logger.debug("Updating member field %s", field)
             setattr(member, field, value)
 
     # Update profile sub-record
