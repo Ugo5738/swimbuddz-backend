@@ -544,7 +544,8 @@ async def admin_submit_booking_evidence(
     attempts = await booking_payments(db, booking_id)
     if any(blocks_new_attempt(row) for row in attempts):
         raise HTTPException(
-            409, "This booking has an open payment; review it instead of creating another"
+            409,
+            "This booking has an open payment; review it instead of creating another",
         )
     if await _find_paid_booking_payment(db, booking_id):
         raise HTTPException(409, "This booking has already been paid")
@@ -574,7 +575,9 @@ async def admin_submit_booking_evidence(
             "member_id": str(member_id),
             "admin_submitted_evidence": {
                 "external_reference": payload.external_reference,
-                "proof_media_id": str(payload.proof_media_id) if payload.proof_media_id else None,
+                "proof_media_id": (
+                    str(payload.proof_media_id) if payload.proof_media_id else None
+                ),
                 "note": payload.note,
             },
             "admin_evidence_submitted_by": current_user.user_id,
