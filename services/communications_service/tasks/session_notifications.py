@@ -96,9 +96,14 @@ def _local_date(value: datetime) -> date:
 
 
 def _is_booking_prompt_session(session: dict) -> bool:
-    return (
-        str(session.get("session_type") or "").lower() in BOOKING_PROMPT_SESSION_TYPES
-    )
+    session_type = str(session.get("session_type") or "").lower()
+    if (
+        session_type == "cohort_class"
+        and session.get("cohort_fee_mode") != "paid_extra"
+    ):
+        # Assigned Academy classes do not require an individual booking.
+        return False
+    return session_type in BOOKING_PROMPT_SESSION_TYPES
 
 
 async def _get_active_members() -> list[dict]:
@@ -348,6 +353,8 @@ async def send_session_announcement(
                 logger.error(f"Session {session_id} not found for booking prompt")
                 return
 
+            if not _is_booking_prompt_session(session):
+                return
             all_members = await _get_active_members()
             sent_count = await _send_booking_prompt_for_session(
                 db,
@@ -1045,6 +1052,32 @@ async def _get_session_attendees_and_coaches(
         if unique_attendee_ids
         else []
     )
+
+    # Cohort classes are assigned by enrollment, not separate SessionBooking.
+    # Fetch active cohort students for reminders (never booking prompts).
+    if session.get("session_type") == "cohort_class" and session.get("cohort_id"):
+        response = await internal_get(
+            service_url=get_settings().ACADEMY_SERVICE_URL,
+            path=f"/internal/academy/cohorts/{session['cohort_id']}/enrolled-students",
+            calling_service="communications",
+        )
+        if response.status_code != 200:
+            raise RuntimeError("Could not load assigned Academy students for reminder")
+        assigned_ids = [
+            str(row["member_id"])
+            for row in response.json()
+            if row.get("member_id")
+            and str(row.get("status", "")).lower() in {"enrolled", "active"}
+            and not row.get("access_suspended", False)
+        ]
+        if assigned_ids:
+            assigned = await get_members_bulk(
+                assigned_ids, calling_service="communications"
+            )
+            attendees.extend(assigned)
+            session["confirmed_booking_member_ids"] = list(
+                {str(x) for x in booked_member_ids} | set(assigned_ids)
+            )
 
     # Combine and deduplicate
     seen: set[str] = set()
