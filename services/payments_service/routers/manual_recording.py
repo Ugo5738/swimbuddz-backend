@@ -218,7 +218,11 @@ async def submit_admin_payment_evidence(
         raise HTTPException(409, "This payment was reconciled to another bank receipt")
     if payment.payment_method not in {"manual_transfer", "bank_transfer"}:
         raise HTTPException(409, "This payment is not a manual bank-transfer checkout")
-    if payment.status not in {PaymentStatus.PENDING, PaymentStatus.FAILED, PaymentStatus.PENDING_REVIEW}:
+    if payment.status not in {
+        PaymentStatus.PENDING,
+        PaymentStatus.FAILED,
+        PaymentStatus.PENDING_REVIEW,
+    }:
         raise HTTPException(409, "Payment is closed; do not submit another receipt")
     proof_id = body.proof_media_id or payment.proof_of_payment_media_id
     if not body.external_reference and not proof_id:
@@ -228,7 +232,9 @@ async def submit_admin_payment_evidence(
         and payment.proof_of_payment_media_id
         and body.proof_media_id != payment.proof_of_payment_media_id
     ):
-        raise HTTPException(409, "A receipt already exists; retain the original evidence")
+        raise HTTPException(
+            409, "A receipt already exists; retain the original evidence"
+        )
     if body.proof_media_id:
         await validate_receipt_media(body.proof_media_id, payment, admin)
         payment.proof_of_payment_media_id = body.proof_media_id
