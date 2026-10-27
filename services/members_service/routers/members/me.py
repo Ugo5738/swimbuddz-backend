@@ -19,6 +19,7 @@ from services.members_service.models import (
     Club,
     ClubEnrollment,
     Member,
+    MemberNameChange,
 )
 from services.members_service.routers._helpers import (
     member_eager_load_options,
@@ -414,6 +415,7 @@ async def update_current_member(
     # be None when the member hasn't been profiled yet; default to None.
     _old_city = member.profile.city if member.profile else None
 
+    original_names = (member.first_name, member.last_name)
     # Update core Member fields
     for field, value in update_data.items():
         if hasattr(member, field):
@@ -474,6 +476,17 @@ async def update_current_member(
                 setattr(member.preferences, field, value)
 
     db.add(member)
+    if original_names != (member.first_name, member.last_name):
+        db.add(
+            MemberNameChange(
+                member_id=member.id,
+                actor_auth_id=current_user.user_id,
+                old_first_name=original_names[0],
+                old_last_name=original_names[1],
+                new_first_name=member.first_name,
+                new_last_name=member.last_name,
+            )
+        )
     await db.commit()
     await db.refresh(member)
 

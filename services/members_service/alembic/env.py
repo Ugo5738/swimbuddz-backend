@@ -37,6 +37,7 @@ from services.members_service.models import (  # noqa: F401
     GuardianLink,
     HandbookVersion,
     Member,
+    MemberNameChange,
     MemberAvailability,
     MemberChallengeCompletion,
     MemberEmergencyContact,
