@@ -18,6 +18,7 @@ from libs.db.session import get_async_db
 from services.payments_service.models import Payment, PaymentStatus
 from services.payments_service.schemas import PaymentResponse
 from services.payments_service.schemas.manual_recording import (
+    AdminEvidenceSubmission,
     AttachPaymentReceipt,
     OfflinePaymentRecord,
     TransferAccess,
@@ -198,6 +199,68 @@ async def search_recordable_payments(
         .limit(30)
     )
     return result.scalars().all()
+
+
+@router.post(
+    "/admin/{reference}/evidence",
+    response_model=PaymentResponse,
+    include_in_schema=False,
+)
+async def submit_admin_payment_evidence(
+    reference: str,
+    body: AdminEvidenceSubmission,
+    admin: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Submit an offline payment claim for review, without settling cash."""
+    payment = await find_payment(db, reference, lock=True)
+    if (payment.payment_metadata or {}).get("superseded_by_shared_receipt"):
+        raise HTTPException(409, "This payment was reconciled to another bank receipt")
+    if payment.payment_method not in {"manual_transfer", "bank_transfer"}:
+        raise HTTPException(409, "This payment is not a manual bank-transfer checkout")
+    if payment.status not in {
+        PaymentStatus.PENDING,
+        PaymentStatus.FAILED,
+        PaymentStatus.PENDING_REVIEW,
+    }:
+        raise HTTPException(409, "Payment is closed; do not submit another receipt")
+    proof_id = body.proof_media_id or payment.proof_of_payment_media_id
+    if not body.external_reference and not proof_id:
+        raise HTTPException(422, "Attach a receipt or provide the transfer reference")
+    if (
+        body.proof_media_id
+        and payment.proof_of_payment_media_id
+        and body.proof_media_id != payment.proof_of_payment_media_id
+    ):
+        raise HTTPException(
+            409, "A receipt already exists; retain the original evidence"
+        )
+    if body.proof_media_id:
+        await validate_receipt_media(body.proof_media_id, payment, admin)
+        payment.proof_of_payment_media_id = body.proof_media_id
+    metadata = payment.payment_metadata or {}
+    existing = metadata.get("admin_submitted_evidence")
+    evidence = {
+        "external_reference": body.external_reference,
+        "proof_media_id": str(proof_id) if proof_id else None,
+        "note": body.note,
+    }
+    if payment.status == PaymentStatus.PENDING_REVIEW and existing == evidence:
+        return payment
+    if payment.status == PaymentStatus.PENDING_REVIEW and existing:
+        raise HTTPException(409, "Evidence already submitted; use the review process")
+    from libs.common.datetime_utils import utc_now
+
+    payment.payment_metadata = {
+        **metadata,
+        "admin_submitted_evidence": evidence,
+        "admin_evidence_submitted_by": admin.user_id,
+        "admin_evidence_submitted_at": utc_now().isoformat(),
+    }
+    payment.status = PaymentStatus.PENDING_REVIEW
+    payment.admin_review_note = None
+    await db.commit()
+    return payment
 
 
 @router.post("/admin/{reference}/offline-payment", response_model=PaymentResponse)

@@ -44,6 +44,28 @@ class OfflinePaymentRecord(BaseModel):
         return self
 
 
+class AdminEvidenceSubmission(BaseModel):
+    """Claim evidence only; never confirms bank credit or grants access."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    external_reference: str | None = Field(default=None, min_length=3, max_length=128)
+    proof_media_id: UUID | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+    @field_validator("external_reference", mode="before")
+    @classmethod
+    def empty_reference_is_absent(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @model_validator(mode="after")
+    def requires_evidence(self):
+        if not self.external_reference and not self.proof_media_id:
+            raise ValueError("Attach a receipt or enter the transfer reference")
+        return self
+
+
 class AttachPaymentReceipt(BaseModel):
     model_config = ConfigDict(extra="forbid")
     proof_media_id: UUID
