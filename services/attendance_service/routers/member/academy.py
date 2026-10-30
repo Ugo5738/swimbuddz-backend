@@ -47,6 +47,7 @@ async def report_my_academy_attendance(
         session.get("session_type") != "cohort_class"
         or not session.get("cohort_id")
         or (session.get("cohort_fee_mode") or "included") != "included"
+        or (session.get("cohort_attendance_mode") or "automatic") != "automatic"
     ):
         raise HTTPException(
             status_code=422,

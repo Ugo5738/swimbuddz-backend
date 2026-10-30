@@ -118,6 +118,7 @@ async def generate_sessions_for_cohort(
             id=session_id,
             session_type=SessionType.COHORT_CLASS,
             cohort_fee_mode="included",
+            cohort_attendance_mode="automatic",
             status=SessionStatus.SCHEDULED,
             title=f"Week {wk} - {title_base}",
             starts_at=start,

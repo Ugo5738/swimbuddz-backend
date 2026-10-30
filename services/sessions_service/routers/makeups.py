@@ -526,6 +526,7 @@ async def _create_makeup_session(
         session_type=SessionType.COHORT_CLASS,
         cohort_id=cohort_id,
         title=(title or "Make-up session"),
+        cohort_attendance_mode="individual",
         starts_at=starts_at,
         ends_at=ends_at,
         pool_id=pool_id,

@@ -11,6 +11,7 @@ from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.service_client import (
     get_members_bulk,
+    get_confirmed_booking_member_ids,
     get_session_by_id,
     internal_post,
 )
@@ -74,6 +75,25 @@ async def coach_mark_session_attendance(
     )
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
+    if session_data.get("session_type") == "cohort_class" and (
+        session_data.get("cohort_attendance_mode") == "individual"
+        or session_data.get("cohort_fee_mode") == "paid_extra"
+    ):
+        participants = {
+            str(mid)
+            for mid in await get_confirmed_booking_member_ids(
+                str(session_id), calling_service="attendance"
+            )
+        }
+        if any(
+            entry.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE)
+            and str(entry.member_id) not in participants
+            for entry in payload.entries
+        ):
+            raise HTTPException(
+                422,
+                "Use Academy student participation to assign this student's purchased class or paid extra before marking attendance.",
+            )
     # Academy defaults are persisted by its reconciliation worker. Explicit
     # coach/admin decisions, including restoring Present, update that same fact
     # so media, reporting and payouts agree.

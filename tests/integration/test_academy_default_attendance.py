@@ -202,3 +202,45 @@ async def test_worker_discovers_subsequent_cohorts_without_config_changes(
     result = await service.reconcile_academy_defaults()
     assert result["created"] == 1 and not result["errors"]
     assert result["sessions"][0]["session_id"] == swims[subsequent]["id"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fee_mode", ["included", "paid_extra"])
+async def test_individual_extra_never_defaults_whole_cohort_present(
+    db_session, fee_mode
+):
+    swim = {
+        **session(),
+        "cohort_attendance_mode": "individual",
+        "cohort_fee_mode": fee_mode,
+    }
+    members = [uuid.uuid4() for _ in range(3)]
+    db_session.add(
+        AttendanceRecord(
+            session_id=uuid.UUID(swim["id"]),
+            member_id=members[0],
+            status=AttendanceStatus.PRESENT,
+            notes="Explicit participant",
+        )
+    )
+    await db_session.flush()
+    result = await reconcile_session(
+        db_session,
+        swim,
+        [student(mid) for mid in members],
+        cleared_member_ids={str(mid) for mid in members},
+        now=NOW,
+    )
+    assert result["created"] == 0
+    rows = list(
+        (
+            await db_session.scalars(
+                select(AttendanceRecord).where(
+                    AttendanceRecord.session_id == uuid.UUID(swim["id"])
+                )
+            )
+        ).all()
+    )
+    assert len(rows) == 1 and rows[0].member_id == members[0]
+    assert rows[0].notes == "Explicit participant"

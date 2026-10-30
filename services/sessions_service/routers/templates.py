@@ -223,6 +223,22 @@ async def update_template(
     if "session_type" in update_data and effective_type != SessionType.COHORT_CLASS:
         update_data["cohort_id"] = None
         update_data["cohort_fee_mode"] = "included"
+        update_data["cohort_attendance_mode"] = "automatic"
+    attendance_mode = update_data.get(
+        "cohort_attendance_mode",
+        (getattr(template, "cohort_attendance_mode", None) or "automatic"),
+    )
+    if attendance_mode not in {"automatic", "individual"}:
+        raise HTTPException(422, "Choose automatic or individual for class attendance.")
+    if effective_type != SessionType.COHORT_CLASS and attendance_mode != "automatic":
+        raise HTTPException(422, "Only Academy classes can use individual attendance")
+    if (
+        update_data.get(
+            "cohort_fee_mode", getattr(template, "cohort_fee_mode", "included")
+        )
+        == "paid_extra"
+    ):
+        update_data["cohort_attendance_mode"] = "individual"
     if {"session_type", "cohort_id", "cohort_fee_mode"} & update_data.keys():
         cohort_id = update_data.get("cohort_id", getattr(template, "cohort_id", None))
         mode = update_data.get(
@@ -490,6 +506,11 @@ async def generate_sessions(
             session_type=template.session_type,
             cohort_id=cohort_id,
             cohort_fee_mode=cohort_fee_mode,
+            cohort_attendance_mode=(
+                "individual"
+                if cohort_fee_mode == "paid_extra"
+                else (getattr(template, "cohort_attendance_mode", None) or "automatic")
+            ),
             pod_id=template.pod_id,
             club_access_mode=template.club_access_mode,
             pool_fee=template.pool_fee,  # both are kobo integers after migration

@@ -101,3 +101,19 @@ async def test_attendance_sync_failure_is_retryable_upstream(monkeypatch):
 
     assert exc_info.value.status_code == 502
     assert "Retry this request" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fee_mode", ["included", "paid_extra"])
+async def test_extra_booking_confirmation_does_not_mark_present(monkeypatch, fee_mode):
+    client = _Client(SimpleNamespace(raise_for_status=lambda: None))
+    monkeypatch.setattr(attendance_sync.httpx, "AsyncClient", lambda **kwargs: client)
+    await attendance_sync.sync_booking_attendance(
+        _booking(),
+        session=SimpleNamespace(
+            session_type="cohort_class",
+            cohort_fee_mode=fee_mode,
+            cohort_attendance_mode="individual",
+        ),
+    )
+    client.post.assert_not_awaited()
