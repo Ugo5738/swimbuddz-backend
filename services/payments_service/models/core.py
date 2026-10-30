@@ -124,8 +124,9 @@ class Payment(Base):
 
     @staticmethod
     def generate_reference() -> str:
-        suffix = "".join(random.choices(string.digits, k=5))
-        return f"PAY-{suffix}"
+        # References remain reserved by historical/failed payments too. A short
+        # numeric space eventually collides even across unrelated checkouts.
+        return f"PAY-{uuid.uuid4().hex}"
 
     # Coerce string assignments on enum columns to the corresponding enum
     # member. SAEnum handles enum-member → DB-value serialization on write,

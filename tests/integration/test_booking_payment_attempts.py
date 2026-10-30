@@ -75,6 +75,39 @@ async def test_same_or_different_browser_key_resumes_single_payment(
     initialize.assert_awaited_once()
 
 
+async def test_checkout_without_retry_key_cannot_collide_with_legacy_reference(
+    db_session, checkout, monkeypatch
+):
+    """A historical failed payment must not break another member's checkout."""
+    import random
+    from uuid import UUID
+
+    booking_id, user, payload, initialize, _ = checkout
+    legacy = Payment(
+        reference="PAY-12345",
+        member_auth_id=str(uuid4()),
+        purpose=PaymentPurpose.SESSION_FEE,
+        amount=10000,
+        status=PaymentStatus.FAILED,
+        payment_method="paystack",
+    )
+    db_session.add(legacy)
+    await db_session.commit()
+    # Reproduce the old five-digit generator choosing an occupied reference.
+    monkeypatch.setattr(random, "choices", lambda *args, **kwargs: list("12345"))
+    result = await intent_creation.create_payment_intent(
+        payload.model_copy(update={"idempotency_key": None}), user, db_session
+    )
+    assert result.reference != legacy.reference
+    assert result.reference.startswith("PAY-")
+    assert UUID(result.reference.removeprefix("PAY-")).version == 4
+    assert result.checkout_url == "https://checkout.example.test/frozen"
+    assert len(await booking_payments(db_session, booking_id)) == 1
+    await db_session.refresh(legacy)
+    assert legacy.reference == "PAY-12345" and legacy.status == PaymentStatus.FAILED
+    initialize.assert_awaited_once()
+
+
 async def test_internal_initializer_cannot_bypass_existing_booking_payment(
     db_session, checkout
 ):
