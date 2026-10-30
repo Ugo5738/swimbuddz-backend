@@ -55,6 +55,7 @@ class SessionBase(BaseModel):
     capacity: int = 20
     pool_fee: float = 0.0  # naira input/output
     cohort_fee_mode: Literal["included", "paid_extra"] = "included"
+    cohort_attendance_mode: Literal["automatic", "individual"] = "automatic"
     guest_fee: Optional[float] = Field(None, ge=0)
     community_dropin_fee: Optional[float] = Field(None, ge=0)
     visiting_club_fee: Optional[float] = Field(None, ge=0)
@@ -117,6 +118,13 @@ class SessionCreate(SessionBase):
             raise ValueError(
                 "Only a cohort class can be designated as a paid extra class"
             )
+        if self.cohort_fee_mode == "paid_extra":
+            self.cohort_attendance_mode = "individual"
+        if (
+            self.session_type != SessionType.COHORT_CLASS
+            and self.cohort_attendance_mode != "automatic"
+        ):
+            raise ValueError("Only Academy classes can use individual attendance")
         try:
             validate_session_discriminator(
                 session_type=self.session_type,
@@ -186,6 +194,7 @@ class SessionUpdate(BaseModel):
     capacity: Optional[int] = None
     pool_fee: Optional[float] = None  # naira — router converts to kobo on write
     cohort_fee_mode: Optional[Literal["included", "paid_extra"]] = None
+    cohort_attendance_mode: Optional[Literal["automatic", "individual"]] = None
     guest_fee: Optional[float] = Field(None, ge=0)
     community_dropin_fee: Optional[float] = Field(None, ge=0)
     visiting_club_fee: Optional[float] = Field(None, ge=0)
@@ -295,6 +304,8 @@ class SessionResponse(SessionBase):
             "capacity": obj.capacity,
             "pool_fee": pool_fee_kobo / 100.0,
             "cohort_fee_mode": getattr(obj, "cohort_fee_mode", None) or "included",
+            "cohort_attendance_mode": getattr(obj, "cohort_attendance_mode", None)
+            or "automatic",
             "guest_fee": guest_fee_kobo / 100.0 if guest_fee_kobo is not None else None,
             "community_dropin_fee": (
                 community_dropin_fee_kobo / 100.0

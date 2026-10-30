@@ -107,6 +107,8 @@ async def sweep_no_show_bookings(*, lookback_days: int = 7) -> dict:
             if (
                 session_data.get("session_type") == "cohort_class"
                 and (session_data.get("cohort_fee_mode") or "included") == "included"
+                and (session_data.get("cohort_attendance_mode") or "automatic")
+                == "automatic"
             ):
                 continue
             ends_at = _parse_iso(session_data.get("ends_at"))

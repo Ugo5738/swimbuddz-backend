@@ -38,6 +38,7 @@ def test_student_exception_payload_cannot_supply_another_member_identity():
         {"status": "draft"},
         {"session_type": "club"},
         {"cohort_fee_mode": "paid_extra"},
+        {"cohort_attendance_mode": "individual"},
     ],
 )
 def test_does_not_create_unearned_attendance(change):

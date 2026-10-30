@@ -117,6 +117,7 @@ class SessionBasic(BaseModel):
     # Wallet-only consumers require pool_fee to be exactly divisible by one Bubble.
     pool_fee: Optional[int] = None
     cohort_fee_mode: str = "included"
+    cohort_attendance_mode: str = "automatic"
     guest_fee_kobo: Optional[int] = None
     community_dropin_fee_kobo: Optional[int] = None
     visiting_club_fee_kobo: Optional[int] = None
@@ -469,6 +470,8 @@ async def get_scheduled_sessions(
             capacity=s.capacity,
             pool_fee=s.pool_fee,
             cohort_fee_mode=getattr(s, "cohort_fee_mode", None) or "included",
+            cohort_attendance_mode=getattr(s, "cohort_attendance_mode", None)
+            or "automatic",
             ride_share_fee=s.ride_share_fee,
             occupied_slots=occupied_by_session[s.id],
             confirmed_booking_member_ids=confirmed_by_session[s.id],
@@ -1487,6 +1490,8 @@ async def get_session_by_id(
         capacity=session.capacity,
         pool_fee=session.pool_fee,
         cohort_fee_mode=getattr(session, "cohort_fee_mode", None) or "included",
+        cohort_attendance_mode=getattr(session, "cohort_attendance_mode", None)
+        or "automatic",
         guest_fee_kobo=getattr(session, "guest_fee_kobo", None),
         community_dropin_fee_kobo=getattr(session, "community_dropin_fee_kobo", None),
         visiting_club_fee_kobo=getattr(session, "visiting_club_fee_kobo", None),
@@ -1734,6 +1739,8 @@ async def get_sessions_for_cohort_internal(
             capacity=s.capacity,
             pool_fee=s.pool_fee,
             cohort_fee_mode=getattr(s, "cohort_fee_mode", None) or "included",
+            cohort_attendance_mode=getattr(s, "cohort_attendance_mode", None)
+            or "automatic",
             week_number=s.week_number,
             lesson_title=s.lesson_title,
             timezone=s.timezone,
