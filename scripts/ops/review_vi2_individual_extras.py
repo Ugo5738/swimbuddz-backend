@@ -34,7 +34,10 @@ async def review(*, apply: bool, actor_auth_id: str | None) -> None:
     async with AsyncSessionLocal() as db:
         if not apply:
             await db.execute(text("SET TRANSACTION READ ONLY"))
-        params = {"ids": SESSION_IDS, "cohort": COHORT_ID}
+        params = {
+            "ids": [uuid.UUID(sid) for sid in SESSION_IDS],
+            "cohort": uuid.UUID(COHORT_ID),
+        }
         statement = text(
             "SELECT id,cohort_id,starts_at,cohort_fee_mode,cohort_attendance_mode "
             "FROM sessions WHERE id IN :ids ORDER BY starts_at"
@@ -62,7 +65,11 @@ async def review(*, apply: bool, actor_auth_id: str | None) -> None:
             (
                 await db.execute(
                     candidates,
-                    {"ids": SESSION_IDS, "member": AJIBOLA, "note": DEFAULT_NOTE},
+                    {
+                        "ids": params["ids"],
+                        "member": uuid.UUID(AJIBOLA),
+                        "note": DEFAULT_NOTE,
+                    },
                 )
             ).mappings()
         )
@@ -94,8 +101,8 @@ async def review(*, apply: bool, actor_auth_id: str | None) -> None:
                 "AND notes=:default"
             ),
             {
-                "sid": SESSION_IDS[0],
-                "mid": BELLO,
+                "sid": uuid.UUID(SESSION_IDS[0]),
+                "mid": uuid.UUID(BELLO),
                 "default": DEFAULT_NOTE,
                 "verified": "Owner-confirmed attendance on 10 October; included in reviewed historical class usage. Six attended classes through 25 October. Review "
                 + operation_id,

@@ -82,3 +82,60 @@ async def test_coach_cannot_bypass_extra_class_allocation(monkeypatch):
     assert "Academy student participation" in caught.value.detail
     db.execute.assert_not_awaited()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_regular_extension_ignores_extra_and_cancelled_weekdays():
+    from unittest.mock import Mock
+    from services.sessions_service.models import Session
+    from services.sessions_service.services.cohort_sessions import (
+        generate_sessions_for_cohort,
+    )
+
+    cohort = uuid4()
+
+    def swim(day, **settings):
+        start = datetime(2026, 12, day, 13, tzinfo=timezone.utc)
+        return Session(
+            title="Week 12 - Freestyle",
+            session_type="cohort_class",
+            cohort_id=cohort,
+            starts_at=start,
+            ends_at=start + timedelta(hours=1),
+            timezone="Africa/Lagos",
+            week_number=12,
+            capacity=3,
+            pool_fee=0,
+            ride_share_fee=0,
+            allows_guests=False,
+            max_guests_per_booking=0,
+            cohort_attendance_mode="automatic",
+            cohort_fee_mode="included",
+            **settings,
+        )
+
+    regular = swim(13, status="scheduled")
+    cancelled_friday = swim(18, status="cancelled")
+    extra = swim(19, status="scheduled")
+    extra.cohort_attendance_mode, extra.week_number = "individual", 99
+    db = SimpleNamespace(
+        execute=AsyncMock(
+            return_value=SimpleNamespace(
+                scalars=lambda: SimpleNamespace(
+                    all=lambda: [extra, cancelled_friday, regular]
+                )
+            )
+        ),
+        add=Mock(),
+        flush=AsyncMock(),
+    )
+    result = await generate_sessions_for_cohort(
+        db,
+        cohort,
+        datetime(2026, 12, 20, 15, tzinfo=timezone.utc),
+        datetime(2026, 12, 28, tzinfo=timezone.utc),
+    )
+    assert result["created"] == 1
+    created = db.add.call_args.args[0]
+    assert created.starts_at == datetime(2026, 12, 27, 13, tzinfo=timezone.utc)
+    assert created.cohort_attendance_mode == "automatic" and created.week_number == 13
