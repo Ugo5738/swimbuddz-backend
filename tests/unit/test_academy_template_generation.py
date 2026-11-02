@@ -72,7 +72,7 @@ def academy_response(status=200):
 async def test_generated_academy_class_preserves_cohort_price_and_billing(
     mode, window, monkeypatch
 ):
-    saved = saved_template(cohort_fee_mode=mode)
+    saved = saved_template(cohort_fee_mode=mode, cohort_attendance_mode="individual")
     db = database(saved)
     get = AsyncMock(return_value=academy_response())
     monkeypatch.setattr(template_context, "internal_get", get)
@@ -91,6 +91,7 @@ async def test_generated_academy_class_preserves_cohort_price_and_billing(
         session = call.args[0]
         assert session.cohort_id == saved.cohort_id
         assert session.cohort_fee_mode == mode
+        assert session.cohort_attendance_mode == "individual"
         assert session.pool_fee == 1500000  # Already kobo; never converted twice.
         assert session.capacity == 2 and session.template_id == saved.id
         validate_session_discriminator(

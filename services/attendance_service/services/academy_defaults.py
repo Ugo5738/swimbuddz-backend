@@ -41,6 +41,7 @@ def eligible_for_default(session: dict, student: dict, *, now: datetime) -> bool
         session.get("session_type") == "cohort_class"
         and session.get("status") in {"scheduled", "in_progress", "completed"}
         and (session.get("cohort_fee_mode") or "included") == "included"
+        and (session.get("cohort_attendance_mode") or "automatic") == "automatic"
         and starts_at
         and starts_at <= now
         and joined_at

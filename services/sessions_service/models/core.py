@@ -70,6 +70,10 @@ class Session(Base):
             name="ck_sessions_cohort_fee_mode",
         ),
         CheckConstraint(
+            "cohort_attendance_mode IN ('automatic','individual') AND (session_type = 'cohort_class' OR cohort_attendance_mode = 'automatic')",
+            name="ck_sessions_cohort_attendance_mode",
+        ),
+        CheckConstraint(
             "club_access_mode IN ('plan_included','active_club','paid_addon') AND (session_type = 'club' OR (club_id IS NULL AND club_access_mode = 'plan_included')) AND (club_access_mode = 'plan_included' OR club_id IS NOT NULL)",
             name="ck_sessions_club_access_mode",
         ),
@@ -162,6 +166,11 @@ class Session(Base):
     # cost. Only an explicitly designated extra class is separately charged.
     cohort_fee_mode: Mapped[str] = mapped_column(
         String(24), nullable=False, default="included", server_default="included"
+    )
+    # Additional classes require an explicit attendance/allocation decision per
+    # student, even when they use tuition credits rather than a separate fee.
+    cohort_attendance_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="automatic", server_default="automatic"
     )
     # Kept separate even when values currently match: guests can move to a
     # higher trial rate without changing registered Community drop-ins.
@@ -364,6 +373,10 @@ class SessionTemplate(Base):
             name="ck_session_templates_cohort_context",
         ),
         CheckConstraint(
+            "cohort_attendance_mode IN ('automatic','individual') AND (session_type = 'cohort_class' OR cohort_attendance_mode = 'automatic')",
+            name="ck_session_templates_cohort_attendance_mode",
+        ),
+        CheckConstraint(
             "club_access_mode IN ('plan_included','active_club','paid_addon') AND (session_type = 'club' OR (club_id IS NULL AND club_access_mode = 'plan_included')) AND (club_access_mode = 'plan_included' OR club_id IS NOT NULL)",
             name="ck_session_templates_club_access_mode",
         ),
@@ -446,6 +459,9 @@ class SessionTemplate(Base):
     )
     cohort_fee_mode: Mapped[str] = mapped_column(
         String(24), nullable=False, default="included", server_default="included"
+    )
+    cohort_attendance_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="automatic", server_default="automatic"
     )
     capacity: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
     pool_fee: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

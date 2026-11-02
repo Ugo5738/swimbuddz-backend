@@ -67,13 +67,21 @@ async def generate_sessions_for_cohort(
         .scalars()
         .all()
     )
-    if not existing:
+    regular = [
+        session
+        for session in existing
+        if (session.cohort_attendance_mode or "automatic") == "automatic"
+        and (session.cohort_fee_mode or "included") == "included"
+        and session.status
+        in {SessionStatus.SCHEDULED, SessionStatus.IN_PROGRESS, SessionStatus.COMPLETED}
+    ]
+    if not regular:
         # No prior session to infer the schedule from. Refuse rather than guess;
         # the caller logs this and an admin can seed the first session.
         return {"created": 0, "skipped": 0, "week_numbers": [], "reason": "no template"}
 
     existing_dates = {s.starts_at.date() for s in existing}
-    max_week = max((s.week_number or 0) for s in existing)
+    max_week = max((s.week_number or 0) for s in regular)
 
     # Template = most recent *weekly* class on/before from_date (prefer rows
     # that carry a week_number — regular weekly classes — over ad-hoc make-ups
@@ -82,13 +90,13 @@ async def generate_sessions_for_cohort(
         next(
             (
                 s
-                for s in existing
+                for s in regular
                 if s.starts_at <= from_date and s.week_number is not None
             ),
             None,
         )
-        or next((s for s in existing if s.starts_at <= from_date), None)
-        or existing[0]
+        or next((s for s in regular if s.starts_at <= from_date), None)
+        or regular[0]
     )
 
     duration = template.ends_at - template.starts_at
@@ -118,6 +126,7 @@ async def generate_sessions_for_cohort(
             id=session_id,
             session_type=SessionType.COHORT_CLASS,
             cohort_fee_mode="included",
+            cohort_attendance_mode="automatic",
             status=SessionStatus.SCHEDULED,
             title=f"Week {wk} - {title_base}",
             starts_at=start,

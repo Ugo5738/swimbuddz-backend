@@ -32,6 +32,7 @@ class SessionTemplateBase(BaseModel):
     )
     cohort_id: Optional[uuid.UUID] = None
     cohort_fee_mode: Literal["included", "paid_extra"] = "included"
+    cohort_attendance_mode: Literal["automatic", "individual"] = "automatic"
     club_id: Optional[uuid.UUID] = None
     club_access_mode: Literal["plan_included", "active_club", "paid_addon"] = (
         "plan_included"
@@ -70,6 +71,13 @@ class SessionTemplateBase(BaseModel):
 class SessionTemplateCreate(SessionTemplateBase):
     @model_validator(mode="after")
     def _require_pool_reference(self) -> "SessionTemplateCreate":
+        if self.cohort_fee_mode == "paid_extra":
+            self.cohort_attendance_mode = "individual"
+        if (
+            self.session_type != SessionType.COHORT_CLASS
+            and self.cohort_attendance_mode != "automatic"
+        ):
+            raise ValueError("Only Academy classes can use individual attendance")
         validate_template_context(
             self.session_type, self.cohort_id, self.cohort_fee_mode
         )
@@ -105,6 +113,7 @@ class SessionTemplateUpdate(BaseModel):
     admission_settings: Optional[TemplateAdmissionSettings] = None
     cohort_id: Optional[uuid.UUID] = None
     cohort_fee_mode: Optional[Literal["included", "paid_extra"]] = None
+    cohort_attendance_mode: Optional[Literal["automatic", "individual"]] = None
     club_id: Optional[uuid.UUID] = None
     club_access_mode: Optional[
         Literal["plan_included", "active_club", "paid_addon"]
@@ -176,6 +185,8 @@ class SessionTemplateResponse(SessionTemplateBase):
             "session_type": obj.session_type,
             "cohort_id": getattr(obj, "cohort_id", None),
             "cohort_fee_mode": getattr(obj, "cohort_fee_mode", None) or "included",
+            "cohort_attendance_mode": getattr(obj, "cohort_attendance_mode", None)
+            or "automatic",
             "club_id": getattr(obj, "club_id", None),
             "pod_id": obj.pod_id,
             "club_access_mode": getattr(obj, "club_access_mode", "plan_included"),

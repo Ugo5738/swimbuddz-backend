@@ -81,6 +81,7 @@ async def _routine_consumption(
         for item in sessions
         if item.get("session_type") == "cohort_class"
         and item.get("cohort_fee_mode", "included") == "included"
+        and (item.get("cohort_attendance_mode") or "automatic") == "automatic"
         and item.get("status") in {"scheduled", "in_progress", "completed"}
         and datetime.fromisoformat(item["starts_at"].replace("Z", "+00:00")) <= now
         and (
@@ -299,6 +300,7 @@ async def preview_class_baseline(
         and row.get("session_type") == "cohort_class"
         and row.get("status") in {"scheduled", "in_progress", "completed"}
         and row.get("cohort_fee_mode", "included") == "included"
+        and (row.get("cohort_attendance_mode") or "automatic") == "automatic"
         and datetime.fromisoformat(row["starts_at"].replace("Z", "+00:00")) < cutoff
     ]
     # Explicit allocations distinguish a paid extra from a purchased lesson,

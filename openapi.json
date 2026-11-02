@@ -85315,6 +85315,11 @@
             "title": "Cohort Fee Mode",
             "default": "included"
           },
+          "cohort_attendance_mode": {
+            "type": "string",
+            "title": "Cohort Attendance Mode",
+            "default": "automatic"
+          },
           "guest_fee_kobo": {
             "anyOf": [
               {
@@ -85935,6 +85940,15 @@
             ],
             "title": "Cohort Fee Mode",
             "default": "included"
+          },
+          "cohort_attendance_mode": {
+            "type": "string",
+            "enum": [
+              "automatic",
+              "individual"
+            ],
+            "title": "Cohort Attendance Mode",
+            "default": "automatic"
           },
           "guest_fee": {
             "anyOf": [
@@ -86929,6 +86943,15 @@
             "title": "Cohort Fee Mode",
             "default": "included"
           },
+          "cohort_attendance_mode": {
+            "type": "string",
+            "enum": [
+              "automatic",
+              "individual"
+            ],
+            "title": "Cohort Attendance Mode",
+            "default": "automatic"
+          },
           "guest_fee": {
             "anyOf": [
               {
@@ -87605,6 +87628,15 @@
             "title": "Cohort Fee Mode",
             "default": "included"
           },
+          "cohort_attendance_mode": {
+            "type": "string",
+            "enum": [
+              "automatic",
+              "individual"
+            ],
+            "title": "Cohort Attendance Mode",
+            "default": "automatic"
+          },
           "club_id": {
             "anyOf": [
               {
@@ -87866,6 +87898,15 @@
             ],
             "title": "Cohort Fee Mode",
             "default": "included"
+          },
+          "cohort_attendance_mode": {
+            "type": "string",
+            "enum": [
+              "automatic",
+              "individual"
+            ],
+            "title": "Cohort Attendance Mode",
+            "default": "automatic"
           },
           "club_id": {
             "anyOf": [
@@ -88171,6 +88212,21 @@
               }
             ],
             "title": "Cohort Fee Mode"
+          },
+          "cohort_attendance_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "automatic",
+                  "individual"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Attendance Mode"
           },
           "club_id": {
             "anyOf": [
@@ -88780,6 +88836,21 @@
               }
             ],
             "title": "Cohort Fee Mode"
+          },
+          "cohort_attendance_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "automatic",
+                  "individual"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Attendance Mode"
           },
           "guest_fee": {
             "anyOf": [

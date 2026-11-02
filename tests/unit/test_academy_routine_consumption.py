@@ -198,3 +198,42 @@ async def test_baseline_preview_does_not_flag_recorded_absences(monkeypatch):
     assert result["unverified_sessions"] == [
         {"session_id": ids[-1], "status": "missing"}
     ]
+
+
+@pytest.mark.parametrize("recorded_status", [None, "present", "absent", "excused"])
+async def test_individual_extra_neither_consumes_nor_blocks_regular_balance(
+    monkeypatch, recorded_status
+):
+    now = utc_now()
+    sid = str(uuid4())
+    monkeypatch.setattr(
+        class_entitlements,
+        "internal_get",
+        AsyncMock(
+            return_value=Response(
+                [
+                    {
+                        "id": sid,
+                        "session_type": "cohort_class",
+                        "cohort_fee_mode": "included",
+                        "cohort_attendance_mode": "individual",
+                        "status": "completed",
+                        "starts_at": (now - timedelta(days=1)).isoformat(),
+                    }
+                ]
+            )
+        ),
+    )
+    getter = AsyncMock(
+        return_value=[]
+        if recorded_status is None
+        else [{"session_id": sid, "status": recorded_status}]
+    )
+    monkeypatch.setattr(class_entitlements, "get_member_attendance", getter)
+    enrollment = SimpleNamespace(cohort_id=uuid4(), member_id=uuid4(), enrolled_at=None)
+    plan = SimpleNamespace(opening_as_of=now - timedelta(days=2))
+    assert await class_entitlements._routine_consumption(enrollment, plan, []) == (
+        0,
+        [],
+    )
+    getter.assert_not_awaited()
