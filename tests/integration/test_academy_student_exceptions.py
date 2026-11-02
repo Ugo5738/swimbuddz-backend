@@ -183,3 +183,18 @@ async def test_student_route_rejects_unavailable_or_nonincluded_classes(
             db=db_session,
         )
     assert raised.value.status_code == 422
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_student_cannot_restore_present_on_unassigned_extra(db_session, context):
+    context.swim["cohort_attendance_mode"] = "individual"
+    with pytest.raises(HTTPException) as raised:
+        await academy.report_my_academy_attendance(
+            uuid.UUID(context.swim["id"]),
+            AcademyAttendanceExceptionRequest(status="present"),
+            current_member=context.member,
+            db=db_session,
+        )
+    assert raised.value.status_code == 422
+    context.lookup.assert_not_awaited()

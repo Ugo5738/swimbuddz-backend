@@ -1006,6 +1006,24 @@ async def update_session(
             status_code=422,
             detail="Only a cohort class can be designated as a paid extra class",
         )
+    if (
+        "session_type" in update_data
+        and resulting_type_value != SessionType.COHORT_CLASS.value
+    ):
+        update_data["cohort_attendance_mode"] = "automatic"
+    attendance_mode = update_data.get(
+        "cohort_attendance_mode",
+        (getattr(session, "cohort_attendance_mode", None) or "automatic"),
+    )
+    if attendance_mode not in {"automatic", "individual"}:
+        raise HTTPException(422, "Choose automatic or individual for class attendance")
+    if (
+        resulting_type_value != SessionType.COHORT_CLASS.value
+        and attendance_mode != "automatic"
+    ):
+        raise HTTPException(422, "Only Academy classes can use individual attendance")
+    if resulting_cohort_mode == "paid_extra":
+        update_data["cohort_attendance_mode"] = "individual"
     if "session_type" in update_data and resulting_type_value != SessionType.CLUB.value:
         # A Club/Pod link must never leak across a type change.
         update_data["club_id"] = None
