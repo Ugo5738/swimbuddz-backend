@@ -1,0 +1,23 @@
+{
+  "tag": "grace-dara-winifred-installments 2026-06-20",
+  "installments": [
+    {
+      "id": "b6253811-227b-45ab-95fa-5da8647ee37d",
+      "due_at": "2026-06-24T00:00:00+00:00",
+      "status": "pending"
+    },
+    {
+      "id": "1369678c-9a6e-440e-8e13-76c26111fb36",
+      "due_at": "2026-06-17T00:00:00+00:00",
+      "status": "missed"
+    }
+  ],
+  "enrollments": [
+    {
+      "id": "513557b5-8294-4b30-8c5e-5b87066b0f94",
+      "payment_status": "failed",
+      "access_suspended": true,
+      "missed_installments_count": 1
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+# GitHub Copilot Instructions (`swimbuddz-backend`)
+
+1. Read `AGENTS.md`, `docs/DECISIONS.md`, `docs/AGENT_INSTRUCTIONS.md`, and `docs/CONVENTIONS.md` before making changes.
+2. Never silently override a settled decision in `docs/DECISIONS.md` (`ADR-001` through `ADR-006`).
+3. Whenever you and the user deliberate on or implement a product/architectural decision, update `docs/DECISIONS.md` (and `../docs/DECISIONS.md` if accessible) and the relevant runbook in `docs/` in the same session.

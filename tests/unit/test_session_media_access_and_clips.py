@@ -2,7 +2,7 @@
 
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import ValidationError
@@ -149,7 +149,7 @@ async def test_member_cannot_clip_unshared_recording(monkeypatch):
     monkeypatch.setattr(
         vaults,
         "resolve_actor",
-        AsyncMock(return_value=SimpleNamespace(member_id=member_id)),
+        AsyncMock(return_value=SimpleNamespace(member_id=member_id, is_admin=False)),
     )
     monkeypatch.setattr(
         vaults,
@@ -164,3 +164,45 @@ async def test_member_cannot_clip_unshared_recording(monkeypatch):
             db=db,
         )
     assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_can_clip_even_when_member_clips_disabled(monkeypatch):
+    video = SimpleNamespace(
+        id=uuid.uuid4(),
+        vault_id=uuid.uuid4(),
+        allow_member_clips=False,
+        proxy_object_key="proxies/video.mp4",
+    )
+    db = SimpleNamespace(
+        get=AsyncMock(return_value=video),
+        add=MagicMock(),
+        commit=AsyncMock(),
+        scalar=AsyncMock(return_value=0),
+    )
+    monkeypatch.setattr(
+        vaults,
+        "resolve_actor",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                member_id=None, is_admin=True, auth_id=uuid.uuid4()
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        vaults,
+        "get_vault_or_404",
+        AsyncMock(return_value=SimpleNamespace(id=video.vault_id)),
+    )
+    monkeypatch.setattr(
+        vaults,
+        "_get_redis_pool",
+        AsyncMock(return_value=SimpleNamespace(enqueue_job=AsyncMock())),
+    )
+    response = await vaults.request_member_clip(
+        video.id,
+        ClipCreate(start_ms=0, end_ms=10000),
+        current_user=SimpleNamespace(user_id=str(uuid.uuid4())),
+        db=db,
+    )
+    assert response.status == "pending"

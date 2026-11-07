@@ -83,6 +83,9 @@ async def test_assessment_acknowledges_member_and_alerts_reviewer_idempotently(
         enqueue.await_args_list[0].kwargs["event_key"]
         == enqueue.await_args_list[1].kwargs["event_key"]
     )
+    assert "Club Assessment Ready for Review" in enqueue.await_args.kwargs["html_body"]
+    assert "Ada Okafor" in enqueue.await_args.kwargs["html_body"]
+    assert "admin/club-applications" in enqueue.await_args.kwargs["html_body"]
 
 
 @pytest.mark.asyncio

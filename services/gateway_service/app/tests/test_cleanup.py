@@ -129,3 +129,42 @@ async def test_cleanup_hard_mode_handles_204_responses(client):
         "members",
     ]:
         assert data["results"][service_name] == expected_deleted
+
+
+@pytest.mark.asyncio
+async def test_cleanup_surfaces_members_delete_failure(client):
+    member_id = uuid.uuid4()
+    auth_id = "auth-456"
+    original_members = clients.members_client
+
+    app.dependency_overrides[require_admin] = lambda: StubUser(
+        role="service_role", email="admin@example.com", token="admin-token"
+    )
+    clients.members_client = RoutingClient(
+        {
+            ("GET", f"/members/{member_id}"): make_response(
+                200,
+                {"id": str(member_id), "auth_id": auth_id},
+                "GET",
+                f"/members/{member_id}",
+            ),
+            ("PATCH", f"/members/{member_id}"): make_response(
+                409,
+                {"detail": "Cannot deactivate member"},
+                "PATCH",
+                f"/members/{member_id}",
+            ),
+        }
+    )
+
+    try:
+        response = await client.post(
+            f"/api/v1/admin/cleanup/members/{member_id}",
+            json={"mode": "soft"},
+        )
+    finally:
+        clients.members_client = original_members
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Cannot deactivate member"

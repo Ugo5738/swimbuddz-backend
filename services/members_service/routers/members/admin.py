@@ -13,12 +13,18 @@ from libs.common.logging import get_logger
 from libs.common.media_utils import resolve_media_urls
 from libs.common.supabase import get_supabase_admin_client
 from libs.db.session import get_async_db
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.members_service.models import (
+    ChallengeBadgeAward,
+    ChallengeSubmissionMember,
     Club,
+    ClubApplication,
+    ClubCommercialAdjustment,
     ClubEnrollment,
+    ClubEnrollmentTransfer,
+    CoachBankAccount,
     CoachProfile,
     Member,
     MemberAvailability,
@@ -29,8 +35,12 @@ from services.members_service.models import (
     MemberProfile,
     Pod,
     PodAssignment,
-    VolunteerInterest,
 )
+from services.members_service.models.experience import (
+    CommunityExperienceOrder,
+    CommunityExperienceParticipant,
+)
+from services.members_service.models.name_change import MemberNameChange
 from services.members_service.routers._helpers import (
     member_eager_load_options,
     resolve_member_media_urls,
@@ -404,22 +414,109 @@ async def delete_member(
             detail="Member not found",
         )
 
-    # Delete from Supabase Auth
-    try:
-        supabase = get_supabase_admin_client()
-        if member.auth_id:
-            supabase.auth.admin.delete_user(member.auth_id)
-            logger.info(
-                "Deleted Supabase user",
-                extra={"extra_fields": {"auth_id": member.auth_id}},
-            )
-    except Exception as e:
-        logger.error(
-            "Failed to delete Supabase user",
-            extra={"extra_fields": {"auth_id": member.auth_id, "error": str(e)}},
+    lead_pod = (
+        await db.execute(select(Pod.name).where(Pod.pod_lead_id == member.id).limit(1))
+    ).scalar_one_or_none()
+    if lead_pod:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot hard-delete member while assigned as Pod Lead for '{lead_pod}'. Reassign the pod lead first or use Soft Delete.",
         )
 
-    # Delete all related sub-tables
+    auth_id = member.auth_id
+
+    # Clear nullable references and RESTRICT/NO ACTION child rows before deleting member
+    await db.execute(
+        update(Pod)
+        .where(Pod.assistant_pod_lead_id == member.id)
+        .values(assistant_pod_lead_id=None)
+    )
+    await db.execute(delete(PodAssignment).where(PodAssignment.member_id == member.id))
+    await db.execute(
+        delete(CoachBankAccount).where(CoachBankAccount.member_id == member.id)
+    )
+    await db.execute(delete(CoachProfile).where(CoachProfile.member_id == member.id))
+    await db.execute(
+        delete(MemberNameChange).where(MemberNameChange.member_id == member.id)
+    )
+
+    order_ids = (
+        (
+            await db.execute(
+                select(CommunityExperienceOrder.id).where(
+                    CommunityExperienceOrder.member_id == member.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if order_ids:
+        await db.execute(
+            delete(CommunityExperienceParticipant).where(
+                CommunityExperienceParticipant.order_id.in_(order_ids)
+            )
+        )
+        await db.execute(
+            delete(CommunityExperienceOrder).where(
+                CommunityExperienceOrder.id.in_(order_ids)
+            )
+        )
+
+    club_enrollment_ids = (
+        (
+            await db.execute(
+                select(ClubEnrollment.id).where(ClubEnrollment.member_id == member.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if club_enrollment_ids:
+        await db.execute(
+            delete(ClubCommercialAdjustment).where(
+                ClubCommercialAdjustment.enrollment_id.in_(club_enrollment_ids)
+            )
+        )
+        await db.execute(
+            delete(ClubEnrollmentTransfer).where(
+                or_(
+                    ClubEnrollmentTransfer.member_id == member.id,
+                    ClubEnrollmentTransfer.source_enrollment_id.in_(
+                        club_enrollment_ids
+                    ),
+                    ClubEnrollmentTransfer.target_enrollment_id.in_(
+                        club_enrollment_ids
+                    ),
+                )
+            )
+        )
+        await db.execute(
+            delete(ClubEnrollment).where(ClubEnrollment.id.in_(club_enrollment_ids))
+        )
+    else:
+        await db.execute(
+            delete(ClubEnrollmentTransfer).where(
+                ClubEnrollmentTransfer.member_id == member.id
+            )
+        )
+
+    await db.execute(
+        delete(ClubApplication).where(ClubApplication.member_id == member.id)
+    )
+    await db.execute(
+        delete(ChallengeBadgeAward).where(ChallengeBadgeAward.member_id == member.id)
+    )
+    await db.execute(
+        delete(ChallengeSubmissionMember).where(
+            ChallengeSubmissionMember.member_id == member.id
+        )
+    )
+    await db.execute(
+        delete(MemberChallengeCompletion).where(
+            MemberChallengeCompletion.member_id == member.id
+        )
+    )
     await db.execute(delete(MemberProfile).where(MemberProfile.member_id == member.id))
     await db.execute(
         delete(MemberEmergencyContact).where(
@@ -435,16 +532,23 @@ async def delete_member(
     await db.execute(
         delete(MemberPreferences).where(MemberPreferences.member_id == member.id)
     )
-    await db.execute(delete(CoachProfile).where(CoachProfile.member_id == member.id))
-    await db.execute(
-        delete(VolunteerInterest).where(VolunteerInterest.member_id == member.id)
-    )
-    await db.execute(
-        delete(MemberChallengeCompletion).where(
-            MemberChallengeCompletion.member_id == member.id
-        )
-    )
 
     await db.delete(member)
     await db.commit()
+
+    # Delete from Supabase Auth only after DB deletion commits
+    try:
+        supabase = get_supabase_admin_client()
+        if auth_id:
+            supabase.auth.admin.delete_user(auth_id)
+            logger.info(
+                "Deleted Supabase user",
+                extra={"extra_fields": {"auth_id": auth_id}},
+            )
+    except Exception as e:
+        logger.error(
+            "Failed to delete Supabase user",
+            extra={"extra_fields": {"auth_id": auth_id, "error": str(e)}},
+        )
+
     return None

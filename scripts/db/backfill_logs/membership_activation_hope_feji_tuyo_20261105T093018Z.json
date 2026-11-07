@@ -1,0 +1,73 @@
+{
+  "cohort": {
+    "id": "fdfbe8c3-253b-46c6-bc8a-159d96c75da5",
+    "name": "SwimBuddz Accelerated Swimming Programme - Nov 2026",
+    "membership_policy_override": null
+  },
+  "enrollments": [
+    {
+      "id": "aa4ee37e-afa6-47f4-bba3-7ab177926e58",
+      "member_id": "dee1f4ec-8b66-4095-adee-dde6b5db4110",
+      "membership_policy_snapshot": "open",
+      "status": "enrolled",
+      "payment_status": "paid"
+    },
+    {
+      "id": "f4b785fe-a865-4dcb-8e19-9252ab83b3b4",
+      "member_id": "7953f999-f22c-4aab-926b-74ff838ad8aa",
+      "membership_policy_snapshot": "open",
+      "status": "enrolled",
+      "payment_status": "paid"
+    }
+  ],
+  "member_memberships": [
+    {
+      "member_id": "89cd6218-7dda-47e8-b4a8-232801a7796f",
+      "email": "olutuyod@gmail.com",
+      "first_name": "Tuyo",
+      "last_name": ".",
+      "community_paid_until": null,
+      "academy_paid_until": "2027-01-02T00:00:00+00:00",
+      "active_tiers": [
+        "academy"
+      ],
+      "declared_tiers": [
+        "academy",
+        "community"
+      ],
+      "primary_tier": "academy"
+    },
+    {
+      "member_id": "dee1f4ec-8b66-4095-adee-dde6b5db4110",
+      "email": "iyamuhope.nosa647@gmail.com",
+      "first_name": "Hope",
+      "last_name": "Iyamu",
+      "community_paid_until": null,
+      "academy_paid_until": "2027-01-16T00:00:00+00:00",
+      "active_tiers": [
+        "academy"
+      ],
+      "declared_tiers": [
+        "academy",
+        "community"
+      ],
+      "primary_tier": "academy"
+    },
+    {
+      "member_id": "7953f999-f22c-4aab-926b-74ff838ad8aa",
+      "email": "edafetano.feji@gmail.com",
+      "first_name": "Feji",
+      "last_name": "Edafetano",
+      "community_paid_until": null,
+      "academy_paid_until": "2027-01-16T00:00:00+00:00",
+      "active_tiers": [
+        "academy"
+      ],
+      "declared_tiers": [
+        "academy",
+        "community"
+      ],
+      "primary_tier": "academy"
+    }
+  ]
+}
