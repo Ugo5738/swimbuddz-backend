@@ -92,6 +92,10 @@ async def cleanup_member_by_email(
         member_response = await clients.members_client.get(
             f"/admin/members/by-email/{quote(email)}", headers=headers
         )
+        if isinstance(member_response, httpx.Response) and (
+            member_response.is_error or member_response.status_code >= 400
+        ):
+            member_response.raise_for_status()
         member = _parse_service_json(member_response)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != status.HTTP_404_NOT_FOUND:
@@ -110,6 +114,10 @@ async def cleanup_member_by_email(
     async def run_call_allow_404(name: str, coro):
         try:
             result = await coro
+            if isinstance(result, httpx.Response) and (
+                result.is_error or result.status_code >= 400
+            ):
+                result.raise_for_status()
             parsed = _parse_service_json(result)
             results[name] = parsed if parsed is not None else {"deleted": 0}
         except httpx.HTTPStatusError as exc:
@@ -156,6 +164,10 @@ async def cleanup_member(
         member_response = await clients.members_client.get(
             f"/members/{member_id}", headers=headers
         )
+        if isinstance(member_response, httpx.Response) and (
+            member_response.is_error or member_response.status_code >= 400
+        ):
+            member_response.raise_for_status()
         member = _parse_service_json(member_response) or {}
     except Exception as exc:
         raise HTTPException(
@@ -168,6 +180,10 @@ async def cleanup_member(
     async def run_call(name: str, coro):
         try:
             result = await coro
+            if isinstance(result, httpx.Response) and (
+                result.is_error or result.status_code >= 400
+            ):
+                result.raise_for_status()
             parsed = _parse_service_json(result)
             results[name] = parsed if parsed is not None else {"deleted": 0}
         except httpx.HTTPStatusError as exc:
