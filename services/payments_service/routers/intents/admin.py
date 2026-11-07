@@ -36,6 +36,8 @@ from libs.common.service_client import (
 )
 from libs.db.session import get_async_db
 from services.payments_service.models import (
+    AcademyBankReceipt,
+    AcademyReceiptAllocation,
     Payment,
     PaymentPurpose,
     PaymentStatus,
@@ -78,6 +80,41 @@ async def admin_delete_member_payments(
     """
     Delete payments for a member by auth ID (Admin only).
     """
+    payment_ids = (
+        (await db.execute(select(Payment.id).where(Payment.member_auth_id == auth_id)))
+        .scalars()
+        .all()
+    )
+    if payment_ids:
+        receipt_ids = (
+            (
+                await db.execute(
+                    select(AcademyBankReceipt.id).where(
+                        or_(
+                            AcademyBankReceipt.payment_id.in_(payment_ids),
+                            AcademyBankReceipt.remainder_payment_id.in_(payment_ids),
+                        )
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if receipt_ids:
+            await db.execute(
+                delete(AcademyReceiptAllocation).where(
+                    AcademyReceiptAllocation.receipt_id.in_(receipt_ids)
+                )
+            )
+            await db.execute(
+                delete(AcademyBankReceipt).where(AcademyBankReceipt.id.in_(receipt_ids))
+            )
+
+    await db.execute(
+        delete(AcademyReceiptAllocation).where(
+            AcademyReceiptAllocation.member_auth_id == auth_id
+        )
+    )
     result = await db.execute(delete(Payment).where(Payment.member_auth_id == auth_id))
     await db.commit()
     return {"deleted": result.rowcount or 0}

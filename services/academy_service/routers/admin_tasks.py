@@ -1,4 +1,17 @@
 from fastapi import APIRouter
+from sqlalchemy import or_
+from services.academy_service.models import (
+    AcademyClassAllocation,
+    AcademyClassPlan,
+    AcademyEnrollmentChange,
+    AcademyFinancialCredit,
+    AcademyJourney,
+    AcademyTransferRefundObligation,
+    ProgramInterest,
+)
+from services.academy_service.models.commercial_adjustment import (
+    AcademyCommercialAdjustment,
+)
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
@@ -74,12 +87,55 @@ async def admin_delete_member_academy_records(
 
     deleted_progress = 0
     if enrollment_ids:
+        await db.execute(
+            delete(AcademyClassAllocation).where(
+                AcademyClassAllocation.enrollment_id.in_(enrollment_ids)
+            )
+        )
+        await db.execute(
+            delete(AcademyClassPlan).where(
+                AcademyClassPlan.enrollment_id.in_(enrollment_ids)
+            )
+        )
+        await db.execute(
+            delete(AcademyCommercialAdjustment).where(
+                AcademyCommercialAdjustment.enrollment_id.in_(enrollment_ids)
+            )
+        )
+        await db.execute(
+            delete(AcademyEnrollmentChange).where(
+                or_(
+                    AcademyEnrollmentChange.from_enrollment_id.in_(enrollment_ids),
+                    AcademyEnrollmentChange.to_enrollment_id.in_(enrollment_ids),
+                )
+            )
+        )
+        await db.execute(
+            delete(AcademyFinancialCredit).where(
+                or_(
+                    AcademyFinancialCredit.enrollment_id.in_(enrollment_ids),
+                    AcademyFinancialCredit.source_enrollment_id.in_(enrollment_ids),
+                )
+            )
+        )
+        await db.execute(
+            delete(AcademyTransferRefundObligation).where(
+                AcademyTransferRefundObligation.source_enrollment_id.in_(enrollment_ids)
+            )
+        )
         progress_result = await db.execute(
             delete(StudentProgress).where(
                 StudentProgress.enrollment_id.in_(enrollment_ids)
             )
         )
         deleted_progress = progress_result.rowcount or 0
+
+    await db.execute(
+        delete(AcademyJourney).where(AcademyJourney.member_id == member_id)
+    )
+    await db.execute(
+        delete(ProgramInterest).where(ProgramInterest.member_id == member_id)
+    )
 
     enrollment_result = await db.execute(
         delete(Enrollment).where(Enrollment.member_id == member_id)

@@ -62,6 +62,10 @@ def vault_fields_from_session(session: dict, *, now: datetime) -> dict:
         "consent_notice": DEFAULT_MEDIA_VAULT_CONSENT_NOTICE,
         "shot_checklist": list(DEFAULT_MEDIA_VAULT_CHECKLIST),
         "settings_json": default_media_coverage_settings(),
+        "default_session_visibility": "session_participants",
+        "default_allow_member_clips": True,
+        "attendee_can_view": True,
+        "attendee_can_contribute": True,
         "created_by": None,
     }
 

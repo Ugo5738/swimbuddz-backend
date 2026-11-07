@@ -6,6 +6,9 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
+from html import escape
+
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.emails.core import send_email
 from libs.common.logging import get_logger
@@ -78,11 +81,37 @@ async def deliver_operational_emails(db) -> dict[str, int]:
                 if not recipient:
                     raise RuntimeError("Member email could not be resolved")
                 row.recipient_email = recipient
+            html_to_send = row.html_body
+            if not html_to_send and row.body:
+                from services.communications_service.templates.base import (
+                    cta_button,
+                    wrap_html,
+                )
+
+                button_html = ""
+                if row.action_url:
+                    full_action_url = (
+                        row.action_url
+                        if row.action_url.startswith("http")
+                        else f"{get_settings().FRONTEND_URL.rstrip('/')}/{row.action_url.lstrip('/')}"
+                    )
+                    button_html = cta_button(
+                        "Open SwimBuddz", escape(full_action_url, quote=True)
+                    )
+                paragraphs = "".join(
+                    f"<p>{escape(p).replace(chr(10), '<br/>')}</p>"
+                    for p in row.body.split("\n\n")
+                    if p.strip()
+                )
+                html_to_send = wrap_html(
+                    title=escape(row.subject),
+                    body_html=paragraphs + button_html,
+                )
             success = await send_email(
                 to_email=recipient,
                 subject=row.subject,
                 body=row.body,
-                html_body=row.html_body,
+                html_body=html_to_send,
             )
             if not success:
                 raise RuntimeError("Email provider returned failure")

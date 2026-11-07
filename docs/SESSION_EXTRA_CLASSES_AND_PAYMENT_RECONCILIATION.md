@@ -76,7 +76,7 @@ Annual Membership checkout now exposes Bank Transfer directly. Billing's
 **Continue to upload receipt** creates a pending reference, then opens Billing's
 receipt section. Neither action marks the payment paid. The receiving account
 display is shared across frontend checkout, Billing and session sign-in:
-Swimbuddz Limited, Moniepoint MFB, 6567710856. Historical receipts sent to an old
+SWIMBUDDZ LIMITED, Stanbic IBTC, 0079760600 (historically Moniepoint MFB, 6567710856). Historical receipts sent to an old
 account must still be checked against the original bank statement; the display
 change does not rewrite payment history.
 

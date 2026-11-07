@@ -10,12 +10,25 @@ If you are an automated AI assistant making changes here, you MUST follow these 
 
 Before making any code changes or generating new files, you MUST:
 
-1. Read `ARCHITECTURE.md` – to understand the overall structure.
-2. Read `TODO.md` – to know what to build and in what order.
-3. Read `CONVENTIONS.md` – to follow coding and style rules.
-4. Read `API_CONTRACT.md` – to understand the expected API surface.
+1. Read [`docs/DECISIONS.md`](./DECISIONS.md) (and workspace root `../docs/DECISIONS.md`) – **canonical log of settled product, pricing, onboarding, attendance, and architecture decisions (`ADR-001`–`ADR-006`) and why they were made**.
+2. Read `docs/ARCHITECTURE.md` – to understand the overall microservice structure.
+3. Read `docs/CONVENTIONS.md` – to follow coding and style rules.
+4. Read `docs/API_CONTRACT.md` – to understand the expected API surface.
+5. Read the relevant domain runbook in `docs/` (e.g., `ACADEMY_ADMIN_COMMERCIAL_TERMS_RUNBOOK.md`, `ACADEMY_BANK_RECEIPT_RECONCILIATION_RUNBOOK.md`, `ACADEMY_ATTENDANCE_CLASS_ACCOUNTING_RUNBOOK.md`, `CLUB_ONBOARDING_ACCESS_AND_OPERATIONS.md`, `CLUB_MOBILITY_AND_TRANSFERS_RUNBOOK.md`, `SESSION_SETTLEMENT_OPERATIONS_RUNBOOK.md`).
 
 Do not ignore or override these documents.
+
+---
+
+## 1A. Mandatory Cross-Agent Habit: Deliberate → Document → Code
+
+Every AI agent (OpenAI ChatGPT / Codex, Anthropic Claude, Google Gemini / Antigravity, Cursor, GitHub Copilot) MUST follow these two rules:
+
+1. **Never Override Settled Decisions Without Explicit Approval**:
+   - Before proposing or implementing changes to commercial terms, discount codes, bank transfer reconciliation, attendance defaults, Club onboarding/mobility, membership boundaries, or member deletion, check [`docs/DECISIONS.md`](./DECISIONS.md).
+   - If your idea or a prompt conflicts with an accepted ADR in `docs/DECISIONS.md`, stop and surface the conflict with the ADR number and rationale instead of silently changing the behavior.
+2. **Always Update the Docs When Thinking Through or Implementing Features**:
+   - Whenever you and the user think through, deliberate on, or implement a product rule, pricing/commercial mechanism, user journey, or technical design, **update [`docs/DECISIONS.md`](./DECISIONS.md) (and `../docs/DECISIONS.md` if workspace root is mounted) plus the relevant runbook in `docs/` in the same session/commit**.
 
 ---
 

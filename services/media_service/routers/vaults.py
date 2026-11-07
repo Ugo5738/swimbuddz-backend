@@ -1272,7 +1272,10 @@ async def list_my_swim_uploads(
     if not actor.member_id:
         return VaultMediaListResponse(items=[], total=0, page=page, page_size=page_size)
     conditions = [
-        MediaVault.owner_member_id == actor.member_id,
+        or_(
+            MediaVault.owner_member_id == actor.member_id,
+            MediaItem.uploaded_by == actor.auth_id,
+        ),
         MediaVault.deleted_at.is_(None),
         MediaItem.uploaded_by == actor.auth_id,
         MediaItem.soft_deleted_at.is_(None),
@@ -1738,6 +1741,7 @@ async def my_session_videos(
         or_(
             personal_share,
             session_audience,
+            MediaItem.uploaded_by == actor.auth_id,
             MediaItem.session_visibility == "community",
         ),
         MediaItem.soft_deleted_at.is_(None),
@@ -2573,32 +2577,34 @@ async def request_member_clip(
 ):
     """Queue a short derivative from an existing private playback proxy."""
     actor = await resolve_actor(current_user)
-    if not actor.member_id:
+    if not actor.is_admin and not actor.member_id:
         raise HTTPException(status_code=403, detail="Member profile required")
     item = await db.get(MediaItem, media_item_id)
     if not item or not item.vault_id:
         raise HTTPException(status_code=404, detail="Recording unavailable")
     vault = await get_vault_or_404(db, item.vault_id)
-    if not item.allow_member_clips or not await _member_can_view_video(
-        db, member_id=actor.member_id, item=item, vault=vault
-    ):
-        raise HTTPException(
-            status_code=403, detail="Clipping is not permitted for this recording"
-        )
+    if not actor.is_admin:
+        if not item.allow_member_clips or not await _member_can_view_video(
+            db, member_id=actor.member_id, item=item, vault=vault
+        ):
+            raise HTTPException(
+                status_code=403, detail="Clipping is not permitted for this recording"
+            )
     if not item.proxy_object_key:
         raise HTTPException(status_code=409, detail="Playback preview is not ready yet")
-    since = utc_now() - timedelta(days=1)
-    clip_count = await db.scalar(
-        select(func.count(MediaVaultClip.id)).where(
-            MediaVaultClip.member_id == actor.member_id,
-            MediaVaultClip.created_at >= since,
+    if not actor.is_admin and actor.member_id:
+        since = utc_now() - timedelta(days=1)
+        clip_count = await db.scalar(
+            select(func.count(MediaVaultClip.id)).where(
+                MediaVaultClip.member_id == actor.member_id,
+                MediaVaultClip.created_at >= since,
+            )
         )
-    )
-    if int(clip_count or 0) >= 5:
-        raise HTTPException(status_code=429, detail="Daily clip limit reached")
+        if int(clip_count or 0) >= 5:
+            raise HTTPException(status_code=429, detail="Daily clip limit reached")
     clip = MediaVaultClip(
         media_item_id=item.id,
-        member_id=actor.member_id,
+        member_id=actor.member_id or actor.auth_id,
         start_ms=payload.start_ms,
         end_ms=payload.end_ms,
         expires_at=utc_now() + timedelta(hours=24),
@@ -2632,19 +2638,20 @@ async def get_my_member_clip(
 ):
     actor = await resolve_actor(current_user)
     clip = await db.get(MediaVaultClip, clip_id)
-    if not clip or clip.member_id != actor.member_id:
+    if not clip or (not actor.is_admin and clip.member_id != actor.member_id):
         raise HTTPException(status_code=404, detail="Clip not found")
     item = await db.get(MediaItem, clip.media_item_id)
     vault = await db.get(MediaVault, item.vault_id) if item else None
-    if (
-        not item
-        or not vault
-        or not item.allow_member_clips
-        or not await _member_can_view_video(
-            db, member_id=actor.member_id, item=item, vault=vault
-        )
-    ):
-        raise HTTPException(status_code=403, detail="Recording access was revoked")
+    if not actor.is_admin:
+        if (
+            not item
+            or not vault
+            or not item.allow_member_clips
+            or not await _member_can_view_video(
+                db, member_id=actor.member_id, item=item, vault=vault
+            )
+        ):
+            raise HTTPException(status_code=403, detail="Recording access was revoked")
     if clip.expires_at <= utc_now():
         raise HTTPException(status_code=410, detail="Clip expired")
     url = None
