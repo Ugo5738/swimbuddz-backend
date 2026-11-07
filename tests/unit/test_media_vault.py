@@ -282,6 +282,10 @@ def test_session_vault_defaults_use_local_date_and_coverage_standard():
     )
     assert fields["auto_transcode"] is False
     assert fields["shot_checklist"] == DEFAULT_MEDIA_VAULT_CHECKLIST
+    assert fields["default_session_visibility"] == "session_participants"
+    assert fields["default_allow_member_clips"] is True
+    assert fields["attendee_can_view"] is True
+    assert fields["attendee_can_contribute"] is True
     assert fields["settings_json"]["story"] == [
         "set a goal",
         "prepare",

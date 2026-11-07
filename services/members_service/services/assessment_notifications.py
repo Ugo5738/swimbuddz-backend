@@ -1,10 +1,16 @@
 """Transactional member acknowledgments and reviewer queue alerts."""
 
+from html import escape
 import hashlib
 import json
 
 from libs.common.config import get_settings
 from libs.common.operational_email import enqueue_operational_email
+from services.communications_service.templates.base import (
+    cta_button,
+    detail_box,
+    wrap_html,
+)
 from services.members_service.models import Club
 from services.members_service.services.membership_notifications import (
     notify_membership_change,
@@ -24,6 +30,7 @@ async def notify_assessment_submission(db, *, member, application, stage, submis
         "video": "video assessment",
     }
     label = labels[stage]
+    member_full_name = f"{member.first_name} {member.last_name}".strip()
     await notify_membership_change(
         db,
         member_id=member.id,
@@ -32,7 +39,30 @@ async def notify_assessment_submission(db, *, member, application, stage, submis
         event_key=f"{key}:member",
         action_url=f"/upgrade/club/assessment/{application.id}",
     )
-    link = f"{get_settings().FRONTEND_URL.rstrip('/')}/admin/club-applications"
+    admin_path = "/admin/club-applications"
+    link = f"{get_settings().FRONTEND_URL.rstrip('/')}{admin_path}"
+    subject = f"Club assessment ready for review: {member_full_name}"
+    body = (
+        f"{member_full_name} submitted a {label} for {club_name}.\n\n"
+        f"Review the application in the admin portal: {link}\n\n"
+        f"SwimBuddz"
+    )
+    html_body = wrap_html(
+        title="Club Assessment Ready for Review",
+        subtitle=f"{member_full_name} · {club_name}",
+        preheader=f"{member_full_name} submitted a {label} for {club_name}.",
+        body_html=(
+            "<p>A member has submitted their Club assessment materials and is awaiting review in the admin portal.</p>"
+            + detail_box(
+                {
+                    "Applicant": escape(member_full_name),
+                    "Club Location": escape(club_name),
+                    "Submission Type": escape(label.title()),
+                }
+            )
+            + cta_button("Review Club Applications", escape(link, quote=True))
+        ),
+    )
     for email in sorted(
         {
             email.strip().lower()
@@ -44,6 +74,8 @@ async def notify_assessment_submission(db, *, member, application, stage, submis
             db,
             event_key=f"{key}:reviewer:{email}",
             recipient_email=email,
-            subject=f"Club assessment ready for review: {member.first_name} {member.last_name}",
-            body=f"{member.first_name} {member.last_name} submitted a {label} for {club_name}.\n\nReview the application: {link}\n\nSwimBuddz",
+            subject=subject,
+            body=body,
+            html_body=html_body,
+            action_url=admin_path,
         )

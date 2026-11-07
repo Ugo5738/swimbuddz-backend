@@ -170,9 +170,39 @@ async def cleanup_member(
             result = await coro
             parsed = _parse_service_json(result)
             results[name] = parsed if parsed is not None else {"deleted": 0}
+        except httpx.HTTPStatusError as exc:
+            detail = str(exc)
+            try:
+                body = exc.response.json()
+                if isinstance(body, dict) and body.get("detail"):
+                    detail = str(body["detail"])
+            except Exception:
+                pass
+            errors.append(
+                {
+                    "service": name,
+                    "error": detail,
+                    "status_code": str(exc.response.status_code),
+                }
+            )
+            results[name] = {"error": detail}
         except Exception as exc:
             errors.append({"service": name, "error": str(exc)})
             results[name] = {"error": str(exc)}
+
+    def raise_if_members_failed():
+        member_err = next((e for e in errors if e.get("service") == "members"), None)
+        if member_err:
+            code = (
+                status.HTTP_409_CONFLICT
+                if member_err.get("status_code") == "409"
+                else status.HTTP_502_BAD_GATEWAY
+            )
+            raise HTTPException(
+                status_code=code,
+                detail=member_err.get("error")
+                or "Failed to update/delete member record",
+            )
 
     if payload.mode == CleanupMode.SOFT:
         await run_call(
@@ -183,6 +213,7 @@ async def cleanup_member(
                 headers=headers,
             ),
         )
+        raise_if_members_failed()
         return CleanupResponse(
             mode=payload.mode,
             member_id=member_id,
@@ -241,6 +272,7 @@ async def cleanup_member(
         "members",
         clients.members_client.delete(f"/members/{member_id}", headers=headers),
     )
+    raise_if_members_failed()
 
     return CleanupResponse(
         mode=payload.mode,
