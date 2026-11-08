@@ -6,11 +6,6 @@ import json
 
 from libs.common.config import get_settings
 from libs.common.operational_email import enqueue_operational_email
-from services.communications_service.templates.base import (
-    cta_button,
-    detail_box,
-    wrap_html,
-)
 from services.members_service.models import Club
 from services.members_service.services.membership_notifications import (
     notify_membership_change,
@@ -47,22 +42,15 @@ async def notify_assessment_submission(db, *, member, application, stage, submis
         f"Review the application in the admin portal: {link}\n\n"
         f"SwimBuddz"
     )
-    html_body = wrap_html(
-        title="Club Assessment Ready for Review",
-        subtitle=f"{member_full_name} · {club_name}",
-        preheader=f"{member_full_name} submitted a {label} for {club_name}.",
-        body_html=(
-            "<p>A member has submitted their Club assessment materials and is awaiting review in the admin portal.</p>"
-            + detail_box(
-                {
-                    "Applicant": escape(member_full_name),
-                    "Club Location": escape(club_name),
-                    "Submission Type": escape(label.title()),
-                }
-            )
-            + cta_button("Review Club Applications", escape(link, quote=True))
-        ),
-    )
+    html_body = f"""<p>A member has submitted their Club assessment materials and is awaiting review in the admin portal.</p>
+<div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+  <p style="margin: 4px 0;"><strong>Applicant:</strong> {escape(member_full_name)}</p>
+  <p style="margin: 4px 0;"><strong>Club Location:</strong> {escape(club_name)}</p>
+  <p style="margin: 4px 0;"><strong>Submission Type:</strong> {escape(label.title())}</p>
+</div>
+<div style="text-align: center; margin: 24px 0;">
+  <a href="{escape(link, quote=True)}" style="background-color: #0284c7; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block;">Review Club Applications</a>
+</div>"""
     for email in sorted(
         {
             email.strip().lower()
