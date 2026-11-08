@@ -42,7 +42,9 @@ async def notify_assessment_submission(db, *, member, application, stage, submis
         f"Review the application in the admin portal: {link}\n\n"
         f"SwimBuddz"
     )
-    html_body = f"""<p>A member has submitted their Club assessment materials and is awaiting review in the admin portal.</p>
+    html_body = f"""<h2 style="color: #0f172a; margin-top: 0;">Club Assessment Ready for Review</h2>
+<p style="color: #64748b; font-size: 14px; margin-top: -8px;">{escape(member_full_name)} · {escape(club_name)}</p>
+<p>A member has submitted their Club assessment materials and is awaiting review in the admin portal.</p>
 <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
   <p style="margin: 4px 0;"><strong>Applicant:</strong> {escape(member_full_name)}</p>
   <p style="margin: 4px 0;"><strong>Club Location:</strong> {escape(club_name)}</p>
