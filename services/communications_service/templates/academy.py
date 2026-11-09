@@ -1284,3 +1284,162 @@ idempotently. Fractional Bubbles require reconciliation first.
     )
 
     return await send_email(to_email, subject, body, html_body)
+
+
+async def send_milestone_approved_email(
+    to_email: str,
+    member_name: str,
+    milestone_name: str,
+    program_name: str,
+    cohort_name: Optional[str] = None,
+    coach_name: Optional[str] = None,
+    score: Optional[int] = None,
+    coach_notes: Optional[str] = None,
+    enrollment_id: Optional[str] = None,
+) -> bool:
+    """
+    Send congratulatory email when a student's milestone claim is approved.
+    """
+    subject = f"Milestone Achieved: {milestone_name} 🎉"
+    frontend = settings.FRONTEND_URL.rstrip("/")
+    dashboard_url = (
+        f"{frontend}/account/academy/enrollments/{enrollment_id}"
+        if enrollment_id
+        else f"{frontend}/account/academy"
+    )
+
+    coach_line = f" reviewed by Coach {coach_name}" if coach_name else ""
+    body = f"""Hi {member_name},
+
+Congratulations! Your milestone claim for "{milestone_name}" in {program_name} has been approved{coach_line}!
+
+Milestone: {milestone_name}
+Program: {program_name}
+Status: Achieved 🎉
+"""
+    if score is not None:
+        body += f"Score: {score}%\n"
+    if coach_notes:
+        body += f"Coach Feedback: {coach_notes}\n"
+
+    body += f"""
+Keep up the fantastic momentum! You can track your completed milestones and ongoing curriculum on your Academy dashboard:
+{dashboard_url}
+
+— The SwimBuddz Team
+"""
+
+    details = {
+        "Milestone": milestone_name,
+        "Program": program_name,
+        "Status": "Achieved 🎉",
+    }
+    if cohort_name:
+        details["Cohort"] = cohort_name
+    if coach_name:
+        details["Reviewed by"] = f"Coach {coach_name}"
+    if score is not None:
+        details["Score"] = f"{score}%"
+
+    notes_box = ""
+    if coach_notes:
+        notes_box = info_box(
+            f"<strong>💬 Coach Feedback:</strong><br/>{coach_notes}",
+            bg_color="#ecfdf5",
+            border_color="#10b981",
+        )
+
+    body_html = (
+        f"<p>Hi {member_name},</p>"
+        f"<p>Huge congratulations! You've successfully passed and unlocked <strong>{milestone_name}</strong>.</p>"
+        + detail_box(details)
+        + notes_box
+        + cta_button("View Your Progress", dashboard_url)
+        + sign_off("Keep moving forward in the water! 🏊")
+    )
+
+    html_body = wrap_html(
+        title="🎉 Milestone Achieved!",
+        subtitle=f"Congratulations on completing {milestone_name}",
+        body_html=body_html,
+        header_gradient=GRADIENT_GREEN,
+        preheader=f"You achieved {milestone_name} in {program_name}!",
+    )
+
+    return await send_email(to_email, subject, body, html_body)
+
+
+async def send_milestone_rejected_email(
+    to_email: str,
+    member_name: str,
+    milestone_name: str,
+    program_name: str,
+    cohort_name: Optional[str] = None,
+    coach_name: Optional[str] = None,
+    coach_notes: Optional[str] = None,
+    enrollment_id: Optional[str] = None,
+) -> bool:
+    """
+    Send constructive feedback email when a student's milestone claim is not yet approved.
+    Feedback explains what technique adjustments are needed before re-submitting.
+    """
+    subject = f"Update on your milestone submission: {milestone_name}"
+    frontend = settings.FRONTEND_URL.rstrip("/")
+    dashboard_url = (
+        f"{frontend}/account/academy/enrollments/{enrollment_id}"
+        if enrollment_id
+        else f"{frontend}/account/academy"
+    )
+
+    coach_line = f"Coach {coach_name}" if coach_name else "Your coach"
+    body = f"""Hi {member_name},
+
+{coach_line} has reviewed your milestone submission for "{milestone_name}" in {program_name} and provided feedback for your next practice.
+
+Milestone: {milestone_name}
+Program: {program_name}
+Status: Needs Adjustment / Re-submission
+
+Coach Feedback:
+{coach_notes or "Review coach comments on your dashboard."}
+
+Don't worry — mastery takes repetition! Review the feedback, practice the focal points in your next session, and upload a new clip or check in with your coach when ready:
+{dashboard_url}
+
+— The SwimBuddz Team
+"""
+
+    details = {
+        "Milestone": milestone_name,
+        "Program": program_name,
+        "Status": "Needs Practice / Re-submission",
+    }
+    if cohort_name:
+        details["Cohort"] = cohort_name
+    if coach_name:
+        details["Reviewed by"] = f"Coach {coach_name}"
+
+    notes_box = info_box(
+        f"<strong>💬 Coach Feedback & Next Steps:</strong><br/>{coach_notes or 'Please review the guidance on your dashboard.'}",
+        bg_color="#fffbeb",
+        border_color="#f59e0b",
+    )
+
+    body_html = (
+        f"<p>Hi {member_name},</p>"
+        f"<p>{coach_line} reviewed your milestone submission for <strong>{milestone_name}</strong> and shared some helpful guidance on where to focus your technique before your next attempt.</p>"
+        + detail_box(details)
+        + notes_box
+        + cta_button("Review Feedback & Resubmit", dashboard_url)
+        + sign_off("Every lap is progress! 🏊")
+    )
+
+    html_body = wrap_html(
+        title="🏊 Milestone Feedback",
+        subtitle=f"Technique adjustments for {milestone_name}",
+        body_html=body_html,
+        header_gradient=GRADIENT_AMBER,
+        preheader=f"Coach feedback on your {milestone_name} milestone",
+    )
+
+    return await send_email(to_email, subject, body, html_body)

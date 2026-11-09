@@ -756,6 +756,77 @@ async def review_milestone_claim(
 
     await db.commit()
 
+    # Best-effort member notification email
+    try:
+        from libs.common.emails.client import get_email_client
+        from services.academy_service.models import Program
+
+        student_member = await get_member_by_id(
+            str(progress.enrollment.member_id),
+            calling_service="academy",
+        )
+        if student_member and student_member.get("email"):
+            milestone = await db.get(Milestone, progress.milestone_id)
+            program = (
+                await db.get(Program, progress.enrollment.program_id)
+                if progress.enrollment.program_id
+                else None
+            )
+            cohort = (
+                await db.get(Cohort, progress.enrollment.cohort_id)
+                if progress.enrollment.cohort_id
+                else None
+            )
+
+            coach_first_name = member.get("first_name", "") if member else ""
+            student_email = student_member["email"]
+            student_name = (
+                student_member.get("first_name")
+                or student_member.get("full_name")
+                or "Swimmer"
+            )
+            milestone_name = milestone.name if milestone else "Milestone"
+            program_name = program.name if program else "Academy"
+            cohort_name = cohort.name if cohort else None
+
+            email_client = get_email_client()
+            if action.action == "approve":
+                await email_client.send_template(
+                    template_type="milestone_approved",
+                    to_email=student_email,
+                    template_data={
+                        "member_name": student_name,
+                        "milestone_name": milestone_name,
+                        "program_name": program_name,
+                        "cohort_name": cohort_name,
+                        "coach_name": coach_first_name,
+                        "score": action.score,
+                        "coach_notes": action.coach_notes,
+                        "enrollment_id": str(progress.enrollment_id),
+                    },
+                )
+            elif action.action == "reject":
+                await email_client.send_template(
+                    template_type="milestone_rejected",
+                    to_email=student_email,
+                    template_data={
+                        "member_name": student_name,
+                        "milestone_name": milestone_name,
+                        "program_name": program_name,
+                        "cohort_name": cohort_name,
+                        "coach_name": coach_first_name,
+                        "coach_notes": action.coach_notes,
+                        "enrollment_id": str(progress.enrollment_id),
+                    },
+                )
+    except Exception as exc:
+        logger.warning(
+            "Failed to send milestone review notification email for progress %s: %s",
+            progress.id,
+            exc,
+            exc_info=True,
+        )
+
     return {
         "message": f"Milestone {action.action}d successfully",
         "progress_id": str(progress_id),
