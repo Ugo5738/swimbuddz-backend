@@ -384,7 +384,9 @@ async def _update_media_item(
         if new_thumbnail_url:
             item.thumbnail_url = new_thumbnail_url
 
-        item.metadata_info = metadata
+        existing_meta = dict(item.metadata_info or {})
+        existing_meta.update(metadata)
+        item.metadata_info = existing_meta
         item.is_processed = True
 
         await db.commit()
@@ -402,7 +404,9 @@ async def _mark_processed_with_error(media_item_id: str, error: str) -> None:
             return
 
         item.is_processed = True
-        item.metadata_info = {"transcode_error": error}
+        existing_meta = dict(item.metadata_info or {})
+        existing_meta["transcode_error"] = error
+        item.metadata_info = existing_meta
         await db.commit()
         logger.warning(
             "Marked MediaItem %s processed with error: %s", media_item_id, error

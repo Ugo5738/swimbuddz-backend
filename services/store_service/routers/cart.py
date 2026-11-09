@@ -315,6 +315,12 @@ async def enrich_cart_response(cart_or_id, db: AsyncSession) -> CartResponse:
                 ),
                 sku=variant.sku if variant else None,
                 image_url=primary_image.url if primary_image else None,
+                requires_size_chart_ack=(
+                    bool(product.requires_size_chart_ack) if product else False
+                ),
+                size_chart_url=(
+                    getattr(product, "size_chart_url", None) if product else None
+                ),
             )
         )
 
@@ -325,6 +331,8 @@ async def enrich_cart_response(cart_or_id, db: AsyncSession) -> CartResponse:
         cart, coupon_discount_ngn=coupon_discount
     )
 
+    has_size_chart_req = any(item.requires_size_chart_ack for item in enriched_items)
+
     return CartResponse(
         id=cart.id,
         status=cart.status,
@@ -334,6 +342,7 @@ async def enrich_cart_response(cart_or_id, db: AsyncSession) -> CartResponse:
         created_at=cart.created_at,
         updated_at=cart.updated_at,
         items=enriched_items,
+        requires_size_chart_ack=has_size_chart_req,
         subtotal_ngn=subtotal,
         discount_amount_ngn=discount_amount,
         total_ngn=total,

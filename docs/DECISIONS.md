@@ -89,6 +89,7 @@
     - **Never create two sessions** for the same physical cohort class. Create one Session and classify each learner's participation (`prepaid` vs. `paid_extra`) via `AcademyClassAllocation`.
     - For `paid_extra` classes, do not auto-populate unscheduled cohort members as Present; however, each confirmed booked participant defaults to `Present` on the attendance roster unless marked otherwise.
     - Visiting non-cohort members at an Academy session are priced as guests; enrolled cohort learners are blocked from bypassing class entitlement classification via generic member walk-in forms.
+    - **Cohort Roster Attendance & Member Self-Service PDF Export:** Enrolled Academy cohort students display "Included in tuition" on session attendance rosters and their status dropdown (`Present`, `Absent`, `Excused`, `Late`) is always editable by coaches/admins regardless of whether an individual drop-in booking row exists. Members can download an official branded PDF attendance record from `/account/attendance/history` at any time.
 - **Canonical Docs & Code:**
   - `swimbuddz-backend/docs/ACADEMY_ATTENDANCE_DEFAULTS.md`
   - `swimbuddz-backend/docs/ACADEMY_ATTENDANCE_CLASS_ACCOUNTING_RUNBOOK.md`
@@ -175,6 +176,7 @@
   - **Milestone Evidence & Mandatory Rejection Feedback:**
     - Video/image evidence is tagged with enrollment and milestone context; video is not universally forced on milestones whose `required_evidence` does not require it; coaches can upload coach-recorded evidence directly.
     - Rejecting a milestone claim requires mandatory coach feedback across all review surfaces.
+    - **Transactional Milestone Review Notifications:** Whenever a coach or admin approves or rejects a milestone claim, the learner receives an immediate transactional email notification (`milestone_approved` with celebratory copy, score, and link to dashboard; or `milestone_rejected` highlighting coach technique feedback and next practice steps).
   - **Admin Override Preserves Original Coach Attribution (`MilestoneReviewEvent`):**
     - `StudentProgress.reviewed_by_coach_id` records the **original** reviewer and is never overwritten by subsequent admin overrides.
     - Admin overrides (`POST /api/v1/academy/admin/progress/override`) append an `OVERRIDE_COACH` event with a required `override_reason` and `override_of_event_id` chain.
@@ -186,20 +188,28 @@
 
 ---
 
-## ADR-010: Modular Academy Curriculum & Stackable Competency Pathways
-- **Status:** Settled Direction (Aug 2026, `MODULAR_CURRICULUM_PATHWAY.md`)
+## ADR-010: Modular Academy Curriculum, Independent Milestones, Drills, Lessons & Competency Ledger
+- **Status:** Settled Architecture & Blueprint (Aug–Nov 2026, `MODULAR_CURRICULUM_PATHWAY.md`, `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`)
 - **Context & Why:**
   - Selling only a monolithic 12-week Beginner-to-50m course forced swimmers with partial skills to repeat basics and limited entry points to three intakes a year. Conversely, an unguided à-la-carte lesson menu causes choice overload and lets learners skip water safety.
+  - Furthermore, hard-locking `Milestone` and `AcademyQuiz` rows to a single `program_id` forced curriculum duplication across pathways (*Water-Safe Starter*, *Beginner-to-50m*, *Accelerated Programme*), prevented cohorts from customizing milestone schedules without mutating the parent Program, prevented learner milestone credit from carrying across programs, and lacked a first-class **Drills** entity (*how* to practice a skill in the water with a single TI focal point).
 - **Decision & Non-Negotiable Invariants:**
   - **Sell Outcomes/Pathways, Deliver Competency-Gated Modules:** Customers buy clear outcome pathways (e.g., *Beginner-to-50m Freestyle*, *Water-Safe Starter*, *Breaststroke Pathway*) composed of stackable Foundation (`F1–F4`), Stroke (`S1–S4`), and Deep-Water/Distance (`A1–A2`) modules.
   - **Assessment Grants Prerequisite Credit:** Free Intro-to-Water clinics are diagnostic assessments (not free lessons) that grant demonstrated competency credits so learners enter at the right module boundary without paying twice for passed skills.
   - **Group Intake Realities vs. Private Coaching Demand Indicators:**
     - All standard Academy seasonal intakes operate as small-group cohort classes (4–6 students per coach).
     - The onboarding readiness questionnaire (`AcademyDetailsStep.tsx`) collects format preferences (group vs. private 1-on-1). To avoid misleading new registrants into expecting private 1-on-1 classes at standard group tuition, the form clearly disclaims that all cohort intakes are group-based, and that 1-on-1 indicators are recorded for personalized recommendations and future private coaching demand.
-  - **Independent Reusable Learning Entities (Target Evolution):** Skills, Drills, Milestones, and Quizzes should be reusable library entities attachable to Programs, Modules, Lessons, and Cohorts rather than duplicated per programme.
+  - **Independent Reusable Curriculum Library (`ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`):**
+    - **Canonical Milestones (`milestones` + `program_milestones` + `cohort_milestones` + `lesson_milestones`):** `milestones.program_id` is nullable; canonical milestones carry a unique `code` (`MS-F1-...`), `category`, `module_code`, and `is_safety_gate`. Programs attach canonical milestones via `program_milestones`; individual cohorts customize their effective milestone set (adding, overriding target week/order, or excluding non-safety-gate milestones) via `cohort_milestones` without mutating the parent Program.
+    - **Portable Learner Competency Ledger (`learner_milestone_credits`):** Keyed by `(member_id, milestone_id)`. Achieving a canonical milestone in any cohort or diagnostic assessment syncs to `learner_milestone_credits` so subsequent cohort enrollments automatically recognize **Prior Credit** without re-testing mastered competencies.
+    - **TI-Aligned Drills Library (`academy_drills` + `lesson_drills` + `skill_drills` + `milestone_remedial_drills` + `student_drill_assignments`):** Every drill defines a `ti_stage` (`water_safety`, `breathing_control`, `balance_comfort`, `streamline_drag`, `propulsion_timing`, `recovery`), **one `primary_focal_point`**, `common_mistakes_json`, `equipment_json`, `default_prescription_json` (sets × distance + rest), and a demo video. Pending or rejected milestones automatically surface linked remedial drills, and coaches/Stroke Lab AI can assign personalized drills to a student's enrollment.
+    - **Library Quizzes (`academy_quizzes`):** `program_id` is nullable so water-safety and hydrodynamic quizzes live in the reusable library while `AcademyQuizAssignment` continues to freeze cohort-week question snapshots (`ADR-009`).
 - **Canonical Docs & Code:**
+  - `docs/design/ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`
+  - `swimbuddz-backend/docs/design/ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`
   - `docs/academy/MODULAR_CURRICULUM_PATHWAY.md`
   - `swimbuddz-backend/services/academy_service/models/program.py`
+  - `swimbuddz-backend/services/academy_service/models/progress.py`
 
 ---
 
@@ -291,6 +301,25 @@
   - **Branching Flow:** All changes MUST be developed on a feature/fix branch (`feature/*`, `fix/*`, `codex/*`), merged via PR to `develop`, and promoted via PR from `develop` to `main`. Keep `main` and `develop` synced between local and `origin`.
   - **Migrations:** Always generate migrations via `./scripts/db/migrate.sh <service>_service "description"`, register new models in `alembic/env.py` (`SERVICE_TABLES`), and ensure a single Alembic head per service.
   - **Worktree & Cache Hygiene:** Prune merged worktrees and temporary `.next` / Postgres test clusters immediately after merging so local disk space stays clean.
+
+---
+
+## ADR-017: Swimwear Size Chart Acknowledgment & Store Purchase Experience
+- **Status:** Settled & Enforced (Nov 2026)
+- **Context & Why:**
+  - Members purchasing swimwear (such as *Full Coverage 2-Piece Swim Set*) were getting blocked at checkout with `400 "Size chart acknowledgment required for swimwear products"` because the size chart acknowledgment was only checked locally on the product page and was never sent in `CheckoutStartRequest` or surfaced on the `/store/checkout` page.
+  - Additionally, purchasing single gear items required cumbersome multi-step navigation (Add to Cart → find cart link → Cart page → Checkout), while multi-item purchasers lacked clear feedback on cart contents and post-add next steps.
+- **Decision & Non-Negotiable Invariants:**
+  - **Cart Enrichment & Size Chart Invariants:** Backend `CartResponse` and `CartItemResponse` must explicitly report `requires_size_chart_ack` and `size_chart_url`. When any item in the cart requires size chart acknowledgment, the `/store/checkout` page renders a prominent amber acknowledgment checkbox above the payment action, and passes `size_chart_acknowledged: true` in `CheckoutStartRequest`. If not acknowledged, checkout is cleanly prevented client-side before calling the API.
+  - **Single-Item "Buy Now" & Multi-Item Actions:** Product detail pages provide a 1-click **"Buy Now"** action alongside "Add to Cart" that adds the selected SKU and navigates immediately to `/store/checkout`. "Add to Cart" provides an interactive toast with a "View Cart" CTA and an inline cart banner with direct links to "View Cart" and "Checkout →".
+  - **Store Navigation & Return Paths:** In `StoreHeader`, the top-left return arrow (`ArrowLeft`) is strictly context-aware: when inside the store (`/store/product/*`, `/store/cart`, `/store/checkout`), it links back to `/store` ("← Store") so shoppers browsing multiple items never get dumped on the main website homepage (`/`). The main site link ("← Home") is only shown on the root store catalog (`/store`). Furthermore, the product detail page provides an explicit "Back to Store" link and a "Keep Shopping" action on post-add banners, while header login preserves the current store path in `?redirect=`.
+- **Canonical Docs & Code:**
+  - `swimbuddz-backend/services/store_service/routers/orders.py`
+  - `swimbuddz-backend/services/store_service/routers/cart.py`
+  - `swimbuddz-backend/services/store_service/schemas/main/cart.py`
+  - `swimbuddz-frontend/src/app/(public)/store/checkout/page.tsx`
+  - `swimbuddz-frontend/src/app/(public)/store/product/[slug]/page.tsx`
+  - `swimbuddz-frontend/src/app/(public)/store/cart/page.tsx`
 
 ---
 
