@@ -100,29 +100,114 @@ def _private_s3_key(url: Optional[str]) -> Optional[str]:
     return key or None
 
 
+def _user_has_role(user: Optional[AuthUser], role_name: str) -> bool:
+    if user is None:
+        return False
+    if hasattr(user, "has_role") and callable(user.has_role):
+        return bool(user.has_role(role_name))
+    roles = getattr(user, "roles", None)
+    if isinstance(roles, list):
+        return role_name in roles
+    app_meta = getattr(user, "app_metadata", None)
+    if isinstance(app_meta, dict):
+        meta_roles = app_meta.get("roles")
+        if isinstance(meta_roles, list):
+            return role_name in meta_roles
+        if isinstance(meta_roles, str):
+            return role_name == meta_roles
+    return False
+
+
+def _user_is_admin_or_service(user: Optional[AuthUser]) -> bool:
+    if user is None:
+        return False
+    role = getattr(user, "role", "")
+    if role == "service_role" or _user_has_role(user, "service_role"):
+        return True
+    if _user_has_role(user, "admin"):
+        return True
+    user_email = getattr(user, "email", None)
+    from libs.common.config import get_settings
+
+    settings = get_settings()
+    if user_email and user_email in (getattr(settings, "ADMIN_EMAILS", None) or []):
+        return True
+    return False
+
+
 def _require_original_access(
     item: MediaItem,
     current_user: Optional[AuthUser],
+    is_playback_route: bool = False,
 ) -> None:
-    """Keep original images and payment receipts private to uploader/admins."""
+    """Keep original images, payment receipts and sensitive video evidence private.
+
+    - Payment receipts and raw presentation originals are strictly limited to
+      the uploader and admins.
+    - Milestone evidence and club assessment videos are accessible to the student,
+      coaches (who must review them), and admins. For browser video streaming on
+      the playback route (/play), unauthenticated redirects to presigned S3 URLs
+      are permitted since standard HTML5 video elements cannot deliver Bearer headers.
+    - Milestone instructional demo videos are viewable by any authenticated user
+      or via the video playback route.
+    """
     metadata = item.metadata_info or {}
+    purpose = metadata.get("purpose")
     # The path check protects older receipts created before purpose metadata
     # was persisted. Never issue a signed private receipt URL anonymously.
+    is_receipt = purpose == "payment_proof" or "/payment-proofs/" in (
+        item.file_url or ""
+    )
+    is_presentation_original = bool(metadata.get("presentation_original"))
+
     restricted_purposes = {
         "payment_proof",
         "milestone_evidence",
         "milestone_video",
         "club_assessment_video",
     }
-    is_receipt = metadata.get("purpose") in restricted_purposes
-    is_receipt = is_receipt or "/payment-proofs/" in (item.file_url or "")
-    if not metadata.get("presentation_original") and not is_receipt:
-        return
-    if current_user and (
-        current_user.has_role("admin")
-        or str(item.uploaded_by) == str(current_user.user_id)
+    if (
+        not is_presentation_original
+        and not is_receipt
+        and purpose not in restricted_purposes
     ):
         return
+
+    # Payment receipts and original presentation assets: strictly uploader or admin
+    if is_receipt or is_presentation_original:
+        if current_user and (
+            _user_is_admin_or_service(current_user)
+            or (
+                getattr(current_user, "user_id", None)
+                and str(item.uploaded_by) == str(current_user.user_id)
+            )
+        ):
+            return
+        raise HTTPException(status_code=404, detail="Media item not found")
+
+    # Milestone instructional demo videos: any authenticated user or playback route
+    if purpose == "milestone_video":
+        if current_user or is_playback_route:
+            return
+        raise HTTPException(status_code=404, detail="Media item not found")
+
+    # Milestone evidence and club assessment videos:
+    # On API inspection (GET /media/{id}), require uploader, coach, or admin.
+    # On browser playback (GET /media/{id}/play), allow browser streaming redirect.
+    if purpose in {"milestone_evidence", "club_assessment_video"}:
+        if current_user and (
+            _user_is_admin_or_service(current_user)
+            or _user_has_role(current_user, "coach")
+            or (
+                getattr(current_user, "user_id", None)
+                and str(item.uploaded_by) == str(current_user.user_id)
+            )
+        ):
+            return
+        if not current_user and is_playback_route:
+            return
+        raise HTTPException(status_code=404, detail="Media item not found")
+
     raise HTTPException(status_code=404, detail="Media item not found")
 
 
@@ -879,7 +964,7 @@ async def get_media_item(
     if not item:
         raise HTTPException(status_code=404, detail="Media item not found")
 
-    _require_original_access(item, current_user)
+    _require_original_access(item, current_user, is_playback_route=False)
 
     return await _build_media_item_response(db, item)
 
@@ -897,7 +982,7 @@ async def _resolve_media_playback(
     if not item:
         raise HTTPException(status_code=404, detail="Media item not found")
 
-    _require_original_access(item, current_user)
+    _require_original_access(item, current_user, is_playback_route=True)
 
     private_key = _private_s3_key(item.file_url)
     if private_key:
