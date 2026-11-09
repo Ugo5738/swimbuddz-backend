@@ -125206,6 +125206,22 @@
               }
             ],
             "title": "Image Url"
+          },
+          "requires_size_chart_ack": {
+            "type": "boolean",
+            "title": "Requires Size Chart Ack",
+            "default": false
+          },
+          "size_chart_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Chart Url"
           }
         },
         "type": "object",
@@ -125293,6 +125309,11 @@
             "type": "array",
             "title": "Items",
             "default": []
+          },
+          "requires_size_chart_ack": {
+            "type": "boolean",
+            "title": "Requires Size Chart Ack",
+            "default": false
           },
           "subtotal_ngn": {
             "type": "string",
