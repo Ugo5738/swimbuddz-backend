@@ -304,6 +304,24 @@
 
 ---
 
+## ADR-017: Swimwear Size Chart Acknowledgment & Store Purchase Experience
+- **Status:** Settled & Enforced (Nov 2026)
+- **Context & Why:**
+  - Members purchasing swimwear (such as *Full Coverage 2-Piece Swim Set*) were getting blocked at checkout with `400 "Size chart acknowledgment required for swimwear products"` because the size chart acknowledgment was only checked locally on the product page and was never sent in `CheckoutStartRequest` or surfaced on the `/store/checkout` page.
+  - Additionally, purchasing single gear items required cumbersome multi-step navigation (Add to Cart → find cart link → Cart page → Checkout), while multi-item purchasers lacked clear feedback on cart contents and post-add next steps.
+- **Decision & Non-Negotiable Invariants:**
+  - **Cart Enrichment & Size Chart Invariants:** Backend `CartResponse` and `CartItemResponse` must explicitly report `requires_size_chart_ack` and `size_chart_url`. When any item in the cart requires size chart acknowledgment, the `/store/checkout` page renders a prominent amber acknowledgment checkbox above the payment action, and passes `size_chart_acknowledged: true` in `CheckoutStartRequest`. If not acknowledged, checkout is cleanly prevented client-side before calling the API.
+  - **Single-Item "Buy Now" & Multi-Item Actions:** Product detail pages provide a 1-click **"Buy Now"** action alongside "Add to Cart" that adds the selected SKU and navigates immediately to `/store/checkout`. "Add to Cart" provides an interactive toast with a "View Cart" CTA and an inline cart banner with direct links to "View Cart" and "Checkout →".
+- **Canonical Docs & Code:**
+  - `swimbuddz-backend/services/store_service/routers/orders.py`
+  - `swimbuddz-backend/services/store_service/routers/cart.py`
+  - `swimbuddz-backend/services/store_service/schemas/main/cart.py`
+  - `swimbuddz-frontend/src/app/(public)/store/checkout/page.tsx`
+  - `swimbuddz-frontend/src/app/(public)/store/product/[slug]/page.tsx`
+  - `swimbuddz-frontend/src/app/(public)/store/cart/page.tsx`
+
+---
+
 ## Template for Adding New Decisions
 
 Whenever a new product, pricing, accounting, curriculum, or architectural decision is made during a conversation, append a new `ADR-XXX` entry using this structure:
