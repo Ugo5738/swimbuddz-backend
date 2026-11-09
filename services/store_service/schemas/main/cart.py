@@ -32,6 +32,8 @@ class CartItemResponse(BaseModel):
     variant_name: Optional[str] = None
     sku: Optional[str] = None
     image_url: Optional[str] = None
+    requires_size_chart_ack: bool = False
+    size_chart_url: Optional[str] = None
 
 
 class ApplyDiscountRequest(BaseModel):
@@ -50,6 +52,7 @@ class CartResponse(BaseModel):
     updated_at: datetime
 
     items: list[CartItemResponse] = []
+    requires_size_chart_ack: bool = False
 
     # Calculated totals
     subtotal_ngn: Decimal = Decimal("0")
