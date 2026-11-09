@@ -731,6 +731,75 @@ async def override_progress(
     await db.commit()
     await db.refresh(progress)
 
+    # Best-effort member notification email
+    try:
+        from libs.common.emails.client import get_email_client
+        from libs.common.service_client.members import get_member_by_id
+        from services.academy_service.models import Cohort, Program
+
+        student_member = await get_member_by_id(
+            str(enrollment.member_id),
+            calling_service="academy",
+        )
+        if student_member and student_member.get("email"):
+            program = (
+                await db.get(Program, enrollment.program_id)
+                if enrollment.program_id
+                else None
+            )
+            cohort = (
+                await db.get(Cohort, enrollment.cohort_id)
+                if enrollment.cohort_id
+                else None
+            )
+            student_email = student_member["email"]
+            student_name = (
+                student_member.get("first_name")
+                or student_member.get("full_name")
+                or "Swimmer"
+            )
+            milestone_name = milestone.name if milestone else "Milestone"
+            program_name = program.name if program else "Academy"
+            cohort_name = cohort.name if cohort else None
+
+            email_client = get_email_client()
+            if payload.new_status == ProgressStatus.ACHIEVED:
+                await email_client.send_template(
+                    template_type="milestone_approved",
+                    to_email=student_email,
+                    template_data={
+                        "member_name": student_name,
+                        "milestone_name": milestone_name,
+                        "program_name": program_name,
+                        "cohort_name": cohort_name,
+                        "coach_name": "Admin",
+                        "score": progress.score,
+                        "coach_notes": payload.override_reason or progress.coach_notes,
+                        "enrollment_id": str(enrollment.id),
+                    },
+                )
+            elif payload.new_status == ProgressStatus.PENDING and payload.override_reason:
+                await email_client.send_template(
+                    template_type="milestone_rejected",
+                    to_email=student_email,
+                    template_data={
+                        "member_name": student_name,
+                        "milestone_name": milestone_name,
+                        "program_name": program_name,
+                        "cohort_name": cohort_name,
+                        "coach_name": "Admin",
+                        "coach_notes": payload.override_reason,
+                        "enrollment_id": str(enrollment.id),
+                    },
+                )
+    except Exception as exc:
+        logger.warning(
+            "Failed to send milestone override notification email for progress %s: %s",
+            progress.id,
+            exc,
+            exc_info=True,
+        )
+
     logger.info(
         "Override recorded: progress=%s actor=%s:%s new_status=%s prior_event=%s",
         progress.id,
