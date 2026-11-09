@@ -318,7 +318,9 @@ async def enrich_cart_response(cart_or_id, db: AsyncSession) -> CartResponse:
                 requires_size_chart_ack=(
                     bool(product.requires_size_chart_ack) if product else False
                 ),
-                size_chart_url=product.size_chart_url if product else None,
+                size_chart_url=(
+                    getattr(product, "size_chart_url", None) if product else None
+                ),
             )
         )
 
