@@ -778,7 +778,9 @@ async def override_progress(
                         "enrollment_id": str(enrollment.id),
                     },
                 )
-            elif payload.new_status == ProgressStatus.PENDING and payload.override_reason:
+            elif (
+                payload.new_status == ProgressStatus.PENDING and payload.override_reason
+            ):
                 await email_client.send_template(
                     template_type="milestone_rejected",
                     to_email=student_email,
