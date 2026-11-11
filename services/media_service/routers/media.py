@@ -249,7 +249,7 @@ def _require_original_access(
             )
         ):
             return
-         raise HTTPException(status_code=404, detail="Media item not found")
+        raise HTTPException(status_code=404, detail="Media item not found")
 
     raise HTTPException(status_code=404, detail="Media item not found")
 
