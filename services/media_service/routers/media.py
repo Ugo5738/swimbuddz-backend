@@ -12,6 +12,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Request,
     Response,
     UploadFile,
     status,
@@ -163,6 +164,15 @@ def _valid_media_playback_token(
     if expiry > int(time.time()) + 900:
         return False
     return hmac.compare_digest(_media_playback_token(media_id, expiry), token)
+
+
+def _playback_query_credentials(request: Request) -> tuple[int | None, str | None]:
+    raw = request.query_params.get("expires")
+    try:
+        expires = int(raw) if raw else None
+    except ValueError:
+        expires = None
+    return expires, request.query_params.get("token")
 
 
 def _protected_video(item: MediaItem) -> bool:
@@ -1105,12 +1115,12 @@ async def _resolve_media_playback(
 )
 async def head_media_item_playback(
     media_id: uuid.UUID,
-    expires: int | None = None,
-    token: str | None = None,
+    request: Request,
     current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Answer browser HEAD probes for media playback."""
+    expires, token = _playback_query_credentials(request)
     headers, _ = await _resolve_media_playback(
         media_id, db, current_user, expires=expires, token=token
     )
@@ -1123,8 +1133,7 @@ async def head_media_item_playback(
 )
 async def get_media_item_playback(
     media_id: uuid.UUID,
-    expires: int | None = None,
-    token: str | None = None,
+    request: Request,
     current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -1135,6 +1144,7 @@ async def get_media_item_playback(
     check with 403, so this endpoint answers HEAD itself and only redirects
     GET requests to the signed object URL.
     """
+    expires, token = _playback_query_credentials(request)
     _, redirect_url = await _resolve_media_playback(
         media_id, db, current_user, expires=expires, token=token
     )
