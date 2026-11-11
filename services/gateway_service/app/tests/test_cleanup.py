@@ -63,7 +63,7 @@ async def test_cleanup_hard_mode_handles_204_responses(client):
             ),
             ("DELETE", f"/payments/admin/members/by-auth/{auth_id}"): make_response(
                 204, None, "DELETE", f"/payments/admin/members/by-auth/{auth_id}"
-            )
+            ),
         }
     )
     clients.attendance_client = RoutingClient(
