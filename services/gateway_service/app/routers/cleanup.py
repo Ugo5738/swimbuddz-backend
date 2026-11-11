@@ -247,7 +247,11 @@ async def cleanup_member(
     # Validate the two known hard-delete blockers *before* deleting any service
     # data. A 409 here must not leave payment or attendance records half-purged.
     for name, client, url in (
-        ("members", clients.members_client, f"/members/{member_id}/hard-delete-preflight"),
+        (
+            "members",
+            clients.members_client,
+            f"/members/{member_id}/hard-delete-preflight",
+        ),
         (
             "payments",
             clients.payments_client,
