@@ -40,7 +40,10 @@ async def test_cleanup_hard_mode_handles_204_responses(client):
                 f"/members/{member_id}",
             ),
             ("GET", f"/members/{member_id}/hard-delete-preflight"): make_response(
-                200, {"eligible": True}, "GET", f"/members/{member_id}/hard-delete-preflight"
+                200,
+                {"eligible": True},
+                "GET",
+                f"/members/{member_id}/hard-delete-preflight",
             ),
             ("DELETE", f"/members/{member_id}"): make_response(
                 204, None, "DELETE", f"/members/{member_id}"
@@ -49,8 +52,14 @@ async def test_cleanup_hard_mode_handles_204_responses(client):
     )
     clients.payments_client = RoutingClient(
         {
-            ("GET", f"/payments/admin/members/by-auth/{auth_id}/hard-delete-preflight"): make_response(
-                200, {"eligible": True}, "GET", f"/payments/admin/members/by-auth/{auth_id}/hard-delete-preflight"
+            (
+                "GET",
+                f"/payments/admin/members/by-auth/{auth_id}/hard-delete-preflight",
+            ): make_response(
+                200,
+                {"eligible": True},
+                "GET",
+                f"/payments/admin/members/by-auth/{auth_id}/hard-delete-preflight",
             ),
             ("DELETE", f"/payments/admin/members/by-auth/{auth_id}"): make_response(
                 204, None, "DELETE", f"/payments/admin/members/by-auth/{auth_id}"
