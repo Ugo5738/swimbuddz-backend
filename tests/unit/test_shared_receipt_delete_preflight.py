@@ -13,9 +13,7 @@ from services.payments_service.routers.intents.admin import (
 
 
 def _many(*values):
-    return SimpleNamespace(
-        scalars=lambda: SimpleNamespace(all=lambda: list(values))
-    )
+    return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: list(values)))
 
 
 def _single(value):
