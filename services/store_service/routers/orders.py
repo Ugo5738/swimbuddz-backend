@@ -63,6 +63,33 @@ DELIVERY_FEE_NGN = Decimal("2000")  # Flat delivery fee for now
 # ============================================================================
 
 
+def _build_quick_buy_cart(
+    member_auth_id: str,
+    variant: ProductVariant,
+    quantity: int,
+    member_tier: str,
+) -> Cart:
+    """Snapshot a single product without touching an active shopping cart."""
+    quick_cart = Cart(
+        member_auth_id=member_auth_id,
+        status=CartStatus.CONVERTED,
+        member_discount_percent=TIER_DISCOUNT_MAP.get(member_tier, Decimal("0")),
+    )
+    quick_cart.items.append(
+        CartItem(
+            variant=variant,
+            variant_id=variant.id,
+            quantity=quantity,
+            unit_price_ngn=(
+                variant.price_override_ngn
+                if variant.price_override_ngn is not None
+                else variant.product.base_price_ngn
+            ),
+        )
+    )
+    return quick_cart
+
+
 @router.post("/checkout/start", response_model=CheckoutStartResponse)
 async def start_checkout(
     request: CheckoutStartRequest,
@@ -117,24 +144,11 @@ async def start_checkout(
         if not member:
             raise HTTPException(status_code=400, detail="Member profile not found")
         member_tier = member.get("membership_type", "community")
-        quick_cart = Cart(
-            member_auth_id=current_user.user_id,
-            status=CartStatus.CONVERTED,
-            member_discount_percent=TIER_DISCOUNT_MAP.get(
-                member_tier, Decimal("0")
-            ),
-        )
-        quick_cart.items.append(
-            CartItem(
-                variant=variant,
-                variant_id=variant.id,
-                quantity=buy_now_quantity,
-                unit_price_ngn=(
-                    variant.price_override_ngn
-                    if variant.price_override_ngn is not None
-                    else variant.product.base_price_ngn
-                ),
-            )
+        quick_cart = _build_quick_buy_cart(
+            current_user.user_id,
+            variant,
+            buy_now_quantity,
+            member_tier,
         )
         db.add(quick_cart)
         await db.flush()
