@@ -167,7 +167,8 @@ def _valid_media_playback_token(
 
 def _protected_video(item: MediaItem) -> bool:
     return (item.metadata_info or {}).get("purpose") in {
-        "milestone_evidence", "club_assessment_video",
+        "milestone_evidence",
+        "club_assessment_video",
     }
 
 
@@ -1005,10 +1006,13 @@ async def get_media_item(
 
         expires = int(time.time()) + 900
         token = _media_playback_token(item.id, expires)
-        base = get_settings().PUBLIC_GATEWAY_URL.rstrip("/") if hasattr(get_settings(), "PUBLIC_GATEWAY_URL") else get_settings().GATEWAY_URL.rstrip("/")
+        base = (get_settings().PUBLIC_API_URL or get_settings().GATEWAY_URL).rstrip("/")
         # Existing clients consume file_url as the video src; keep the shape
         # while replacing raw private URLs with an authorized playback link.
-        result.file_url = f"{base}/api/v1/media/media/{item.id}/play?expires={expires}&token={token}"
+        result.file_url = (
+            f"{base}/api/v1/media/media/{item.id}/play"
+            f"?expires={expires}&token={token}"
+        )
     return result
 
 
