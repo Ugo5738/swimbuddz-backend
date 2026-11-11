@@ -397,7 +397,7 @@ async def update_member(
     return await _admin_member_response(updated_member, db)
 
 
-@router.get("/{member_id}/hard-delete-preflight")
+@router.get("/{member_id}/hard-delete-preflight", include_in_schema=False)
 async def hard_delete_preflight(
     member_id: uuid.UUID,
     current_user: AuthUser = Depends(require_admin),
