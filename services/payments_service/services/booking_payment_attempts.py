@@ -165,9 +165,146 @@ async def existing_booking_attempt(
     if not matches:
         raise HTTPException(
             409,
-            "A payment is already open for this booking. Resume its original payment options from Billing, or ask Admin to reconcile it before changing them.",
+            "A payment is already open for this booking. Resume its original payment options, cancel the unpaid online attempt to switch methods, or ask Admin to reconcile it.",
         )
     return payment
+
+
+def _effective_payment_method(payment: Payment) -> str:
+    return payment.payment_method or (
+        "paystack" if payment.provider == "paystack" else "manual_transfer"
+    )
+
+
+async def get_open_booking_payment_for_member(
+    db, booking_id: uuid.UUID, member_auth_id: str
+) -> dict:
+    """Return a safe member-facing summary of any open payment blocking a booking."""
+    from services.payments_service.services.manual_transfer import transfer_checkout_url
+
+    rows = await booking_payments(db, booking_id)
+    relevant = [row for row in rows if blocks_new_attempt(row)]
+    if any(row.member_auth_id != member_auth_id for row in relevant):
+        raise HTTPException(404, "Booking payment not found")
+    if any(
+        row.status in {PaymentStatus.PAID, PaymentStatus.WAIVED} for row in relevant
+    ):
+        return {"open_payment": None, "already_settled": True}
+    active = [
+        row
+        for row in relevant
+        if row.status in {PaymentStatus.PENDING, PaymentStatus.PENDING_REVIEW}
+    ]
+    if not active:
+        return {"open_payment": None, "already_settled": False}
+
+    payment = active[0]
+    meta = payment.payment_metadata or {}
+    method = _effective_payment_method(payment)
+    bubbles = int(meta.get("bubbles_to_apply") or 0)
+    bubbles_value_ngn = int(meta.get("bubbles_value_ngn") or (bubbles * 100))
+
+    checkout_url: str | None = None
+    if payment.status == PaymentStatus.PENDING:
+        if method == "paystack":
+            checkout_url = (meta.get("paystack") or {}).get("authorization_url")
+        elif method == "manual_transfer":
+            checkout_url = transfer_checkout_url(payment.reference)
+
+    can_cancel_and_switch = (
+        len(relevant) == 1
+        and payment.purpose == PaymentPurpose.SESSION_BOOKING
+        and payment.status == PaymentStatus.PENDING
+        and method == "paystack"
+        and not payment.paid_at
+        and not payment.entitlement_applied_at
+        and meta.get("wallet_hold_status") != "captured"
+    )
+
+    return {
+        "open_payment": {
+            "reference": payment.reference,
+            "purpose": payment.purpose,
+            "status": payment.status,
+            "payment_method": method,
+            "amount": float(payment.amount),
+            "currency": payment.currency or "NGN",
+            "bubbles_to_apply": bubbles,
+            "bubbles_value_ngn": bubbles_value_ngn,
+            "checkout_url": checkout_url,
+            "can_cancel_and_switch": can_cancel_and_switch,
+        },
+        "already_settled": False,
+    }
+
+
+async def switch_open_booking_payment_for_member(
+    db, booking_id: uuid.UUID, member_auth_id: str
+) -> dict:
+    """Verify an unpaid PENDING Paystack checkout with Paystack and close it so the member can switch options."""
+    from services.payments_service.services.booking_checkout_retry import (
+        abandon_open_paystack_booking_checkout,
+    )
+
+    await lock_booking_payment(db, booking_id)
+    rows = await booking_payments(db, booking_id)
+    relevant = [row for row in rows if blocks_new_attempt(row)]
+    if any(row.member_auth_id != member_auth_id for row in relevant):
+        raise HTTPException(404, "Booking payment not found")
+    paid = next(
+        (
+            row
+            for row in relevant
+            if row.status in {PaymentStatus.PAID, PaymentStatus.WAIVED}
+        ),
+        None,
+    )
+    if paid:
+        return {
+            "outcome": "already_paid",
+            "reference": paid.reference,
+            "message": "This booking is already settled.",
+        }
+    if not relevant:
+        return {
+            "outcome": "ready",
+            "reference": None,
+            "message": "No open payment is blocking this booking.",
+        }
+    if len(relevant) > 1:
+        raise HTTPException(
+            409,
+            "This booking has multiple historical payment links. Admin must reconcile them before switching payment options.",
+        )
+    payment = relevant[0]
+    if payment.purpose == PaymentPurpose.SESSION_BUNDLE:
+        raise HTTPException(
+            409,
+            "This booking is part of a combined payment. Use the combined payment link.",
+        )
+    if payment.status == PaymentStatus.FAILED:
+        return {
+            "outcome": "closed_unpaid",
+            "reference": payment.reference,
+            "message": "Previous attempt is already closed; you can choose a new payment method now.",
+        }
+    method = _effective_payment_method(payment)
+    if payment.status != PaymentStatus.PENDING or method != "paystack":
+        raise HTTPException(
+            409,
+            "Open bank transfers or reviews cannot be cancelled online. Upload your receipt or ask Admin to reconcile it.",
+        )
+    meta = payment.payment_metadata or {}
+    if (
+        payment.paid_at
+        or payment.entitlement_applied_at
+        or meta.get("wallet_hold_status") == "captured"
+    ):
+        raise HTTPException(
+            409,
+            "This payment already has captured funds and requires Admin reconciliation.",
+        )
+    return await abandon_open_paystack_booking_checkout(db, payment)
 
 
 async def duplicate_paid_booking(db, payment):

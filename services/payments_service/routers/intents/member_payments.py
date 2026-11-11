@@ -6,6 +6,7 @@
   payments; blocks cross-user access (returns 404).
 """
 
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -22,7 +23,13 @@ from services.payments_service.models import (
     PaymentStatus,
 )
 from services.payments_service.schemas import (
+    BookingOpenPaymentResponse,
+    BookingSwitchMethodResponse,
     MemberPaymentResponse,
+)
+from services.payments_service.services.booking_payment_attempts import (
+    get_open_booking_payment_for_member,
+    switch_open_booking_payment_for_member,
 )
 
 settings = get_settings()
@@ -142,4 +149,34 @@ async def verify_my_paystack_payment(
         provider_reference=reference,
         paid_at=paid_at,
         provider_payload={"verify": data},
+    )
+
+
+@router.get(
+    "/bookings/{booking_id}/open-payment",
+    response_model=BookingOpenPaymentResponse,
+)
+async def get_booking_open_payment(
+    booking_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return any active open payment attempt locking a session booking."""
+    return await get_open_booking_payment_for_member(
+        db, booking_id, current_user.user_id
+    )
+
+
+@router.post(
+    "/bookings/{booking_id}/open-payment/switch",
+    response_model=BookingSwitchMethodResponse,
+)
+async def switch_booking_open_payment_method(
+    booking_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Verify and close an unpaid open Paystack booking checkout so the member can switch payment method or Bubbles immediately."""
+    return await switch_open_booking_payment_for_member(
+        db, booking_id, current_user.user_id
     )
