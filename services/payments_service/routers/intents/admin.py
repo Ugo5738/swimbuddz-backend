@@ -71,6 +71,64 @@ from ._paystack import _initialize_paystack, _paystack_enabled
 router = APIRouter()
 
 
+async def _assert_receipts_are_exclusively_owned(
+    db: AsyncSession, auth_id: str
+) -> None:
+    """Prevent one learner's account purge from erasing other learners' cash."""
+    payment_ids = (
+        (await db.execute(select(Payment.id).where(Payment.member_auth_id == auth_id)))
+        .scalars()
+        .all()
+    )
+    if not payment_ids:
+        return
+    linked_receipts = (
+        (
+            await db.execute(
+                select(AcademyBankReceipt.id).where(
+                    or_(
+                        AcademyBankReceipt.payment_id.in_(payment_ids),
+                        AcademyBankReceipt.remainder_payment_id.in_(payment_ids),
+                    )
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not linked_receipts:
+        return
+    other_allocation = (
+        await db.execute(
+            select(AcademyReceiptAllocation.id)
+            .where(
+                AcademyReceiptAllocation.receipt_id.in_(linked_receipts),
+                AcademyReceiptAllocation.member_auth_id != auth_id,
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if other_allocation is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Cannot hard-delete account: one or more verified Academy bank "
+                "receipts also fund other learners. Reconcile or detach shared "
+                "allocations first; their payment records must not be deleted."
+            ),
+        )
+
+
+@router.get("/admin/members/by-auth/{auth_id}/hard-delete-preflight")
+async def admin_preflight_member_payments_delete(
+    auth_id: str,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    await _assert_receipts_are_exclusively_owned(db, auth_id)
+    return {"eligible": True}
+
+
 @router.delete("/admin/members/by-auth/{auth_id}")
 async def admin_delete_member_payments(
     auth_id: str,
@@ -80,6 +138,7 @@ async def admin_delete_member_payments(
     """
     Delete payments for a member by auth ID (Admin only).
     """
+    await _assert_receipts_are_exclusively_owned(db, auth_id)
     payment_ids = (
         (await db.execute(select(Payment.id).where(Payment.member_auth_id == auth_id)))
         .scalars()
