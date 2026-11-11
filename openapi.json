@@ -25475,6 +25475,104 @@
         }
       }
     },
+    "/api/v1/payments/bookings/{booking_id}/open-payment": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Get Booking Open Payment",
+        "description": "Return any active open payment attempt locking a session booking.",
+        "operationId": "get_booking_open_payment_payments_bookings__booking_id__open_payment_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingOpenPaymentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/bookings/{booking_id}/open-payment/switch": {
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "summary": "Switch Booking Open Payment Method",
+        "description": "Verify and close an unpaid open Paystack booking checkout so the member can switch payment method or Bubbles immediately.",
+        "operationId": "switch_booking_open_payment_method_payments_bookings__booking_id__open_payment_switch_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "booking_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Booking Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingSwitchMethodResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payments/me/obligations": {
       "get": {
         "tags": [
@@ -98069,6 +98167,124 @@
           "file"
         ],
         "title": "Body_upload_transfer_receipt_payments_manual_transfer__reference__upload_post"
+      },
+      "BookingOpenPaymentResponse": {
+        "properties": {
+          "open_payment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookingOpenPaymentSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "already_settled": {
+            "type": "boolean",
+            "title": "Already Settled",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "BookingOpenPaymentResponse"
+      },
+      "BookingOpenPaymentSummary": {
+        "properties": {
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/PaymentPurpose"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          },
+          "payment_method": {
+            "type": "string",
+            "title": "Payment Method"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "bubbles_to_apply": {
+            "type": "integer",
+            "title": "Bubbles To Apply",
+            "default": 0
+          },
+          "bubbles_value_ngn": {
+            "type": "integer",
+            "title": "Bubbles Value Ngn",
+            "default": 0
+          },
+          "checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Url"
+          },
+          "can_cancel_and_switch": {
+            "type": "boolean",
+            "title": "Can Cancel And Switch",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "reference",
+          "purpose",
+          "status",
+          "payment_method",
+          "amount",
+          "currency"
+        ],
+        "title": "BookingOpenPaymentSummary",
+        "description": "Safe member-facing summary of an open payment attempt on a booking.\n\nFollows the same privacy boundaries as `MemberPaymentResponse` (no raw\nprovider payloads, Paystack access_code, or admin notes)."
+      },
+      "BookingSwitchMethodResponse": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "closed_unpaid",
+              "already_paid",
+              "ready"
+            ],
+            "title": "Outcome"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "message"
+        ],
+        "title": "BookingSwitchMethodResponse"
       },
       "ChargePolicyCreate": {
         "properties": {

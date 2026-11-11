@@ -7,6 +7,9 @@ from services.payments_service.schemas.enums import (
 )
 from services.payments_service.schemas.main import (
     AdminReviewRequest,
+    BookingOpenPaymentResponse,
+    BookingOpenPaymentSummary,
+    BookingSwitchMethodResponse,
     CompletePaymentRequest,
     CreatePaymentIntentRequest,
     DiscountCreate,
@@ -49,6 +52,9 @@ from services.payments_service.schemas.recurring_payout import (
 
 __all__ = [
     "AdminReviewRequest",
+    "BookingOpenPaymentResponse",
+    "BookingOpenPaymentSummary",
+    "BookingSwitchMethodResponse",
     "ClubBillingCycle",
     "CompletePaymentRequest",
     "CreatePaymentIntentRequest",
