@@ -516,3 +516,149 @@ async def test_replacement_failure_rolls_back_supersession(
     await db_session.refresh(old)
     assert "booking_attempt_superseded" not in old.payment_metadata
     assert len(await booking_payments(db_session, booking_id)) == 1
+
+
+async def test_open_pending_paystack_can_be_inspected_and_switched_to_bubbles(
+    db_session, checkout, monkeypatch, payment_effects
+):
+    from services.payments_service.services.booking_payment_attempts import (
+        get_open_booking_payment_for_member,
+        switch_open_booking_payment_for_member,
+    )
+
+    booking_id, user, payload, _, _ = checkout
+    first = await intent_creation.create_payment_intent(payload, user, db_session)
+
+    summary = await get_open_booking_payment_for_member(
+        db_session, booking_id, user.user_id
+    )
+    assert summary["already_settled"] is False
+    open_row = summary["open_payment"]
+    assert open_row["reference"] == first.reference
+    assert open_row["payment_method"] == "paystack"
+    assert open_row["amount"] == 5200.0
+    assert open_row["bubbles_to_apply"] == 0
+    assert open_row["checkout_url"] == "https://checkout.example.test/frozen"
+    assert open_row["can_cancel_and_switch"] is True
+
+    # Before worker runs, Paystack verifies the closed popup as abandoned.
+    verify = AsyncMock(
+        return_value={
+            "id": 999,
+            "reference": first.reference,
+            "status": "abandoned",
+            "amount": 520000,
+            "currency": "NGN",
+            "paid_at": None,
+        }
+    )
+    monkeypatch.setattr(booking_checkout_retry, "_verify_paystack_transaction", verify)
+    release_hold = AsyncMock()
+    monkeypatch.setattr(
+        "services.payments_service.routers.intents._helpers._release_bubbles_hold",
+        release_hold,
+    )
+    monkeypatch.setattr(
+        "services.payments_service.routers.intents._helpers._clear_pending_tier_payment_for_payment",
+        AsyncMock(),
+    )
+
+    switched = await switch_open_booking_payment_for_member(
+        db_session, booking_id, user.user_id
+    )
+    assert switched["outcome"] == "closed_unpaid"
+    assert switched["reference"] == first.reference
+    release_hold.assert_awaited_once()
+
+    after = await get_open_booking_payment_for_member(
+        db_session, booking_id, user.user_id
+    )
+    assert after == {"open_payment": None, "already_settled": False}
+
+    # Member can immediately pay the booking in full with Bubbles.
+    bubbles_result = await intent_creation.create_payment_intent(
+        payload.model_copy(
+            update={"bubbles_to_apply": 52, "idempotency_key": str(uuid4())}
+        ),
+        user,
+        db_session,
+    )
+    assert bubbles_result.status == PaymentStatus.PAID
+    assert bubbles_result.amount == 0
+    payment_effects.assert_awaited_once()
+
+
+async def test_switch_settles_if_paystack_actually_succeeded(
+    db_session, checkout, monkeypatch, payment_effects
+):
+    from services.payments_service.services.booking_payment_attempts import (
+        switch_open_booking_payment_for_member,
+    )
+
+    booking_id, user, payload, _, _ = checkout
+    first = await intent_creation.create_payment_intent(payload, user, db_session)
+    verify = AsyncMock(
+        return_value={
+            "id": 1001,
+            "reference": first.reference,
+            "status": "success",
+            "amount": 520000,
+            "currency": "NGN",
+            "paid_at": "2026-11-09T22:40:00Z",
+        }
+    )
+    monkeypatch.setattr(booking_checkout_retry, "_verify_paystack_transaction", verify)
+
+    result = await switch_open_booking_payment_for_member(
+        db_session, booking_id, user.user_id
+    )
+    assert result["outcome"] == "already_paid"
+    assert result["reference"] == first.reference
+    payment_effects.assert_awaited_once()
+    rows = await booking_payments(db_session, booking_id)
+    assert len(rows) == 1 and rows[0].status == PaymentStatus.PAID
+
+
+async def test_switch_blocks_ongoing_paystack_and_manual_transfer(
+    db_session, checkout, monkeypatch
+):
+    from services.payments_service.services.booking_payment_attempts import (
+        get_open_booking_payment_for_member,
+        switch_open_booking_payment_for_member,
+    )
+
+    booking_id, user, payload, _, _ = checkout
+    first = await intent_creation.create_payment_intent(payload, user, db_session)
+    monkeypatch.setattr(
+        booking_checkout_retry,
+        "_verify_paystack_transaction",
+        AsyncMock(
+            return_value={
+                "reference": first.reference,
+                "status": "pending",
+                "amount": 520000,
+                "currency": "NGN",
+                "paid_at": None,
+            }
+        ),
+    )
+    with pytest.raises(HTTPException, match="still active or processing"):
+        await switch_open_booking_payment_for_member(
+            db_session, booking_id, user.user_id
+        )
+
+    # Manual transfer attempts must not expose self-service cancellation.
+    payment = (await booking_payments(db_session, booking_id))[0]
+    payment.payment_method = "manual_transfer"
+    payment.provider = None
+    payment.status = PaymentStatus.PENDING_REVIEW
+    await db_session.commit()
+
+    summary = await get_open_booking_payment_for_member(
+        db_session, booking_id, user.user_id
+    )
+    assert summary["open_payment"]["can_cancel_and_switch"] is False
+    with pytest.raises(HTTPException, match="bank transfers"):
+        await switch_open_booking_payment_for_member(
+            db_session, booking_id, user.user_id
+        )

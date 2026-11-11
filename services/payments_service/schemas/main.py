@@ -229,6 +229,36 @@ class MemberPaymentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BookingOpenPaymentSummary(BaseModel):
+    """Safe member-facing summary of an open payment attempt on a booking.
+
+    Follows the same privacy boundaries as `MemberPaymentResponse` (no raw
+    provider payloads, Paystack access_code, or admin notes).
+    """
+
+    reference: str
+    purpose: PaymentPurpose
+    status: PaymentStatus
+    payment_method: str
+    amount: float
+    currency: str
+    bubbles_to_apply: int = 0
+    bubbles_value_ngn: int = 0
+    checkout_url: Optional[str] = None
+    can_cancel_and_switch: bool = False
+
+
+class BookingOpenPaymentResponse(BaseModel):
+    open_payment: Optional[BookingOpenPaymentSummary] = None
+    already_settled: bool = False
+
+
+class BookingSwitchMethodResponse(BaseModel):
+    outcome: Literal["closed_unpaid", "already_paid", "ready"]
+    reference: Optional[str] = None
+    message: str
+
+
 class CompletePaymentRequest(BaseModel):
     provider: str = Field(default="paystack", min_length=2, max_length=32)
     provider_reference: Optional[str] = Field(default=None, max_length=128)

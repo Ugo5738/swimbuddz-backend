@@ -1,9 +1,10 @@
 """Store orders router: checkout, order history, and store credits."""
 
+import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -32,11 +33,13 @@ from services.store_service.models import (
     OrderStatus,
     PickupLocation,
     Product,
+    ProductStatus,
     ProductVariant,
     SourcingType,
     StoreCredit,
 )
 from services.store_service.routers.cart import (
+    TIER_DISCOUNT_MAP,
     _resolve_coupon_discount,
     calculate_cart_totals,
 )
@@ -59,11 +62,40 @@ DELIVERY_FEE_NGN = Decimal("2000")  # Flat delivery fee for now
 # ============================================================================
 
 
+def _build_quick_buy_cart(
+    member_auth_id: str,
+    variant: ProductVariant,
+    quantity: int,
+    member_tier: str,
+) -> Cart:
+    """Snapshot a single product without touching an active shopping cart."""
+    quick_cart = Cart(
+        member_auth_id=member_auth_id,
+        status=CartStatus.CONVERTED,
+        member_discount_percent=TIER_DISCOUNT_MAP.get(member_tier, Decimal("0")),
+    )
+    quick_cart.items.append(
+        CartItem(
+            variant=variant,
+            variant_id=variant.id,
+            quantity=quantity,
+            unit_price_ngn=(
+                variant.price_override_ngn
+                if variant.price_override_ngn is not None
+                else variant.product.base_price_ngn
+            ),
+        )
+    )
+    return quick_cart
+
+
 @router.post("/checkout/start", response_model=CheckoutStartResponse)
 async def start_checkout(
     request: CheckoutStartRequest,
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
+    buy_now_variant_id: uuid.UUID | None = Query(None, include_in_schema=False),
+    buy_now_quantity: int = Query(1, ge=1, le=50, include_in_schema=False),
 ):
     """Start checkout process - validate cart, reserve inventory, create pending order."""
     # Get member's active cart
@@ -86,6 +118,42 @@ async def start_checkout(
     )
     result = await db.execute(query)
     cart = result.scalars().first()
+
+    # Buy Now creates a separate converted cart snapshot for one SKU. Never
+    # mutate or consume the member's existing active multi-item cart.
+    if buy_now_variant_id:
+        variant_query = (
+            select(ProductVariant)
+            .where(
+                ProductVariant.id == buy_now_variant_id,
+                ProductVariant.is_active.is_(True),
+            )
+            .options(
+                selectinload(ProductVariant.product).selectinload(Product.supplier),
+                selectinload(ProductVariant.inventory_item),
+            )
+        )
+        variant = (await db.execute(variant_query)).scalar_one_or_none()
+        if not variant or variant.product.status != ProductStatus.ACTIVE:
+            raise HTTPException(status_code=404, detail="Product is unavailable")
+
+        member = await get_member_by_auth_id(
+            current_user.user_id, calling_service="store"
+        )
+        if not member:
+            raise HTTPException(status_code=400, detail="Member profile not found")
+        member_tier = member.get("membership_type", "community")
+        quick_cart = _build_quick_buy_cart(
+            current_user.user_id,
+            variant,
+            buy_now_quantity,
+            member_tier,
+        )
+        db.add(quick_cart)
+        await db.flush()
+        cart = quick_cart
+    else:
+        member = None
 
     if not cart or not cart.items:
         raise HTTPException(status_code=400, detail="Cart is empty")
@@ -149,7 +217,9 @@ async def start_checkout(
             db.add(movement)
 
     # Get member info for order via members service HTTP API
-    member = await get_member_by_auth_id(current_user.user_id, calling_service="store")
+    member = member or await get_member_by_auth_id(
+        current_user.user_id, calling_service="store"
+    )
     if not member:
         raise HTTPException(status_code=400, detail="Member profile not found")
 
@@ -308,7 +378,7 @@ async def start_checkout(
         )
         db.add(order_item)
 
-    # Mark cart as converted
+    # Convert only the selected checkout cart. An unrelated active cart stays active.
     cart.status = CartStatus.CONVERTED
     try:
         await db.commit()
