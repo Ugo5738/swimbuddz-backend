@@ -1,9 +1,15 @@
+import time
+import uuid
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
-from services.media_service.routers.media import _require_original_access
+from services.media_service.routers.media import (
+    _media_playback_token,
+    _require_original_access,
+    _valid_media_playback_token,
+)
 from tests.conftest import make_admin_user, make_coach_user, make_member_user
 
 
@@ -46,11 +52,11 @@ def test_coach_can_access_student_milestone_evidence_and_club_assessment():
         _require_original_access(evidence, make_member_user(user_id="stranger"))
     assert exc.value.status_code == 404
 
-    # Anonymous user cannot inspect via API, but playback route permits browser video streaming
-    with pytest.raises(HTTPException) as exc:
-        _require_original_access(evidence, None, is_playback_route=False)
-    assert exc.value.status_code == 404
-    _require_original_access(evidence, None, is_playback_route=True)
+    # Both API inspection and browser playback deny anonymous UUID guessing.
+    for playback in (False, True):
+        with pytest.raises(HTTPException) as exc:
+            _require_original_access(evidence, None, is_playback_route=playback)
+        assert exc.value.status_code == 404
 
     # Club assessment video has matching coach/admin review access
     club_video = SimpleNamespace(
@@ -64,6 +70,19 @@ def test_coach_can_access_student_milestone_evidence_and_club_assessment():
     with pytest.raises(HTTPException) as exc:
         _require_original_access(club_video, make_member_user(user_id="stranger"))
     assert exc.value.status_code == 404
+
+
+def test_private_playback_tickets_are_media_bound_expiring_capabilities():
+    evidence_id = uuid.uuid4()
+    other_id = uuid.uuid4()
+    expires = int(time.time()) + 300
+    token = _media_playback_token(evidence_id, expires)
+    assert _valid_media_playback_token(evidence_id, expires, token)
+    assert not _valid_media_playback_token(other_id, expires, token)
+    assert not _valid_media_playback_token(evidence_id, expires, "wrong")
+    assert not _valid_media_playback_token(evidence_id, expires - 1000, token)
+    assert not _valid_media_playback_token(evidence_id, expires + 10000, token)
+    assert not _valid_media_playback_token(evidence_id, None, None)
 
 
 def test_milestone_video_accessible_to_authenticated_users_and_playback():

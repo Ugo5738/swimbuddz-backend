@@ -397,6 +397,32 @@ async def update_member(
     return await _admin_member_response(updated_member, db)
 
 
+@router.get("/{member_id}/hard-delete-preflight", include_in_schema=False)
+async def hard_delete_preflight(
+    member_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Block known member-service deletion constraints before cross-service purges."""
+    member = (
+        await db.execute(select(Member.id).where(Member.id == member_id))
+    ).scalar_one_or_none()
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    lead_pod = (
+        await db.execute(select(Pod.name).where(Pod.pod_lead_id == member_id).limit(1))
+    ).scalar_one_or_none()
+    if lead_pod:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Cannot hard-delete member while assigned as Pod Lead for "
+                f"'{lead_pod}'. Reassign the pod lead first or use Soft Delete."
+            ),
+        )
+    return {"eligible": True}
+
+
 @router.delete("/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_member(
     member_id: uuid.UUID,
