@@ -60,6 +60,7 @@ jobs:
       - name: Lint with Ruff
         run: |
           ruff check .
+          ruff format --diff services/payments_service/routers/intents/admin.py
           ruff format --check .
 
       - name: Check every service has one migration head
