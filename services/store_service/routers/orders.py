@@ -3,7 +3,9 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -66,6 +68,8 @@ async def start_checkout(
     request: CheckoutStartRequest,
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
+    buy_now_variant_id: uuid.UUID | None = Query(None, include_in_schema=False),
+    buy_now_quantity: int = Query(1, ge=1, le=50, include_in_schema=False),
 ):
     """Start checkout process - validate cart, reserve inventory, create pending order."""
     # Get member's active cart
@@ -91,11 +95,11 @@ async def start_checkout(
 
     # Buy Now creates a separate converted cart snapshot for one SKU. Never
     # mutate or consume the member's existing active multi-item cart.
-    if request.buy_now_variant_id:
+    if buy_now_variant_id:
         variant_query = (
             select(ProductVariant)
             .where(
-                ProductVariant.id == request.buy_now_variant_id,
+                ProductVariant.id == buy_now_variant_id,
                 ProductVariant.is_active.is_(True),
             )
             .options(
@@ -124,7 +128,7 @@ async def start_checkout(
             CartItem(
                 variant=variant,
                 variant_id=variant.id,
-                quantity=request.buy_now_quantity,
+                quantity=buy_now_quantity,
                 unit_price_ngn=(
                     variant.price_override_ngn
                     if variant.price_override_ngn is not None
