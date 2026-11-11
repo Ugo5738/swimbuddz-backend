@@ -71,7 +71,9 @@ from ._paystack import _initialize_paystack, _paystack_enabled
 router = APIRouter()
 
 
-async def _assert_receipts_are_exclusively_owned(db: AsyncSession, auth_id: str) -> None:
+async def _assert_receipts_are_exclusively_owned(
+    db: AsyncSession, auth_id: str
+) -> None:
     """Prevent one learner's account purge from erasing other learners' cash."""
     member_payment_query = select(Payment.id).where(Payment.member_auth_id == auth_id)
     member_payment_result = await db.execute(member_payment_query)
