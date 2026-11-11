@@ -315,6 +315,7 @@
   - **Cart Enrichment & Size Chart Invariants:** Backend `CartResponse` and `CartItemResponse` must explicitly report `requires_size_chart_ack` and `size_chart_url`. When any item in the cart requires size chart acknowledgment, the `/store/checkout` page renders a prominent amber acknowledgment checkbox above the payment action, and passes `size_chart_acknowledged: true` in `CheckoutStartRequest`. If not acknowledged, checkout is cleanly prevented client-side before calling the API.
   - **Single-Item "Buy Now" & Multi-Item Actions:** Product detail pages provide a 1-click **"Buy Now"** action alongside "Add to Cart" that adds the selected SKU and navigates immediately to `/store/checkout`. "Add to Cart" provides an interactive toast with a "View Cart" CTA and an inline cart banner with direct links to "View Cart" and "Checkout →".
   - **Store Navigation & Return Paths:** In `StoreHeader`, the top-left return arrow (`ArrowLeft`) is strictly context-aware: when inside the store (`/store/product/*`, `/store/cart`, `/store/checkout`), it links back to `/store` ("← Store") so shoppers browsing multiple items never get dumped on the main website homepage (`/`). The main site link ("← Home") is only shown on the root store catalog (`/store`). Furthermore, the product detail page provides an explicit "Back to Store" link and a "Keep Shopping" action on post-add banners, while header login preserves the current store path in `?redirect=`.
+  - **Post-Auth Store Checkout & Deep-Link Return Invariant:** Explicit safe return paths passed via `/login?redirect=...` or `/confirm?next=...` — especially standalone public/storefront routes (`isStandaloneReturnPath`: `/store/*`, `/pool-access/*`, `/experiences/*`, `/guest-pass/*`, `/tips/*`) — must return the user directly to their destination after authentication and pending-registration completion. Pending Academy upgrade requests (`requested_tiers: ["academy"]` with inactive/expired Academy), unfinished swim-profile onboarding, admin login routing (`/admin/dashboard`), and active coach routing (`/coach/dashboard`) only apply default fallbacks when no explicit safe destination is present (or for non-standalone member routes requiring onboarding), and must never hijack a shopper clicking **Login to Checkout** (`/store/checkout`).
 - **Canonical Docs & Code:**
   - `swimbuddz-backend/services/store_service/routers/orders.py`
   - `swimbuddz-backend/services/store_service/routers/cart.py`
@@ -322,6 +323,9 @@
   - `swimbuddz-frontend/src/app/(public)/store/checkout/page.tsx`
   - `swimbuddz-frontend/src/app/(public)/store/product/[slug]/page.tsx`
   - `swimbuddz-frontend/src/app/(public)/store/cart/page.tsx`
+  - `swimbuddz-frontend/src/app/(auth)/login/page.tsx`
+  - `swimbuddz-frontend/src/lib/registration.ts`
+  - `swimbuddz-frontend/src/lib/returnPath.ts`
 
 ---
 
