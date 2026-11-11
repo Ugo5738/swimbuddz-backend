@@ -135,6 +135,42 @@ def _user_is_admin_or_service(user: Optional[AuthUser]) -> bool:
     return False
 
 
+def _media_playback_token(media_id: uuid.UUID, expiry: int) -> str:
+    """Produce a short-lived, media-bound browser playback capability.
+
+    Issued only after a signed-in caller passes _require_original_access.
+    Unlike an unguarded /play redirect, knowing a UUID is not authorization.
+    """
+    import hashlib
+    import hmac
+
+    from libs.common.config import get_settings
+
+    secret = get_settings().SUPABASE_JWT_SECRET.encode("utf-8")
+    data = f"media-play:{media_id}:{expiry}".encode("utf-8")
+    return hmac.new(secret, data, hashlib.sha256).hexdigest()
+
+
+def _valid_media_playback_token(
+    media_id: uuid.UUID, expiry: int | None, token: str | None
+) -> bool:
+    import hmac
+    import time
+
+    if not expiry or not token or expiry < int(time.time()):
+        return False
+    # Reject capabilities that claim a lifetime longer than 15 minutes.
+    if expiry > int(time.time()) + 900:
+        return False
+    return hmac.compare_digest(_media_playback_token(media_id, expiry), token)
+
+
+def _protected_video(item: MediaItem) -> bool:
+    return (item.metadata_info or {}).get("purpose") in {
+        "milestone_evidence", "club_assessment_video",
+    }
+
+
 def _require_original_access(
     item: MediaItem,
     current_user: Optional[AuthUser],
@@ -145,9 +181,8 @@ def _require_original_access(
     - Payment receipts and raw presentation originals are strictly limited to
       the uploader and admins.
     - Milestone evidence and club assessment videos are accessible to the student,
-      coaches (who must review them), and admins. For browser video streaming on
-      the playback route (/play), unauthenticated redirects to presigned S3 URLs
-      are permitted since standard HTML5 video elements cannot deliver Bearer headers.
+      coaches (who must review them), and admins. Browser playback uses a
+      short-lived capability issued only by an authenticated media lookup.
     - Milestone instructional demo videos are viewable by any authenticated user
       or via the video playback route.
     """
@@ -185,15 +220,14 @@ def _require_original_access(
             return
         raise HTTPException(status_code=404, detail="Media item not found")
 
-    # Milestone instructional demo videos: any authenticated user or playback route
+    # Instructional demos are not private student submissions.
     if purpose == "milestone_video":
         if current_user or is_playback_route:
             return
         raise HTTPException(status_code=404, detail="Media item not found")
 
     # Milestone evidence and club assessment videos:
-    # On API inspection (GET /media/{id}), require uploader, coach, or admin.
-    # On browser playback (GET /media/{id}/play), allow browser streaming redirect.
+    # Both API inspection and browser playback must prove authorization.
     if purpose in {"milestone_evidence", "club_assessment_video"}:
         if current_user and (
             _user_is_admin_or_service(current_user)
@@ -204,9 +238,7 @@ def _require_original_access(
             )
         ):
             return
-        if not current_user and is_playback_route:
-            return
-        raise HTTPException(status_code=404, detail="Media item not found")
+         raise HTTPException(status_code=404, detail="Media item not found")
 
     raise HTTPException(status_code=404, detail="Media item not found")
 
@@ -966,13 +998,26 @@ async def get_media_item(
 
     _require_original_access(item, current_user, is_playback_route=False)
 
-    return await _build_media_item_response(db, item)
+    result = await _build_media_item_response(db, item)
+    if _protected_video(item):
+        import time
+        from libs.common.config import get_settings
+
+        expires = int(time.time()) + 900
+        token = _media_playback_token(item.id, expires)
+        base = get_settings().PUBLIC_GATEWAY_URL.rstrip("/") if hasattr(get_settings(), "PUBLIC_GATEWAY_URL") else get_settings().GATEWAY_URL.rstrip("/")
+        # Existing clients consume file_url as the video src; keep the shape
+        # while replacing raw private URLs with an authorized playback link.
+        result.file_url = f"{base}/api/v1/media/media/{item.id}/play?expires={expires}&token={token}"
+    return result
 
 
 async def _resolve_media_playback(
     media_id: uuid.UUID,
     db: AsyncSession,
     current_user: Optional[AuthUser],
+    expires: int | None = None,
+    token: str | None = None,
 ):
     """Resolve playback headers and redirect URL for a media item."""
     query = select(MediaItem).where(MediaItem.id == media_id)
@@ -982,7 +1027,11 @@ async def _resolve_media_playback(
     if not item:
         raise HTTPException(status_code=404, detail="Media item not found")
 
-    _require_original_access(item, current_user, is_playback_route=True)
+    if _protected_video(item) and not current_user:
+        if not _valid_media_playback_token(item.id, expires, token):
+            raise HTTPException(status_code=404, detail="Media item not found")
+    else:
+        _require_original_access(item, current_user, is_playback_route=True)
 
     private_key = _private_s3_key(item.file_url)
     if private_key:
@@ -1052,11 +1101,15 @@ async def _resolve_media_playback(
 )
 async def head_media_item_playback(
     media_id: uuid.UUID,
+    expires: int | None = None,
+    token: str | None = None,
     current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
     """Answer browser HEAD probes for media playback."""
-    headers, _ = await _resolve_media_playback(media_id, db, current_user)
+    headers, _ = await _resolve_media_playback(
+        media_id, db, current_user, expires=expires, token=token
+    )
     return Response(status_code=200, headers=headers)
 
 
@@ -1066,6 +1119,8 @@ async def head_media_item_playback(
 )
 async def get_media_item_playback(
     media_id: uuid.UUID,
+    expires: int | None = None,
+    token: str | None = None,
     current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -1076,7 +1131,9 @@ async def get_media_item_playback(
     check with 403, so this endpoint answers HEAD itself and only redirects
     GET requests to the signed object URL.
     """
-    _, redirect_url = await _resolve_media_playback(media_id, db, current_user)
+    _, redirect_url = await _resolve_media_playback(
+        media_id, db, current_user, expires=expires, token=token
+    )
     return RedirectResponse(url=redirect_url, status_code=307)
 
 
