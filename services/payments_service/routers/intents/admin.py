@@ -117,7 +117,9 @@ async def _assert_receipts_are_exclusively_owned(db: AsyncSession, auth_id: str)
         )
 
 
-@router.get("/admin/members/by-auth/{auth_id}/hard-delete-preflight", include_in_schema=False)
+@router.get(
+    "/admin/members/by-auth/{auth_id}/hard-delete-preflight", include_in_schema=False
+)
 async def admin_preflight_member_payments_delete(
     auth_id: str,
     current_user: AuthUser = Depends(require_admin),
