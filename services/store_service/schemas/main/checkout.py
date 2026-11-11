@@ -27,11 +27,6 @@ class CheckoutStartRequest(BaseModel):
     delivery_address: Optional[DeliveryAddress] = None
     customer_notes: Optional[str] = None
     size_chart_acknowledged: bool = False  # Required if any product needs it
-    # Amazon-style Buy Now: isolate this SKU from the saved multi-item cart.
-    # The server loads its current price and verifies stock; no client price trust.
-    buy_now_variant_id: Optional[uuid.UUID] = None
-    buy_now_quantity: int = Field(1, ge=1, le=50)
-
     apply_store_credit: bool = False  # Apply available store credit to reduce total
     bubbles_to_apply: Optional[int] = Field(
         None,
