@@ -1,9 +1,8 @@
 """Store orders router: checkout, order history, and store credits."""
 
+import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
-
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
