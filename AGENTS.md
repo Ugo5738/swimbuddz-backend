@@ -9,12 +9,12 @@
 Many product, financial, curriculum, and operational rules in SwimBuddz were reached after extensive deliberation and real-world production incidents. To prevent any AI agent from accidentally reverting or "simplifying away" a settled decision:
 
 1. **Read Settled Decisions FIRST:**
-   - Before proposing, modifying, or refactoring any product workflow, pricing rule, attendance behavior, curriculum structure, or accounting boundary, **read [`docs/DECISIONS.md`](./docs/DECISIONS.md)** and the corresponding domain runbook in [`swimbuddz-backend/docs/`](./swimbuddz-backend/docs/).
+   - Before proposing, modifying, or refactoring any product workflow, pricing rule, attendance behavior, curriculum structure, or accounting boundary, **read [`docs/DECISIONS.md`](./docs/DECISIONS.md)** (in the root `swimbuddz-docs` repo) and the corresponding domain runbook in [`swimbuddz-backend/docs/`](./swimbuddz-backend/docs/).
 2. **Never Silently Override a Settled Decision:**
-   - Do **not** change an invariant documented in `docs/DECISIONS.md` (`ADR-001` through `ADR-016`) or in `swimbuddz-backend/docs/*.md` / `swimbuddz-frontend/UI_FLOWS.md` as a side effect of another task.
+   - Do **not** change an invariant documented in `docs/DECISIONS.md` (`ADR-001` through `ADR-017`) or in `swimbuddz-backend/docs/*.md` / `swimbuddz-frontend/UI_FLOWS.md` as a side effect of another task.
    - If a user request appears to conflict with an existing ADR in `docs/DECISIONS.md`, point out the existing decision and its rationale, and ask whether the user wants to explicitly supersede it.
-3. **Always Update Documentation When Deliberating or Building:**
-   - **During product/feature discussions:** Whenever you and the user think through, debate, or agree on a product rule, edge case, pricing model, curriculum structure, or architecture choice, **immediately record or update the decision and *why* it was made in [`docs/DECISIONS.md`](./docs/DECISIONS.md) (and its mirrors [`swimbuddz-backend/docs/DECISIONS.md`](./swimbuddz-backend/docs/DECISIONS.md) and [`swimbuddz-frontend/docs/DECISIONS.md`](./swimbuddz-frontend/docs/DECISIONS.md))** as well as the relevant domain doc.
+3. **Always Update Documentation When Deliberating or Building (Across All 3 Repos):**
+   - **During product/feature discussions:** Whenever you and the user think through, debate, or agree on a product rule, edge case, pricing model, curriculum structure, or architecture choice, **immediately record or update the decision and *why* it was made in [`docs/DECISIONS.md`](./docs/DECISIONS.md) (in the root `swimbuddz-docs` repo) AND sync its mirrors [`swimbuddz-backend/docs/DECISIONS.md`](./swimbuddz-backend/docs/DECISIONS.md) and [`swimbuddz-frontend/docs/DECISIONS.md`](./swimbuddz-frontend/docs/DECISIONS.md)** as well as the relevant domain doc.
    - **Definition of Done:** No feature, bugfix, or policy change is complete until the docs (`docs/DECISIONS.md`, domain runbooks, `UI_FLOWS.md`, `API_ENDPOINTS.md`) are updated in the same session/PR.
 4. **Strict Git Workflow (`feature/* → develop → main`):**
    - Always work on a feature/fix branch (`feature/*`, `fix/*`, `codex/*`), merge to `develop` first, and then merge `develop` to `main`. Never commit directly to `main` or `develop`, and always clean up temporary worktrees and `.next` caches after use.
@@ -39,6 +39,7 @@ Many product, financial, curriculum, and operational rules in SwimBuddz were rea
 - **ADR-014 (Public Pool Directory & Weather):** Separates community pool submissions/corrections from official SwimBuddz Pool Assessments with weather integration.
 - **ADR-015 (Member Identity Audit & Soft/Hard Delete):** Self-service name changes log immutable `MemberNameChange` rows. Soft delete sets `is_active = False` (moving the member to the `Deactivated` tab on `/admin/members` with reactivation support); Hard delete cleans up FK-dependent rows across all services first and deletes the Supabase Auth user only after DB commit.
 - **ADR-016 (Git Branching, Migrations & Worktree Hygiene):** Work strictly on `feature/* → develop → main`, generate Alembic migrations via `./scripts/db/migrate.sh` (single head), and prune worktrees/caches promptly.
+- **ADR-017 (Swimwear Size Chart Acknowledgment & Store Purchase Experience):** Store cart items surface `requires_size_chart_ack`; `/store/checkout` requires acknowledgment when applicable; product pages support 1-click **Buy Now**; store back-links stay within `/store`; and `/login?redirect=` / `/confirm?next=` preserve standalone store/public return paths after authentication.
 
 ---
 
