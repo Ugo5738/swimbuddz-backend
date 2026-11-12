@@ -158,6 +158,7 @@
   - Operational payment tables alone are not an audit-grade accounting system, and member billing previously made scattered requests that flashed empty states while loading.
 - **Decision & Non-Negotiable Invariants:**
   - **Immutable Double-Entry Ledger (`ledger_service`):** Multi-tenant, FIRS-ready double-entry ledger receiving idempotent event emitters from `payments`, `wallet`, `store`, `academy`, and `sessions`. Ledger entries are immutable; corrections use reversing/adjusting journal entries.
+  - **Reviewed store preorder correction (12 Nov 2026):** Correcting an unsettled preorder to a more expensive SKU preserves the original frozen payment and receipt, creates a separate payment for the server-priced difference, and audits the item/supplier snapshots and revised order total. A reconciliation hold prevents either partial receipt from fulfilling the whole order. Only after both payments are independently bank-verified and their sum equals the corrected order total may the primary payment's fulfillment be replayed. The scoped operator repair is not a general exchange/refund API, never rewrites posted journals, and never posts the revised full total as an additional cash receipt.
   - **Member Financial Obligations Aggregator:** `/account/billing` aggregates obligations across Annual Membership, Club, Academy installments, and unpaid session/guest balances into a single trust-first overview, preserving loading states so active enrollments are never misreported as empty.
 - **Canonical Docs & Code:**
   - `docs/design/LEDGER_SERVICE_DESIGN.md`
