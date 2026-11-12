@@ -867,6 +867,13 @@ The opt-out lives on `notification_preferences.email_birthday` (boolean, default
 
 #### `GET /api/v1/store/orders`
 
+The reviewed Esther preorder item correction uses the operator procedure in
+`STORE_ORDER_CORRECTION_RUNBOOK.md`, not a new public exchange endpoint. Existing
+Admin offline-payment endpoints verify each frozen receipt separately; the
+existing `POST /payments/admin/{reference}/replay-entitlement` releases fulfillment
+only after the documented complete-payment checks. A revised order total must
+not be recorded as another full cash receipt.
+
 - **Auth:** Required (owner) or Admin
 - **Description:** List orders
 - **Response 200:** `OrderRead[]`
