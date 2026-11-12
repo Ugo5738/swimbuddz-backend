@@ -238,6 +238,45 @@ async def cleanup_member(
             errors=errors,
         )
 
+    if not auth_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Hard-delete requires an auth_id; use Soft Delete instead.",
+        )
+
+    # Validate the two known hard-delete blockers *before* deleting any service
+    # data. A 409 here must not leave payment or attendance records half-purged.
+    for name, client, url in (
+        (
+            "members",
+            clients.members_client,
+            f"/members/{member_id}/hard-delete-preflight",
+        ),
+        (
+            "payments",
+            clients.payments_client,
+            f"/payments/admin/members/by-auth/{auth_id}/hard-delete-preflight",
+        ),
+    ):
+        try:
+            check = await client.get(url, headers=headers)
+            if isinstance(check, httpx.Response) and check.status_code >= 400:
+                check.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = str(exc)
+            try:
+                detail = str(exc.response.json().get("detail") or detail)
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=409 if exc.response.status_code == 409 else 502,
+                detail=f"{name} hard-delete preflight failed: {detail}",
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502, detail=f"{name} preflight unavailable: {exc}"
+            ) from exc
+
     if auth_id:
         await run_call(
             "payments",
@@ -248,42 +287,77 @@ async def cleanup_member(
     else:
         errors.append({"service": "payments", "error": "Missing member auth_id"})
         results["payments"] = {"error": "Missing member auth_id"}
+    if errors:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Hard-delete stopped after a service failure: {errors}",
+        )
     await run_call(
         "attendance",
         clients.attendance_client.delete(
             f"/attendance/admin/members/{member_id}", headers=headers
         ),
     )
+    if errors:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Hard-delete stopped after a service failure: {errors}",
+        )
     await run_call(
         "academy",
         clients.academy_client.delete(
             f"/academy/admin/members/{member_id}", headers=headers
         ),
     )
+    if errors:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Hard-delete stopped after a service failure: {errors}",
+        )
     await run_call(
         "communications",
         clients.communications_client.delete(
             f"/admin/members/{member_id}", headers=headers
         ),
     )
+    if errors:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Hard-delete stopped after a service failure: {errors}",
+        )
     await run_call(
         "events",
         clients.events_client.delete(
             f"/events/admin/members/{member_id}", headers=headers
         ),
     )
+    if errors:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Hard-delete stopped after a service failure: {errors}",
+        )
     await run_call(
         "transport",
         clients.transport_client.delete(
             f"/transport/admin/members/{member_id}", headers=headers
         ),
     )
+    if errors:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Hard-delete stopped after a service failure: {errors}",
+        )
     await run_call(
         "media",
         clients.media_client.delete(
             f"/media/admin/members/{member_id}", headers=headers
         ),
     )
+    if errors:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Hard-delete stopped after a service failure: {errors}",
+        )
     await run_call(
         "members",
         clients.members_client.delete(f"/members/{member_id}", headers=headers),
