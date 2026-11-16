@@ -36,15 +36,11 @@ async def apply_store_order(payment: Payment) -> None:
             client, payment, reference_type="store_order"
         )
         resp = await client.post(
-            f"{settings.STORE_SERVICE_URL}/admin/store/orders/{order_id}/mark-paid",
-            params={
+            f"{settings.STORE_SERVICE_URL}/internal/store/orders/{order_id}/confirm-payment",
+            json={
                 "payment_reference": payment.reference,
                 "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
-                **(
-                    {"wallet_transaction_id": wallet_transaction_id}
-                    if wallet_transaction_id
-                    else {}
-                ),
+                "wallet_transaction_id": wallet_transaction_id,
             },
             headers=headers,
         )
