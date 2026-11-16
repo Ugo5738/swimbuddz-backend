@@ -91,6 +91,16 @@ jobs:
         run: |
           pytest tests/unit/ -v
 
+      - name: Verify migration backup restore with synthetic data
+        run: |
+          umask 077
+          printf '%s\n' 'DATABASE_SESSION_URL=postgresql://test:test@host.docker.internal:5432/test_db?sslmode=disable' > "$RUNNER_TEMP/backup-test.env"
+          python scripts/deployment/backup_database.py \
+            --env-file "$RUNNER_TEMP/backup-test.env" \
+            --destination "$RUNNER_TEMP/recovery-drill"
+          test -s "$RUNNER_TEMP/recovery-drill/verified.json"
+          rm -rf "$RUNNER_TEMP/recovery-drill" "$RUNNER_TEMP/backup-test.env"
+
       - name: Check dashboard concurrency and safe gateway retries
         run: pytest services/gateway_service/app/tests/ -v
 
@@ -116,6 +126,7 @@ jobs:
           pytest -v \
             tests/integration/test_members_entitlement_idempotency.py
 
+          pytest -v tests/integration/test_members_read_cost.py
           pytest -v tests/integration/test_experience_ticket_orders.py
           pytest -v tests/integration/test_club_schedule_operations.py
           pytest -v tests/integration/test_club_location_mobility.py
