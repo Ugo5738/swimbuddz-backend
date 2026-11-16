@@ -12,6 +12,7 @@ from services.media_service.tasks.vault_bandwidth import (
     _is_derivative,
     _retry_delay,
     _retry_unmatched_events,
+    reconcile_vault_bandwidth,
 )
 
 
@@ -145,3 +146,17 @@ async def test_retry_marks_last_failed_attempt_terminal_without_deleting_event()
     assert stored.next_match_attempt_at is None
     assert stored.bytes_sent == event.bytes_sent
     db.commit.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_emergency_pause_does_not_touch_media_storage(monkeypatch):
+    from services.media_service.tasks import vault_bandwidth
+
+    monkeypatch.setattr(
+        vault_bandwidth.settings,
+        "MEDIA_VAULT_BANDWIDTH_RECONCILIATION_ENABLED",
+        False,
+    )
+    assert await reconcile_vault_bandwidth() == {
+        "status": "paused",
+        "processed_objects": 0,
+    }
