@@ -228,6 +228,9 @@ class Settings(BaseSettings):
     MEDIA_VAULT_S3_ACCESS_LOG_PREFIX: str = "media-vault/s3/"
     MEDIA_VAULT_ACCESS_LOG_LOOKBACK_DAYS: int = 7
     MEDIA_VAULT_ACCESS_LOG_MAX_OBJECTS_PER_RUN: int = 500
+    MEDIA_VAULT_MATCH_BATCH_SIZE: int = 200
+    MEDIA_VAULT_MATCH_MAX_ATTEMPTS: int = 7
+    MEDIA_VAULT_MATCH_INITIAL_BACKOFF_MINUTES: int = 60
     # Stroke Lab media is owned by media_service and stored in AWS_S3_BUCKET_PRIVATE
     # under Stroke Lab object prefixes.
 
