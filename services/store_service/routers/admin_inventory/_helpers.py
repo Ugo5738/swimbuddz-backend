@@ -110,8 +110,11 @@ async def _apply_order_status_change(
     if (
         old_status in {OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_FAILED}
         and new_status in {
-            OrderStatus.PROCESSING, OrderStatus.READY_FOR_PICKUP,
-            OrderStatus.PICKED_UP, OrderStatus.SHIPPED, OrderStatus.DELIVERED,
+            OrderStatus.PROCESSING,
+            OrderStatus.READY_FOR_PICKUP,
+            OrderStatus.PICKED_UP,
+            OrderStatus.SHIPPED,
+            OrderStatus.DELIVERED,
         }
     ):
         raise HTTPException(
