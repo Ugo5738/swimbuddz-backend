@@ -216,6 +216,7 @@ async def retry_failed_entitlement_fulfillment() -> None:
 
     now = utc_now()
     processed = 0
+    fulfillment_status = Payment.payment_metadata["fulfillment"]["status"].astext
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
@@ -226,9 +227,7 @@ async def retry_failed_entitlement_fulfillment() -> None:
                 # Dead-lettered payments require manual reconciliation, not
                 # five-minute reloading on every automatic retry pass. Keep
                 # NULL/missing fulfillment metadata eligible for recovery.
-                func.coalesce(
-                    Payment.payment_metadata["fulfillment"]["status"].astext, ""
-                ) != "dead_letter",
+                func.coalesce(fulfillment_status, "") != "dead_letter",
             )
             .order_by(Payment.updated_at.asc())
             .limit(200)
