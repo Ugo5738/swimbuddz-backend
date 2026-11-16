@@ -36,9 +36,7 @@ async def test_vault_bandwidth_includes_unattributed_preview_without_double_coun
         scalar=AsyncMock(return_value=None),
     )
 
-    summary = await bandwidth_summary(
-        months=1, current_user=SimpleNamespace(), db=db
-    )
+    summary = await bandwidth_summary(months=1, current_user=SimpleNamespace(), db=db)
     entry = summary.months[0]
     assert entry.upload_bytes == 400
     assert entry.download_authorized_bytes == 1000
@@ -68,14 +66,10 @@ async def test_vault_bandwidth_derivative_only_month_remains_visible():
         day=1, hour=0, minute=0, second=0, microsecond=0
     )
     db = SimpleNamespace(
-        execute=AsyncMock(
-            side_effect=[_Rows([]), _Rows([(month, 0, 750)])]
-        ),
+        execute=AsyncMock(side_effect=[_Rows([]), _Rows([(month, 0, 750)])]),
         scalar=AsyncMock(return_value=None),
     )
-    summary = await bandwidth_summary(
-        months=1, current_user=SimpleNamespace(), db=db
-    )
+    summary = await bandwidth_summary(months=1, current_user=SimpleNamespace(), db=db)
     assert len(summary.months) == 1
     assert summary.months[0].download_effective_bytes == 750
     assert summary.months[0].download_reconciled_bytes == 0
