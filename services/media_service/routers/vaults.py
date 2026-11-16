@@ -3878,7 +3878,7 @@ async def bandwidth_summary(
             "download_pending_estimate_bytes": int(pending),
             "download_effective_bytes": int(pending),
         }
-    for month, reconciled in access_rows.all():
+    for month, reconciled, derivative_bytes in access_rows.all():
         month_key = month.astimezone(timezone.utc).strftime("%Y-%m")
         bucket = buckets_by_month.setdefault(
             month_key,
