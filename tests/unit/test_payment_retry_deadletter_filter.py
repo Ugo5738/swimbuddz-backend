@@ -1,6 +1,5 @@
 """Regression tests for the lightweight automatic fulfillment retry scan."""
 
-
 import pytest
 from sqlalchemy.dialects import postgresql
 
