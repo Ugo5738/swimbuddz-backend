@@ -6,6 +6,71 @@ deduplicates requests by AWS request ID, matches each request to the most likely
 authorization using object key, signed-URL time window, IP address and user
 agent, and stores the bytes S3 actually sent.
 
+## Cost-safe matching and attribution (November 2026)
+
+The worker ingests immutable S3 request evidence whether or not it can attribute
+that delivery to a signed-original/export authorization. **Do not delete S3
+request records or zero their measured bytes to make reconciliation succeed.**
+
+- `matched`: request linked to an authorized original/export transfer;
+  `media_transfer_logs` receives measured bytes from the request ledger.
+- `unattributed`: derivative/proxy/preview GET without corresponding
+  authorization in the original/export transfer ledger. These S3-delivered
+  bytes remain measurable and auditable, but no match is repeatedly attempted.
+- `unmatched`: original/export candidate with bounded delayed retries.
+  Retries start after one hour and back off exponentially up to one day.
+- `exhausted`: no match after the configured maximum number of attempts.
+  Attribution is unresolved, not proof of unauthorized use.
+- `expired`: an unmatched request older than the configured access-log
+  lookback. It remains in the access ledger for investigation and accounting.
+
+The migration classifies historical derivative records without deleting them.
+The worker classifies older unmatched original/export events against the actual
+configured lookback. New derivative records never trigger transfer lookups.
+
+Each retry batch selects only due unmatched rows with `FOR UPDATE SKIP LOCKED`,
+makes a single bounded query for presigned-transfer candidates, then scores by
+the signed-URL time window, IP and user agent. Legacy per-item matching is used
+only when any legacy transfer row without `object_key` remains.
+
+Configuration:
+
+```dotenv
+MEDIA_VAULT_BANDWIDTH_RECONCILIATION_ENABLED=true
+MEDIA_VAULT_MATCH_BATCH_SIZE=200
+MEDIA_VAULT_MATCH_MAX_ATTEMPTS=7
+MEDIA_VAULT_MATCH_INITIAL_BACKOFF_MINUTES=60
+```
+
+The worker retains source object keys, AWS request IDs, measured bytes and
+audit metadata in terminal states. Ingestion remains idempotent.
+
+### Diagnostic and rollout checklist
+
+1. Record baseline counts per `match_status`, reconciliation query calls,
+   Supavisor connection events, log ingestion and 24-hour egress.
+2. Apply the media migration once, on a verified single migration head.
+3. Deploy the code, then check that derivative records become
+   `unattributed`, old unmatched records `expired`, and newly pending
+   original/export records are retried only when due.
+4. Verify original and export matches still update measured transfer bytes
+   (including range GETs) without double-counting events.
+5. Monitor daily egress and log ingestion for several days. Do not infer
+   reduction from query count alone.
+6. For transaction-mode Supavisor, retain disabled psycopg prepared statements.
+   The production Docker Compose file exposes a **media-worker-only** pilot:
+   `MEDIA_WORKER_DB_USE_LOCAL_POOL=true` (default false),
+   `MEDIA_WORKER_DB_POOL_SIZE=2` and `MEDIA_WORKER_DB_MAX_OVERFLOW=0`.
+   These are Docker Compose interpolation variables, supplied to the Compose
+   process (shell or Compose `.env`). They are not activated merely by
+   adding `MEDIA_WORKER_DB_USE_LOCAL_POOL` inside the container's `.env.prod`.
+   These values are passed only to `media-worker`, while the other services
+   retain their existing connection behavior. Enable after a connection-budget
+   review, compare performance and auth events, and revert the pilot by setting
+   `MEDIA_WORKER_DB_USE_LOCAL_POOL=false`. Do **not** add global
+   `DB_USE_LOCAL_POOL=true` to the shared `.env.prod`; that would enable
+   pooling for all microservices and background workers.
+
 S3 access-log delivery is delayed and best-effort. A matched request is an AWS
 measurement, but a missing request is not proof that no data was sent. The
 dashboard therefore keeps authorized bytes as a conservative estimate until an

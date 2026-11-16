@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import gzip
 import shlex
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import unquote
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.config import get_settings
@@ -36,6 +37,40 @@ settings = get_settings()
 VAULT_OBJECT_PREFIXES = ("vaults/", "vault-exports/", "vault-derivatives/")
 S3_DOWNLOAD_OPERATIONS = {"REST.GET.OBJECT", "REST.GET.OBJECT_VERSION"}
 S3_DOWNLOAD_STATUS_CODES = {200, 206}
+
+
+def _is_derivative(event: S3AccessEvent) -> bool:
+    """Derivative previews are S3 deliveries, not authorized original exports."""
+    return event.object_key.startswith("vault-derivatives/")
+
+
+def _retry_delay(attempts: int) -> timedelta:
+    """Exponential backoff for unsuccessful transfer matches (one hour initially)."""
+    base = max(1, settings.MEDIA_VAULT_MATCH_INITIAL_BACKOFF_MINUTES)
+    # Capped at 24 hours to avoid overflow and excessively long waits.
+    minutes = min(24 * 60, base * (2 ** min(max(attempts - 1, 0), 12)))
+    return timedelta(minutes=minutes)
+
+
+def _best_transfer(
+    event: S3AccessEvent, candidates: list[MediaTransferLog], ttl: int
+) -> Optional[MediaTransferLog]:
+    """Preserve key/time-window plus IP/UA scoring from the original reconciler."""
+    earliest = event.occurred_at - timedelta(seconds=ttl)
+    latest = event.occurred_at + timedelta(minutes=5)
+    relevant = [item for item in candidates if earliest <= item.created_at <= latest]
+    if not relevant:
+        return None
+
+    def score(transfer: MediaTransferLog) -> tuple[int, datetime]:
+        identity_score = 0
+        if event.remote_ip and transfer.ip_address == event.remote_ip:
+            identity_score += 2
+        if event.user_agent and transfer.user_agent == event.user_agent:
+            identity_score += 1
+        return identity_score, transfer.created_at
+
+    return max(relevant, key=score)
 
 
 @dataclass(frozen=True)
@@ -146,23 +181,25 @@ async def _find_transfer(
         .limit(30)
     )
     candidates = list(direct_rows.scalars().all())
+    if candidates:
+        return _best_transfer(event, candidates, ttl)
 
-    # Ledger rows created before object_key was denormalized still reconcile
-    # through their media/export foreign keys.
-    if not candidates:
-        candidates = await _find_legacy_transfer_candidates(db, event, ttl)
-    if not candidates:
+    # Legacy rows exist before object_key was denormalized. Avoid the
+    # two extra lookups unless there are actually such download records.
+    legacy = await db.scalar(
+        select(MediaTransferLog.id)
+        .where(
+            MediaTransferLog.direction == "download",
+            MediaTransferLog.delivery_method == "s3_presigned",
+            MediaTransferLog.object_key.is_(None),
+        )
+        .limit(1)
+    )
+    if not legacy:
         return None
-
-    def score(transfer: MediaTransferLog) -> tuple[int, datetime]:
-        identity_score = 0
-        if event.remote_ip and transfer.ip_address == event.remote_ip:
-            identity_score += 2
-        if event.user_agent and transfer.user_agent == event.user_agent:
-            identity_score += 1
-        return identity_score, transfer.created_at
-
-    return max(candidates, key=score)
+    return _best_transfer(
+        event, await _find_legacy_transfer_candidates(db, event, ttl), ttl
+    )
 
 
 async def _find_legacy_transfer_candidates(
@@ -189,6 +226,7 @@ async def _find_legacy_transfer_candidates(
         .where(
             MediaTransferLog.direction == "download",
             MediaTransferLog.delivery_method == "s3_presigned",
+            MediaTransferLog.object_key.is_(None),
             or_(*object_filters),
             MediaTransferLog.created_at >= event.occurred_at - timedelta(seconds=ttl),
             MediaTransferLog.created_at <= event.occurred_at + timedelta(minutes=5),
@@ -304,7 +342,13 @@ async def _ingest_log_object(
             request_key = (event.target_bucket, event.request_id)
             if request_key in existing_requests:
                 continue
-            transfer = await _find_transfer(db, event)
+            # The original/export ledger has no presigned authorization rows
+            # for derivative previews; retain AWS bytes without futile queries.
+            derivative = _is_derivative(event)
+            transfer = None if derivative else await _find_transfer(db, event)
+            attempted_at = utc_now()
+            attempts = 0 if derivative else 1
+            exhausted = attempts >= max(1, settings.MEDIA_VAULT_MATCH_MAX_ATTEMPTS)
             access_event = MediaAccessLogEvent(
                 source_log_object_id=record.id,
                 transfer_log_id=transfer.id if transfer else None,
@@ -315,7 +359,22 @@ async def _ingest_log_object(
                 object_key=event.object_key,
                 bytes_sent=event.bytes_sent,
                 status_code=event.status_code,
-                match_status="matched" if transfer else "unmatched",
+                match_status=(
+                    "unattributed"
+                    if derivative
+                    else "matched"
+                    if transfer
+                    else "exhausted"
+                    if exhausted
+                    else "unmatched"
+                ),
+                match_attempts=attempts,
+                last_match_attempt_at=attempted_at if attempts else None,
+                next_match_attempt_at=(
+                    attempted_at + _retry_delay(attempts)
+                    if not derivative and not transfer and not exhausted
+                    else None
+                ),
                 remote_ip=event.remote_ip,
                 user_agent=event.user_agent,
                 metadata_json={
@@ -358,20 +417,100 @@ async def _ingest_log_object(
 
 
 async def _retry_unmatched_events(db: AsyncSession, now: datetime) -> int:
+    """Bounded, due-only bulk matching; preserve all S3 access audit events.
+
+    Retain derivative and stale events with explicit terminal statuses, instead
+    of scanning them on every run. Rows are locked SKIP LOCKED to prevent
+    overlapping worker invocations from retrying the same event concurrently.
+    """
     lookback = max(1, settings.MEDIA_VAULT_ACCESS_LOG_LOOKBACK_DAYS)
+    cutoff = now - timedelta(days=lookback)
+    max_attempts = max(1, settings.MEDIA_VAULT_MATCH_MAX_ATTEMPTS)
+    batch_size = min(500, max(1, settings.MEDIA_VAULT_MATCH_BATCH_SIZE))
+
+    # One-time classification also handles historical records produced by the
+    # old reconciler. No source events or measured bytes are deleted.
+    await db.execute(
+        update(MediaAccessLogEvent)
+        .where(
+            MediaAccessLogEvent.provider == "s3",
+            MediaAccessLogEvent.match_status == "unmatched",
+            MediaAccessLogEvent.object_key.like("vault-derivatives/%"),
+        )
+        .values(match_status="unattributed", next_match_attempt_at=None)
+    )
+    await db.execute(
+        update(MediaAccessLogEvent)
+        .where(
+            MediaAccessLogEvent.provider == "s3",
+            MediaAccessLogEvent.match_status == "unmatched",
+            MediaAccessLogEvent.occurred_at < cutoff,
+        )
+        .values(match_status="expired", next_match_attempt_at=None)
+    )
+    await db.execute(
+        update(MediaAccessLogEvent)
+        .where(
+            MediaAccessLogEvent.provider == "s3",
+            MediaAccessLogEvent.match_status == "unmatched",
+            MediaAccessLogEvent.match_attempts >= max_attempts,
+        )
+        .values(match_status="exhausted", next_match_attempt_at=None)
+    )
     rows = await db.execute(
         select(MediaAccessLogEvent)
         .where(
             MediaAccessLogEvent.provider == "s3",
             MediaAccessLogEvent.match_status == "unmatched",
-            MediaAccessLogEvent.occurred_at >= now - timedelta(days=lookback),
+            MediaAccessLogEvent.occurred_at >= cutoff,
+            MediaAccessLogEvent.match_attempts < max_attempts,
+            or_(
+                MediaAccessLogEvent.next_match_attempt_at.is_(None),
+                MediaAccessLogEvent.next_match_attempt_at <= now,
+            ),
         )
-        .order_by(MediaAccessLogEvent.occurred_at.desc())
-        .limit(500)
+        .order_by(MediaAccessLogEvent.occurred_at.asc())
+        .limit(batch_size)
+        .with_for_update(skip_locked=True)
     )
+    access_events = list(rows.scalars().all())
+    if not access_events:
+        await db.commit()
+        return 0
+
+    # One bounded direct query instead of 1-3 queries per unmatched event.
+    keys = {event.object_key for event in access_events}
+    ttl = max(60, settings.MEDIA_VAULT_SIGNED_URL_TTL_SECONDS)
+    first = min(event.occurred_at for event in access_events)
+    last = max(event.occurred_at for event in access_events)
+    direct_rows = await db.execute(
+        select(MediaTransferLog).where(
+            MediaTransferLog.direction == "download",
+            MediaTransferLog.delivery_method == "s3_presigned",
+            MediaTransferLog.object_key.in_(keys),
+            MediaTransferLog.created_at >= first - timedelta(seconds=ttl),
+            MediaTransferLog.created_at <= last + timedelta(minutes=5),
+        )
+    )
+    by_key: dict[str, list[MediaTransferLog]] = defaultdict(list)
+    for transfer in direct_rows.scalars().all():
+        if transfer.object_key:
+            by_key[transfer.object_key].append(transfer)
+
+    # Only check legacy media/export identifiers if a legacy ledger row exists.
+    legacy_present = await db.scalar(
+        select(MediaTransferLog.id)
+        .where(
+            MediaTransferLog.direction == "download",
+            MediaTransferLog.delivery_method == "s3_presigned",
+            MediaTransferLog.object_key.is_(None),
+        )
+        .limit(1)
+    )
+
     matched = 0
-    for access_event in rows.scalars().all():
-        event = S3AccessEvent(
+    for access_event in access_events:
+        candidate = S3AccessEvent(
             target_bucket=access_event.target_bucket,
             request_id=access_event.request_id,
             occurred_at=access_event.occurred_at,
@@ -387,17 +526,32 @@ async def _retry_unmatched_events(db: AsyncSession, now: datetime) -> int:
                 "authentication_type"
             ),
         )
-        transfer = await _find_transfer(db, event)
+        transfer = _best_transfer(candidate, by_key.get(candidate.object_key, []), ttl)
+        if not transfer and legacy_present:
+            legacy = await _find_legacy_transfer_candidates(db, candidate, ttl)
+            transfer = _best_transfer(candidate, legacy, ttl)
+
+        access_event.match_attempts += 1
+        access_event.last_match_attempt_at = now
         if transfer:
+            access_event.next_match_attempt_at = None
             await _link_event_to_transfer(db, access_event, transfer)
             matched += 1
-    if matched:
-        await db.commit()
+        elif access_event.match_attempts >= max_attempts:
+            access_event.match_status = "exhausted"
+            access_event.next_match_attempt_at = None
+        else:
+            access_event.next_match_attempt_at = now + _retry_delay(
+                access_event.match_attempts
+            )
+    await db.commit()
     return matched
 
 
 async def reconcile_vault_bandwidth() -> dict[str, int | str]:
     """Consume recent S3 logs and update the vault transfer ledger."""
+    if not settings.MEDIA_VAULT_BANDWIDTH_RECONCILIATION_ENABLED:
+        return {"status": "paused", "processed_objects": 0}
     source_bucket = settings.MEDIA_VAULT_ACCESS_LOG_BUCKET.strip()
     if not source_bucket:
         return {"status": "disabled", "processed_objects": 0}

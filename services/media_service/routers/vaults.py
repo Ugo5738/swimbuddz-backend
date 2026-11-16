@@ -3889,7 +3889,10 @@ async def bandwidth_summary(
         months=buckets,
         current_month_download_bytes=current_effective,
         allowance_remaining_bytes=max(0, allowance - current_effective),
-        reconciliation_enabled=bool(settings.MEDIA_VAULT_ACCESS_LOG_BUCKET.strip()),
+        reconciliation_enabled=bool(
+            settings.MEDIA_VAULT_BANDWIDTH_RECONCILIATION_ENABLED
+            and settings.MEDIA_VAULT_ACCESS_LOG_BUCKET.strip()
+        ),
         reconciliation_last_processed_at=last_processed_at,
         measurement_note=(
             "Effective download usage uses actual S3 bytes for reconciled requests, "
