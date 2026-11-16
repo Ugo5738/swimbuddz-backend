@@ -3888,6 +3888,7 @@ async def bandwidth_summary(
                 "download_authorized_bytes": 0,
                 "download_completed_bytes": 0,
                 "download_reconciled_bytes": 0,
+                "download_unattributed_derivative_bytes": 0,
                 "download_pending_estimate_bytes": 0,
                 "download_effective_bytes": 0,
             },
