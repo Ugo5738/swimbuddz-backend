@@ -100,6 +100,26 @@ async def _apply_order_status_change(
 ) -> None:
     """Apply a status change to an already-loaded order, including all side effects."""
     old_status = order.status
+    # Financial settlement is owned by payments_service; the admin's
+    # operational status dropdown must not become an unaudited payment proof.
+    if new_status == OrderStatus.PAID and old_status != OrderStatus.PAID:
+        raise HTTPException(
+            status_code=409,
+            detail="Verify payment through the payment review workflow before marking an order paid",
+        )
+    unpaid_statuses = {OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_FAILED}
+    fulfillment_statuses = {
+        OrderStatus.PROCESSING,
+        OrderStatus.READY_FOR_PICKUP,
+        OrderStatus.PICKED_UP,
+        OrderStatus.SHIPPED,
+        OrderStatus.DELIVERED,
+    }
+    if old_status in unpaid_statuses and new_status in fulfillment_statuses:
+        raise HTTPException(
+            status_code=409,
+            detail="Order must have a verified payment before fulfillment",
+        )
     order.status = new_status
 
     if admin_notes:
