@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from services.media_service.tasks.vault_bandwidth import (
     S3AccessEvent,
@@ -113,7 +114,9 @@ async def test_retry_uses_one_bulk_candidate_query_and_schedules_next_attempt():
     assert stored.match_status == "unmatched"
     assert stored.last_match_attempt_at == now
     assert stored.next_match_attempt_at == now + timedelta(hours=1)
-    sql = str(db.execute.await_args_list[3].args[0])
+    sql = str(
+        db.execute.await_args_list[3].args[0].compile(dialect=postgresql.dialect())
+    )
     assert "SKIP LOCKED" in sql
 
 
