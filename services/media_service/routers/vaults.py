@@ -3894,9 +3894,12 @@ async def bandwidth_summary(
             },
         )
         bucket["download_reconciled_bytes"] = int(reconciled)
-        bucket["download_effective_bytes"] = int(
-            bucket["download_pending_estimate_bytes"]
-        ) + int(reconciled)
+        bucket["download_unattributed_derivative_bytes"] = int(derivative_bytes)
+        bucket["download_effective_bytes"] = (
+            int(bucket["download_pending_estimate_bytes"])
+            + int(reconciled)
+            + int(derivative_bytes)
+        )
     buckets = [buckets_by_month[key] for key in sorted(buckets_by_month)]
     current_key = utc_now().strftime("%Y-%m")
     current_effective = next(
