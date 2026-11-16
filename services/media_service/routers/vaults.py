@@ -3825,15 +3825,42 @@ async def bandwidth_summary(
         .order_by(month_expr)
     )
     access_month_expr = func.date_trunc("month", MediaAccessLogEvent.occurred_at)
+    # Matched original/export requests and unattributed derivative preview
+    # downloads are disjoint S3 request IDs. Original requests without a
+    # matching authorization are NOT added here: their authorized-byte
+    # estimate may still be included below, so counting both would inflate
+    # the effective usage number.
+    is_matched = MediaAccessLogEvent.match_status == "matched"
+    is_derivative_delivery = and_(
+        MediaAccessLogEvent.object_key.like("vault-derivatives/%"),
+        MediaAccessLogEvent.match_status != "matched",
+    )
     access_rows = await db.execute(
         select(
             access_month_expr.label("month"),
-            func.coalesce(func.sum(MediaAccessLogEvent.bytes_sent), 0),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (is_matched, MediaAccessLogEvent.bytes_sent),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("matched_bytes"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (is_derivative_delivery, MediaAccessLogEvent.bytes_sent),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("unattributed_derivative_bytes"),
         )
         .where(
             MediaAccessLogEvent.occurred_at >= start,
             MediaAccessLogEvent.provider == "s3",
-            MediaAccessLogEvent.match_status == "matched",
+            or_(is_matched, is_derivative_delivery),
         )
         .group_by(access_month_expr)
         .order_by(access_month_expr)
