@@ -17,12 +17,18 @@ from services.media_service.tasks.vault_bandwidth import (
 
 def _event(key="vaults/clip.mov", occurred=None):
     return S3AccessEvent(
-        target_bucket="private", request_id="test-1",
+        target_bucket="private",
+        request_id="test-1",
         occurred_at=occurred or datetime(2026, 11, 15, tzinfo=timezone.utc),
-        object_key=key, bytes_sent=1024, status_code=206,
-        remote_ip="203.0.113.1", user_agent="iPhone",
-        operation="REST.GET.OBJECT", requester=None,
-        error_code=None, authentication_type="QueryString",
+        object_key=key,
+        bytes_sent=1024,
+        status_code=206,
+        remote_ip="203.0.113.1",
+        user_agent="iPhone",
+        operation="REST.GET.OBJECT",
+        requester=None,
+        error_code=None,
+        authentication_type="QueryString",
     )
 
 
@@ -43,11 +49,13 @@ def test_batch_transfer_scoring_keeps_signed_url_window_and_identity():
     event = _event()
     best = SimpleNamespace(
         created_at=event.occurred_at - timedelta(minutes=10),
-        ip_address=event.remote_ip, user_agent=event.user_agent,
+        ip_address=event.remote_ip,
+        user_agent=event.user_agent,
     )
     later = SimpleNamespace(
         created_at=event.occurred_at - timedelta(minutes=5),
-        ip_address="other", user_agent="other",
+        ip_address="other",
+        user_agent="other",
     )
     too_old = SimpleNamespace(
         created_at=event.occurred_at - timedelta(hours=3),
@@ -88,9 +96,7 @@ async def test_retry_uses_one_bulk_candidate_query_and_schedules_next_attempt():
         match_status="unmatched",
     )
     db = SimpleNamespace(
-        execute=AsyncMock(
-            side_effect=[None, None, None, _Rows([stored]), _Rows([])]
-        ),
+        execute=AsyncMock(side_effect=[None, None, None, _Rows([stored]), _Rows([])]),
         scalar=AsyncMock(return_value=None),
         commit=AsyncMock(),
     )
@@ -114,12 +120,18 @@ async def test_retry_marks_last_failed_attempt_terminal_without_deleting_event()
     now = datetime(2026, 11, 16, 6, tzinfo=timezone.utc)
     event = _event(occurred=now - timedelta(days=1))
     stored = SimpleNamespace(
-        target_bucket=event.target_bucket, request_id=event.request_id,
-        occurred_at=event.occurred_at, object_key=event.object_key,
-        bytes_sent=event.bytes_sent, status_code=event.status_code,
-        remote_ip=event.remote_ip, user_agent=event.user_agent,
-        metadata_json={}, match_attempts=6,
-        last_match_attempt_at=None, next_match_attempt_at=None,
+        target_bucket=event.target_bucket,
+        request_id=event.request_id,
+        occurred_at=event.occurred_at,
+        object_key=event.object_key,
+        bytes_sent=event.bytes_sent,
+        status_code=event.status_code,
+        remote_ip=event.remote_ip,
+        user_agent=event.user_agent,
+        metadata_json={},
+        match_attempts=6,
+        last_match_attempt_at=None,
+        next_match_attempt_at=None,
         match_status="unmatched",
     )
     db = SimpleNamespace(
