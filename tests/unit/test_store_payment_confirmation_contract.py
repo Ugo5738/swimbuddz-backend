@@ -93,6 +93,8 @@ async def test_reference_mismatch_does_not_change_order():
         await order_routes.confirm_verified_order_payment(
             order_id,
             payment_reference="PAY-other",
+            wallet_transaction_id=None,
+            paid_at=None,
             current_user=_service_user(),
             db=db,
         )
@@ -115,6 +117,8 @@ async def test_cannot_reopen_cancelled_order_with_payment_confirmation():
         await order_routes.confirm_verified_order_payment(
             order_id,
             payment_reference="PAY-real",
+            wallet_transaction_id=None,
+            paid_at=None,
             current_user=_service_user(),
             db=db,
         )
