@@ -226,6 +226,7 @@ async def _find_legacy_transfer_candidates(
         .where(
             MediaTransferLog.direction == "download",
             MediaTransferLog.delivery_method == "s3_presigned",
+            MediaTransferLog.object_key.is_(None),
             or_(*object_filters),
             MediaTransferLog.created_at >= event.occurred_at - timedelta(seconds=ttl),
             MediaTransferLog.created_at <= event.occurred_at + timedelta(minutes=5),
