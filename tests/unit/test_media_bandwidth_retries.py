@@ -165,3 +165,40 @@ async def test_emergency_pause_does_not_touch_media_storage(monkeypatch):
         "status": "paused",
         "processed_objects": 0,
     }
+
+
+@pytest.mark.asyncio
+async def test_multiple_unmatched_events_share_one_batched_lookup():
+    now = datetime(2026, 11, 16, 6, tzinfo=timezone.utc)
+    events = [
+        _event(key="vaults/first.mov", occurred=now - timedelta(hours=1)),
+        _event(key="vaults/second.mov", occurred=now - timedelta(hours=2)),
+    ]
+    stored = [
+        SimpleNamespace(
+            target_bucket=e.target_bucket,
+            request_id=f"req-{idx}",
+            occurred_at=e.occurred_at,
+            object_key=e.object_key,
+            bytes_sent=e.bytes_sent,
+            status_code=e.status_code,
+            remote_ip=e.remote_ip,
+            user_agent=e.user_agent,
+            metadata_json={},
+            match_attempts=0,
+            last_match_attempt_at=None,
+            next_match_attempt_at=None,
+            match_status="unmatched",
+        )
+        for idx, e in enumerate(events)
+    ]
+    db = SimpleNamespace(
+        execute=AsyncMock(side_effect=[None, None, None, _Rows(stored), _Rows([])]),
+        scalar=AsyncMock(return_value=None),
+        commit=AsyncMock(),
+    )
+    assert await _retry_unmatched_events(db, now) == 0
+    assert db.execute.await_count == 5
+    assert db.scalar.await_count == 1
+    assert [event.match_attempts for event in stored] == [1, 1]
+    db.commit.assert_awaited_once()
