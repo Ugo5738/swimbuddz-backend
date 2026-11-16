@@ -58,11 +58,7 @@ def _best_transfer(
     """Preserve key/time-window plus IP/UA scoring from the original reconciler."""
     earliest = event.occurred_at - timedelta(seconds=ttl)
     latest = event.occurred_at + timedelta(minutes=5)
-    relevant = [
-        item
-        for item in candidates
-        if earliest <= item.created_at <= latest
-    ]
+    relevant = [item for item in candidates if earliest <= item.created_at <= latest]
     if not relevant:
         return None
 
@@ -365,13 +361,18 @@ async def _ingest_log_object(
                 match_status=(
                     "unattributed"
                     if derivative
-                    else "matched" if transfer else "exhausted" if exhausted else "unmatched"
+                    else "matched"
+                    if transfer
+                    else "exhausted"
+                    if exhausted
+                    else "unmatched"
                 ),
                 match_attempts=attempts,
                 last_match_attempt_at=attempted_at if attempts else None,
                 next_match_attempt_at=(
                     attempted_at + _retry_delay(attempts)
-                    if not derivative and not transfer and not exhausted else None
+                    if not derivative and not transfer and not exhausted
+                    else None
                 ),
                 remote_ip=event.remote_ip,
                 user_agent=event.user_agent,
@@ -544,6 +545,7 @@ async def _retry_unmatched_events(db: AsyncSession, now: datetime) -> int:
             )
     await db.commit()
     return matched
+
 
 async def reconcile_vault_bandwidth() -> dict[str, int | str]:
     """Consume recent S3 logs and update the vault transfer ledger."""
