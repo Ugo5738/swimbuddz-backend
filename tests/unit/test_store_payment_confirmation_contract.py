@@ -135,6 +135,7 @@ async def test_admin_cannot_mark_unpaid_order_fulfilled():
     assert order.status == OrderStatus.PENDING_PAYMENT
     db.commit.assert_not_awaited()
 
+
 @pytest.mark.asyncio
 async def test_legacy_admin_mark_paid_shortcut_is_disabled():
     with pytest.raises(HTTPException) as err:
@@ -150,9 +151,13 @@ def test_private_payment_confirmation_route_is_not_public_api_schema():
     from services.store_service.app.main import app
 
     private_routes = [
-        route for route in app.routes
+        route
+        for route in app.routes
         if route.path == "/internal/store/orders/{order_id}/confirm-payment"
     ]
     assert len(private_routes) == 1
     assert private_routes[0].include_in_schema is False
-    assert "/internal/store/orders/{order_id}/confirm-payment" not in app.openapi()["paths"]
+    assert (
+        "/internal/store/orders/{order_id}/confirm-payment"
+        not in app.openapi()["paths"]
+    )
