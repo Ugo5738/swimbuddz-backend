@@ -3874,7 +3874,6 @@ async def bandwidth_summary(
             "download_authorized_bytes": int(authorized),
             "download_completed_bytes": int(completed),
             "download_reconciled_bytes": 0,
-            "download_unattributed_derivative_bytes": 0,
             "download_pending_estimate_bytes": int(pending),
             "download_effective_bytes": int(pending),
         }
@@ -3888,13 +3887,11 @@ async def bandwidth_summary(
                 "download_authorized_bytes": 0,
                 "download_completed_bytes": 0,
                 "download_reconciled_bytes": 0,
-                "download_unattributed_derivative_bytes": 0,
-                "download_pending_estimate_bytes": 0,
+                    "download_pending_estimate_bytes": 0,
                 "download_effective_bytes": 0,
             },
         )
         bucket["download_reconciled_bytes"] = int(reconciled)
-        bucket["download_unattributed_derivative_bytes"] = int(derivative_bytes)
         bucket["download_effective_bytes"] = (
             int(bucket["download_pending_estimate_bytes"])
             + int(reconciled)
