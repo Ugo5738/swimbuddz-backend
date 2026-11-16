@@ -162,6 +162,7 @@ def test_private_payment_confirmation_route_is_not_public_api_schema():
         not in app.openapi()["paths"]
     )
 
+
 @pytest.mark.asyncio
 async def test_new_verified_payment_sets_order_paid_without_duplicate_cash_entry(
     monkeypatch,
