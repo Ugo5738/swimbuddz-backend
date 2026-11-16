@@ -5,6 +5,7 @@ They are NOT exposed through the gateway — only other backend services
 call them directly via Docker network.
 """
 
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
@@ -17,6 +18,36 @@ from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 
 router = APIRouter(prefix="/internal/store", tags=["internal"])
+
+
+class StoreVerifiedPayment(BaseModel):
+    """Already-verified settlement evidence from payments_service only."""
+
+    payment_reference: str
+    wallet_transaction_id: str | None = None
+    paid_at: datetime | None = None
+
+
+@router.post("/orders/{order_id}/confirm-payment", include_in_schema=False)
+async def confirm_store_payment(
+    order_id: uuid.UUID,
+    payload: StoreVerifiedPayment,
+    current_user: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Apply a trusted payment confirmation without regressing fulfillment."""
+    from services.store_service.routers.admin_inventory.orders import (
+        confirm_verified_order_payment,
+    )
+
+    return await confirm_verified_order_payment(
+        order_id,
+        payment_reference=payload.payment_reference,
+        wallet_transaction_id=payload.wallet_transaction_id,
+        paid_at=payload.paid_at,
+        current_user=current_user,
+        db=db,
+    )
 
 
 class MemberStoreSummary(BaseModel):
