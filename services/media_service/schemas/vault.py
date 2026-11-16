@@ -551,9 +551,6 @@ class BandwidthBucket(BaseModel):
     download_authorized_bytes: int
     download_completed_bytes: int
     download_reconciled_bytes: int
-    # S3 deliveries of previews/derivatives do not have original-download
-    # authorization rows, but still consume measurable AWS bandwidth.
-    download_unattributed_derivative_bytes: int
     download_pending_estimate_bytes: int
     download_effective_bytes: int
 
