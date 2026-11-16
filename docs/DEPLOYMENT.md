@@ -16,7 +16,8 @@ and merge into `develop`. Promote the tested `develop` changes to `main` for a
 production release. Do not edit source files inside running containers or the
 production checkout; those edits are outside the release history.
 
-The production job in `.github/workflows/deploy.yml` loads deployment scripts
+The production job in `.github/workflows/deploy.yml` and the manual
+`deploy-server.yml` workflow load deployment scripts
 from the fetched release into a private temporary directory before switching the
 server checkout. `scripts/deployment/sync_repository.py` archives modified source
 files and untracked files that conflict with the release, then synchronizes the

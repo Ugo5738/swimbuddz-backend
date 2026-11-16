@@ -73,6 +73,7 @@ def pg_environment(values):
         "PGSSLMODE": parse_qs(parsed.query).get("sslmode", ["require"])[0],
         "PGCONNECT_TIMEOUT": "20",
         "PGAPPNAME": "swimbuddz-migration-backup",
+        "PGOPTIONS": "-c statement_timeout=300000 -c idle_in_transaction_session_timeout=600000",
     }
     if any("\n" in value or "\r" in value for value in result.values()):
         raise ValueError("Invalid newline in database connection value")

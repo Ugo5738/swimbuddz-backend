@@ -86,8 +86,8 @@ These are mounted on the members service directly (not exposed through the gatew
 
 #### Academy swim clearance (November 16 query-cost review)
 
-`GET /internal/academy-swim-clearance/{member_id}` and
-`POST /internal/academy-swim-clearance/batch` retain their existing readiness and
+`GET /internal/members/academy-swim-clearance/{member_id}` and
+`POST /internal/members/academy-swim-clearance/batch` retain their existing readiness and
 missing-field responses. A single joined query loads only account activity,
 contact phone, swimming background and emergency-contact completeness, including
 the batch (1–50 IDs). Missing/inactive members remain not ready; emergency and

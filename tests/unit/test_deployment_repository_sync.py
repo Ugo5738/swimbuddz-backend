@@ -132,8 +132,9 @@ def test_untracked_parent_symlink_is_archived_without_following_it(tmp_path):
 
 
 @pytest.mark.parametrize("backup_ok", [True, False])
+@pytest.mark.parametrize("workflow_file", ["deploy.yml", "deploy-server.yml"])
 def test_ssh_bootstrap_loads_release_scripts_before_syncing_dirty_checkout(
-    tmp_path, backup_ok
+    tmp_path, backup_ok, workflow_file
 ):
     # The old bootstrap failed at checkout before deploy-production.sh could
     # recover. Run the real workflow/deploy scripts with local Git and fake
@@ -191,7 +192,7 @@ def test_ssh_bootstrap_loads_release_scripts_before_syncing_dirty_checkout(
     for binary in binaries.iterdir():
         binary.chmod(0o755)
     docker_log = tmp_path / "docker.log"
-    workflow = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())
+    workflow = yaml.safe_load((ROOT / ".github/workflows" / workflow_file).read_text())
     bootstrap = workflow["jobs"]["deploy"]["steps"][0]["with"]["script"]
     bootstrap = bootstrap.replace(
         "export DEPLOY_PATH=/home/deploy/swimbuddz-backend",
