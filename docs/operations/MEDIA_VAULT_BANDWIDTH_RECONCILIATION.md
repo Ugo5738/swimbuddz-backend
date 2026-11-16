@@ -6,6 +6,30 @@ deduplicates requests by AWS request ID, matches each request to the most likely
 authorization using object key, signed-URL time window, IP address and user
 agent, and stores the bytes S3 actually sent.
 
+## S3 bandwidth dashboard accounting (November 16, 2026)
+
+The admin bandwidth summary now includes all `vault-derivatives/` request
+bytes observed in S3 access logs, whether the request is classified as
+`unmatched`, `unattributed`, `expired` or `exhausted`. Matched
+original/export request bytes remain separately accounted for.
+
+Its **effective** monthly total is the sum of three *disjoint* categories:
+1. Authorized-byte estimates for original/export transfers without an S3 match.
+2. Actual S3 bytes for matched original/export download events.
+3. Actual S3 bytes for unattributed derivative/preview events.
+
+The first category is an estimate, so an unmatched original S3 event is **not**
+added again: doing so can double-count the same transfer. Each derivative
+request is counted from its immutable AWS request record, independently of
+whether a corresponding member authorization exists. `download_reconciled_bytes`
+continues to refer only to matched original/export requests. The UI computes
+its preview bytes from the effective-minus-matched-minus-pending invariant,
+retaining backward-compatible OpenAPI schemas.
+
+This is a **vault-only estimate** of S3 usage. It is not Supabase egress, it
+does not include all AWS account activity, and it must not be presented as
+authoritative remaining AWS free allowance. The AWS billing record is final.
+
 ## Cost-safe matching and attribution (November 2026)
 
 The worker ingests immutable S3 request evidence whether or not it can attribute

@@ -3825,15 +3825,42 @@ async def bandwidth_summary(
         .order_by(month_expr)
     )
     access_month_expr = func.date_trunc("month", MediaAccessLogEvent.occurred_at)
+    # Matched original/export requests and unattributed derivative preview
+    # downloads are disjoint S3 request IDs. Original requests without a
+    # matching authorization are NOT added here: their authorized-byte
+    # estimate may still be included below, so counting both would inflate
+    # the effective usage number.
+    is_matched = MediaAccessLogEvent.match_status == "matched"
+    is_derivative_delivery = and_(
+        MediaAccessLogEvent.object_key.like("vault-derivatives/%"),
+        MediaAccessLogEvent.match_status != "matched",
+    )
     access_rows = await db.execute(
         select(
             access_month_expr.label("month"),
-            func.coalesce(func.sum(MediaAccessLogEvent.bytes_sent), 0),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (is_matched, MediaAccessLogEvent.bytes_sent),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("matched_bytes"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (is_derivative_delivery, MediaAccessLogEvent.bytes_sent),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("unattributed_derivative_bytes"),
         )
         .where(
             MediaAccessLogEvent.occurred_at >= start,
             MediaAccessLogEvent.provider == "s3",
-            MediaAccessLogEvent.match_status == "matched",
+            or_(is_matched, is_derivative_delivery),
         )
         .group_by(access_month_expr)
         .order_by(access_month_expr)
@@ -3850,7 +3877,7 @@ async def bandwidth_summary(
             "download_pending_estimate_bytes": int(pending),
             "download_effective_bytes": int(pending),
         }
-    for month, reconciled in access_rows.all():
+    for month, reconciled, derivative_bytes in access_rows.all():
         month_key = month.astimezone(timezone.utc).strftime("%Y-%m")
         bucket = buckets_by_month.setdefault(
             month_key,
@@ -3865,9 +3892,11 @@ async def bandwidth_summary(
             },
         )
         bucket["download_reconciled_bytes"] = int(reconciled)
-        bucket["download_effective_bytes"] = int(
-            bucket["download_pending_estimate_bytes"]
-        ) + int(reconciled)
+        bucket["download_effective_bytes"] = (
+            int(bucket["download_pending_estimate_bytes"])
+            + int(reconciled)
+            + int(derivative_bytes)
+        )
     buckets = [buckets_by_month[key] for key in sorted(buckets_by_month)]
     current_key = utc_now().strftime("%Y-%m")
     current_effective = next(
@@ -3895,11 +3924,14 @@ async def bandwidth_summary(
         ),
         reconciliation_last_processed_at=last_processed_at,
         measurement_note=(
-            "Effective download usage uses actual S3 bytes for reconciled requests, "
-            "and authorized bytes while reconciliation is pending or outside log "
-            "coverage. S3 access logs are best-effort and can be delayed or omitted. "
-            "AWS's 100 GB allowance is shared account-wide, so AWS Billing remains "
-            "authoritative."
+            "Estimated vault usage includes S3-measured matched original/export "
+            "downloads, S3-measured unattributed preview/derivative downloads, "
+            "and authorized-byte estimates for original/export transfers not yet "
+            "reconciled. Unmatched original S3 requests are excluded to avoid "
+            "potential double counting against estimates. S3 access logs are "
+            "best-effort and can be delayed or incomplete. The 100 GiB allowance "
+            "is AWS-account-wide; AWS Billing remains authoritative, and these "
+            "figures do not measure Supabase egress."
         ),
     )
 

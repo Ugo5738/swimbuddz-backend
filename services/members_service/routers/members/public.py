@@ -11,14 +11,11 @@ from libs.common.media_utils import resolve_media_url, resolve_media_urls
 from libs.db.session import get_async_db
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, raiseload
 
 from services.members_service.models import (
     Member,
     MemberProfile,
-)
-from services.members_service.routers._helpers import (
-    member_eager_load_options,
 )
 from services.members_service.schemas import (
     MemberDirectoryResponse,
@@ -37,7 +34,11 @@ async def list_public_members(
     List all members for public dropdown (no auth required).
     Returns limited info (id, first_name, last_name).
     """
-    query = select(Member).order_by(Member.first_name, Member.last_name)
+    query = (
+        select(Member)
+        .options(raiseload("*"))
+        .order_by(Member.first_name, Member.last_name)
+    )
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -59,7 +60,7 @@ async def list_directory_members(
         .where(MemberProfile.show_in_directory.is_(True))
         .where(Member.is_active.is_(True))
         .where(Member.registration_complete.is_(True))
-        .options(selectinload(Member.profile))
+        .options(raiseload("*"), joinedload(Member.profile))
         .order_by(Member.first_name, Member.last_name)
     )
     result = await db.execute(query)
@@ -104,7 +105,7 @@ async def get_member_for_verification(
     query = (
         select(Member)
         .where(Member.id == member_id)
-        .options(*member_eager_load_options())
+        .options(raiseload("*"), joinedload(Member.membership))
     )
     result = await db.execute(query)
     member = result.scalar_one_or_none()

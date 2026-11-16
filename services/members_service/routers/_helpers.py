@@ -1,6 +1,6 @@
 """Shared helper functions for members service routers."""
 
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from libs.common.media_utils import resolve_media_urls
 from services.members_service.models import Member
@@ -8,7 +8,7 @@ from services.members_service.services import member_service
 
 
 def member_eager_load_options():
-    """Return selectinload options for all Member relationships."""
+    """Safe for both reads and FOR UPDATE writes: do not join nullable tables."""
     return [
         selectinload(Member.profile),
         selectinload(Member.emergency_contact),
@@ -16,6 +16,22 @@ def member_eager_load_options():
         selectinload(Member.membership),
         selectinload(Member.preferences),
         selectinload(Member.coach_profile),
+    ]
+
+
+def member_read_only_joined_options():
+    """Use a single join for *read-only* full-profile responses.
+
+    PostgreSQL rejects FOR UPDATE against the nullable side of these outer
+    joins. Never use this helper for membership mutations/locking queries.
+    """
+    return [
+        joinedload(Member.profile),
+        joinedload(Member.emergency_contact),
+        joinedload(Member.availability),
+        joinedload(Member.membership),
+        joinedload(Member.preferences),
+        joinedload(Member.coach_profile),
     ]
 
 
