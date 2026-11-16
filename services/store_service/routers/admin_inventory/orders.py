@@ -3,6 +3,7 @@
 """Admin store inventory and orders router."""
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -10,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import require_admin
+from libs.auth.dependencies import require_admin, require_service_role
+from libs.common.datetime_utils import utc_now
 from libs.auth.models import AuthUser
 from libs.common.currency import bubbles_to_naira
 from libs.common.logging import get_logger
@@ -165,33 +167,80 @@ async def update_order(
 @router.post("/orders/{order_id}/mark-paid", response_model=OrderResponse)
 async def mark_order_paid(
     order_id: uuid.UUID,
+    payment_reference: str,
     wallet_transaction_id: Optional[str] = None,
-    current_user: AuthUser = Depends(require_admin),
+    paid_at: Optional[datetime] = None,
+    current_user: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """
-    Mark an order as paid.
-    Called by payments_service when Paystack webhook confirms payment.
+    """Confirm a payment verified by payments_service (Paystack or bank transfer).
+
+    Only a service-role caller may perform this transition. The payment
+    reference must match the order; operational status is never downgraded.
     """
     query = (
-        select(Order).where(Order.id == order_id).options(*_order_eager_load_options())
+        select(Order)
+        .where(Order.id == order_id)
+        .with_for_update(of=Order)
+        .options(*_order_eager_load_options())
     )
     result = await db.execute(query)
     order = result.scalar_one_or_none()
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    if order.payment_reference != payment_reference:
+        raise HTTPException(
+            status_code=409, detail="Payment reference does not belong to this order"
+        )
+    if paid_at is not None and paid_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="Paid time must include timezone")
+    if (
+        wallet_transaction_id
+        and order.wallet_transaction_id
+        and wallet_transaction_id != order.wallet_transaction_id
+    ):
+        raise HTTPException(status_code=409, detail="Wallet transaction mismatch")
 
-    if order.status == OrderStatus.PAID:
-        # Already paid, idempotent return
+    # A closed/refunded/failed order requires audited manual reconciliation.
+    # Never reopen it simply because an old payment callback was retried.
+    if order.status in {
+        OrderStatus.CANCELLED, OrderStatus.REFUNDED, OrderStatus.PAYMENT_FAILED
+    }:
+        raise HTTPException(
+            status_code=409, detail="Closed order requires manual payment reconciliation"
+        )
+
+    # An order may already be processed or collected by staff. Replayed payment
+    # confirmations can backfill the payment timestamp, but must never reset
+    # fulfillment to PAID, re-send emails, or re-emit reward events.
+    if order.status != OrderStatus.PENDING_PAYMENT:
+        if order.status not in {
+            OrderStatus.PAID, OrderStatus.PROCESSING, OrderStatus.READY_FOR_PICKUP,
+            OrderStatus.PICKED_UP, OrderStatus.SHIPPED, OrderStatus.DELIVERED,
+        }:
+            raise HTTPException(status_code=409, detail="Unsupported order transition")
+        changed = False
+        if order.paid_at is None:
+            order.paid_at = paid_at or utc_now()
+            changed = True
         if wallet_transaction_id and not order.wallet_transaction_id:
             order.wallet_transaction_id = wallet_transaction_id
+            changed = True
+        if changed:
+            await log_audit(
+                db, AuditEntityType.ORDER, order.id, "payment_reconciled",
+                current_user.user_id,
+                new_value={"status": order.status.value},
+                notes="Existing fulfillment preserved after payment confirmation",
+            )
             await db.commit()
             await db.refresh(order)
         return order
 
     old_status = order.status
     order.status = OrderStatus.PAID
+    order.paid_at = paid_at or utc_now()
     if wallet_transaction_id:
         order.wallet_transaction_id = wallet_transaction_id
 
@@ -203,7 +252,7 @@ async def mark_order_paid(
         current_user.user_id,
         old_value={"status": old_status.value},
         new_value={"status": OrderStatus.PAID.value},
-        notes="Payment confirmed via webhook",
+        notes="Payment confirmed by payments_service",
     )
 
     await db.commit()
