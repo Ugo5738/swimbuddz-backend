@@ -61,6 +61,9 @@ audit metadata in terminal states. Ingestion remains idempotent.
    The production Docker Compose file exposes a **media-worker-only** pilot:
    `MEDIA_WORKER_DB_USE_LOCAL_POOL=true` (default false),
    `MEDIA_WORKER_DB_POOL_SIZE=2` and `MEDIA_WORKER_DB_MAX_OVERFLOW=0`.
+   These are Docker Compose interpolation variables, supplied to the Compose
+   process (shell or Compose `.env`). They are not activated merely by
+   adding `MEDIA_WORKER_DB_USE_LOCAL_POOL` inside the container's `.env.prod`.
    These values are passed only to `media-worker`, while the other services
    retain their existing connection behavior. Enable after a connection-budget
    review, compare performance and auth events, and revert the pilot by setting
