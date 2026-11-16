@@ -23,6 +23,7 @@ from services.members_service.models import (
 )
 from services.members_service.routers._helpers import (
     member_eager_load_options,
+    member_read_only_joined_options,
     normalize_member_tiers,
     resolve_member_media_urls,
 )
@@ -81,7 +82,7 @@ async def get_current_member_profile(
     query = (
         select(Member)
         .where(Member.auth_id == current_user.user_id)
-        .options(*member_eager_load_options())
+        .options(*member_read_only_joined_options())
     )
     result = await db.execute(query)
     member = result.scalar_one_or_none()
