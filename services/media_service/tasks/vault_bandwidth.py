@@ -549,6 +549,8 @@ async def _retry_unmatched_events(db: AsyncSession, now: datetime) -> int:
 
 async def reconcile_vault_bandwidth() -> dict[str, int | str]:
     """Consume recent S3 logs and update the vault transfer ledger."""
+    if not settings.MEDIA_VAULT_BANDWIDTH_RECONCILIATION_ENABLED:
+        return {"status": "paused", "processed_objects": 0}
     source_bucket = settings.MEDIA_VAULT_ACCESS_LOG_BUCKET.strip()
     if not source_bucket:
         return {"status": "disabled", "processed_objects": 0}
