@@ -227,6 +227,8 @@ class Settings(BaseSettings):
     MEDIA_VAULT_AUTO_CREATE_SESSION_TYPES: str = "club,community,cohort_class,event"
     # S3 server access logs for billing-grade vault download reconciliation.
     # Keep the log bucket private and separate from the source media bucket.
+    # Emergency kill switch: pauses only bandwidth reconciliation, not uploads.
+    MEDIA_VAULT_BANDWIDTH_RECONCILIATION_ENABLED: bool = True
     MEDIA_VAULT_ACCESS_LOG_BUCKET: str = ""
     MEDIA_VAULT_S3_ACCESS_LOG_PREFIX: str = "media-vault/s3/"
     MEDIA_VAULT_ACCESS_LOG_LOOKBACK_DAYS: int = 7
