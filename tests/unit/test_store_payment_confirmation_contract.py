@@ -54,7 +54,7 @@ async def test_verified_payment_replay_preserves_collected_order(monkeypatch):
     audit = AsyncMock()
     monkeypatch.setattr(order_routes, "log_audit", audit)
 
-    returned = await order_routes.mark_order_paid(
+    returned = await order_routes.confirm_verified_order_payment(
         order_id,
         payment_reference="PAY-verified",
         paid_at=None,
@@ -68,7 +68,7 @@ async def test_verified_payment_replay_preserves_collected_order(monkeypatch):
     db.commit.assert_awaited_once()
     audit.assert_awaited_once()
 
-    await order_routes.mark_order_paid(
+    await order_routes.confirm_verified_order_payment(
         order_id,
         payment_reference="PAY-verified",
         paid_at=None,
@@ -90,7 +90,7 @@ async def test_reference_mismatch_does_not_change_order():
     )
     db = _fake_db(order)
     with pytest.raises(HTTPException) as err:
-        await order_routes.mark_order_paid(
+        await order_routes.confirm_verified_order_payment(
             order_id,
             payment_reference="PAY-other",
             current_user=_service_user(),
@@ -112,7 +112,7 @@ async def test_cannot_reopen_cancelled_order_with_payment_confirmation():
     )
     db = _fake_db(order)
     with pytest.raises(HTTPException) as err:
-        await order_routes.mark_order_paid(
+        await order_routes.confirm_verified_order_payment(
             order_id,
             payment_reference="PAY-real",
             current_user=_service_user(),
@@ -134,3 +134,25 @@ async def test_admin_cannot_mark_unpaid_order_fulfilled():
     assert err.value.status_code == 409
     assert order.status == OrderStatus.PENDING_PAYMENT
     db.commit.assert_not_awaited()
+
+@pytest.mark.asyncio
+async def test_legacy_admin_mark_paid_shortcut_is_disabled():
+    with pytest.raises(HTTPException) as err:
+        await order_routes.mark_order_paid(
+            uuid.uuid4(),
+            current_user=_service_user(),
+            db=SimpleNamespace(),
+        )
+    assert err.value.status_code == 410
+
+
+def test_private_payment_confirmation_route_is_not_public_api_schema():
+    from services.store_service.app.main import app
+
+    private_routes = [
+        route for route in app.routes
+        if route.path == "/internal/store/orders/{order_id}/confirm-payment"
+    ]
+    assert len(private_routes) == 1
+    assert private_routes[0].include_in_schema is False
+    assert "/internal/store/orders/{order_id}/confirm-payment" not in app.openapi()["paths"]
