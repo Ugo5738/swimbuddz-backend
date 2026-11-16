@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = 5  # Reduced to prevent MaxClientsInSessionMode error
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800
+    # Opt-in for persistent backends only; do not enable across every service
+    # without checking aggregate connection limits on the Supabase Free tier.
+    DB_USE_LOCAL_POOL: bool = False
 
     # Supabase
     # Default placeholder values keep local/test runs from failing when Supabase
