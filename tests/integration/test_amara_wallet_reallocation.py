@@ -88,6 +88,8 @@ async def case():
                 Payment(
                     id=uuid.UUID(op.OLD_PAYMENT),
                     reference="PAY-08475",
+                    provider="internal",
+                    provider_reference="free:PAY-08475",
                     member_auth_id=op.AUTH,
                     purpose="session_booking",
                     amount=0,

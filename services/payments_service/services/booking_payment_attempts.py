@@ -93,7 +93,10 @@ def blocks_new_attempt(payment: Payment) -> bool:
                 and payment.status == PaymentStatus.PAID
                 and payment.currency == "NGN"
                 and payment.amount == 0
-                and not provider_exposed(payment)
+                and payment.provider in {None, "internal"}
+                and payment.provider_reference in {None, f"free:{payment.reference}"}
+                and not meta.get("paystack")
+                and not meta.get("provider_initialization_started_at")
                 and bubbles > 0
                 and reversal["refunded_bubbles"] == bubbles
                 and meta["server_price"]["total_kobo"] == bubbles * 10000

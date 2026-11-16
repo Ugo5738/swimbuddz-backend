@@ -277,7 +277,8 @@ def _reversed_wallet_receipt():
             },
         },
     )
-    row.provider_reference = None
+    row.provider = "internal"
+    row.provider_reference = f"free:{row.reference}"
     row.admin_review_note = f"wallet_settlement_reversed:{audit_id}"
     return row
 
@@ -306,6 +307,7 @@ async def test_reviewed_wallet_refund_reopens_checkout_but_keeps_paid_receipt(
         "wrong_total",
         "bad_id",
         "same_transaction",
+        "external_reference",
     ],
 )
 def test_reversal_exception_rejects_unreviewed_or_incomplete_proof(change):
@@ -323,6 +325,8 @@ def test_reversal_exception_rejects_unreviewed_or_incomplete_proof(change):
         meta["server_price"]["total_kobo"] = 530000
     elif change == "bad_id":
         meta["booking_reconciliation"]["refund_transaction_id"] = "fake"
+    elif change == "external_reference":
+        row.provider_reference = "paystack-reference"
     elif change == "same_transaction":
         meta["booking_reconciliation"]["refund_transaction_id"] = meta[
             "wallet_transaction_id"
