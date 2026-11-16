@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import require_admin, require_service_role
+from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.currency import bubbles_to_naira
@@ -164,14 +164,13 @@ async def update_order(
     return order
 
 
-@router.post("/orders/{order_id}/mark-paid", response_model=OrderResponse)
-async def mark_order_paid(
+async def confirm_verified_order_payment(
     order_id: uuid.UUID,
     payment_reference: str,
-    wallet_transaction_id: Optional[str] = None,
-    paid_at: Optional[datetime] = None,
-    current_user: AuthUser = Depends(require_service_role),
-    db: AsyncSession = Depends(get_async_db),
+    wallet_transaction_id: Optional[str],
+    paid_at: Optional[datetime],
+    current_user: AuthUser,
+    db: AsyncSession,
 ):
     """Confirm a payment verified by payments_service (Paystack or bank transfer).
 
@@ -367,6 +366,23 @@ async def mark_order_paid(
         )
 
     return order
+
+
+@router.post("/orders/{order_id}/mark-paid", response_model=OrderResponse)
+async def mark_order_paid(
+    order_id: uuid.UUID,
+    wallet_transaction_id: Optional[str] = None,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Mark an order as paid.
+    Called by payments_service when Paystack webhook confirms payment.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail="Deprecated endpoint. Verify payment through Payments service before updating an order.",
+    )
 
 
 @router.post("/orders/{order_id}/refund", response_model=StoreCreditResponse)
