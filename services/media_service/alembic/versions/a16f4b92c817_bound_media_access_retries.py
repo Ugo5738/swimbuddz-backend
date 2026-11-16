@@ -42,16 +42,9 @@ def upgrade() -> None:
           AND object_key LIKE 'vault-derivatives/%'
         """
     )
-    # Historical events outside the configured seven-day lookback have never
-    # had a transfer ledger match. Preserve them as expired audit evidence.
-    op.execute(
-        """
-        UPDATE media_access_log_events
-        SET match_status = 'expired', next_match_attempt_at = NULL
-        WHERE provider = 's3' AND match_status = 'unmatched'
-          AND occurred_at < now() - interval '7 days'
-        """
-    )
+    # Do not apply a hard-coded age cutoff in SQL: each deployment may choose
+    # a different MEDIA_VAULT_ACCESS_LOG_LOOKBACK_DAYS. The worker classifies
+    # aged unmatched events using the deployment's actual configured window.
     op.create_index(
         "ix_media_access_events_match_retry_due",
         "media_access_log_events",
