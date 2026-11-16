@@ -2147,3 +2147,17 @@ Companion worker: `swimbuddz_pools_worker` (ARQ on Redis queue `arq:pools`) — 
 - `GET /internal/academy/enrollments/{enrollment_id}/payment-preview?use_installments=true|false` (admin/service role): read-only context. Prospective schedule entries have no persisted installment ID. Charges preview uses this endpoint; actual checkout retains committed installment creation and freshly reloads the relationship. Full-payment quotes sum unpaid installments; custom payments still validate against the next amount and remaining balance.
 
 Store: simple products now acquire a default SKU and zero-stock inventory row during creation (or an admin update of a legacy product with no variants). Products requiring options and deliberately inactive variants are never assigned a substitute SKU.
+
+
+### Reviewed historical session and Bubble settlement correction (16 Nov 2026)
+
+Past attendance uses completed Sessions and Admin member/guest walk-ins. Verify the
+member admission quote; a configured visitor price does not imply every legacy
+Club member resolves as a visitor. Record an explicit agreed-price reason when
+needed. Combined settlement links cover the exact recorded member and guest debt.
+Missing guest consent stays pending. A reviewed zero-cash, fully reversed Bubble
+payment retains its original receipt but no longer blocks a new payment for the
+reopened booking. Private Admin proof is required; member metadata is insufficient.
+Billing shows the reopened fee and the correct swim as settled. No new public API
+or frontend control is introduced by the scoped operator repair. See backend
+`docs/SESSION_WALLET_REALLOCATION_RUNBOOK.md` for checks and accounting replay.
