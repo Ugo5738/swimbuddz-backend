@@ -12,8 +12,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.auth.dependencies import require_admin, require_service_role
-from libs.common.datetime_utils import utc_now
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.common.currency import bubbles_to_naira
 from libs.common.logging import get_logger
 from libs.common.service_client import (
@@ -205,10 +205,13 @@ async def mark_order_paid(
     # A closed/refunded/failed order requires audited manual reconciliation.
     # Never reopen it simply because an old payment callback was retried.
     if order.status in {
-        OrderStatus.CANCELLED, OrderStatus.REFUNDED, OrderStatus.PAYMENT_FAILED
+        OrderStatus.CANCELLED,
+        OrderStatus.REFUNDED,
+        OrderStatus.PAYMENT_FAILED,
     }:
         raise HTTPException(
-            status_code=409, detail="Closed order requires manual payment reconciliation"
+            status_code=409,
+            detail="Closed order requires manual payment reconciliation",
         )
 
     # An order may already be processed or collected by staff. Replayed payment
@@ -216,8 +219,12 @@ async def mark_order_paid(
     # fulfillment to PAID, re-send emails, or re-emit reward events.
     if order.status != OrderStatus.PENDING_PAYMENT:
         if order.status not in {
-            OrderStatus.PAID, OrderStatus.PROCESSING, OrderStatus.READY_FOR_PICKUP,
-            OrderStatus.PICKED_UP, OrderStatus.SHIPPED, OrderStatus.DELIVERED,
+            OrderStatus.PAID,
+            OrderStatus.PROCESSING,
+            OrderStatus.READY_FOR_PICKUP,
+            OrderStatus.PICKED_UP,
+            OrderStatus.SHIPPED,
+            OrderStatus.DELIVERED,
         }:
             raise HTTPException(status_code=409, detail="Unsupported order transition")
         changed = False
@@ -229,7 +236,10 @@ async def mark_order_paid(
             changed = True
         if changed:
             await log_audit(
-                db, AuditEntityType.ORDER, order.id, "payment_reconciled",
+                db,
+                AuditEntityType.ORDER,
+                order.id,
+                "payment_reconciled",
                 current_user.user_id,
                 new_value={"status": order.status.value},
                 notes="Existing fulfillment preserved after payment confirmation",
