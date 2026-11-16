@@ -58,9 +58,15 @@ audit metadata in terminal states. Ingestion remains idempotent.
 5. Monitor daily egress and log ingestion for several days. Do not infer
    reduction from query count alone.
 6. For transaction-mode Supavisor, retain disabled psycopg prepared statements.
-   For a persistent worker only, optionally benchmark `DB_USE_LOCAL_POOL=true`
-   with small `DB_POOL_SIZE` and `DB_MAX_OVERFLOW`; leave it off by default.
-   Never enable across every service without a connection-budget calculation.
+   The production Docker Compose file exposes a **media-worker-only** pilot:
+   `MEDIA_WORKER_DB_USE_LOCAL_POOL=true` (default false),
+   `MEDIA_WORKER_DB_POOL_SIZE=2` and `MEDIA_WORKER_DB_MAX_OVERFLOW=0`.
+   These values are passed only to `media-worker`, while the other services
+   retain their existing connection behavior. Enable after a connection-budget
+   review, compare performance and auth events, and revert the pilot by setting
+   `MEDIA_WORKER_DB_USE_LOCAL_POOL=false`. Do **not** add global
+   `DB_USE_LOCAL_POOL=true` to the shared `.env.prod`; that would enable
+   pooling for all microservices and background workers.
 
 S3 access-log delivery is delayed and best-effort. A matched request is an AWS
 measurement, but a missing request is not proof that no data was sent. The
