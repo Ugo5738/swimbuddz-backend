@@ -1,6 +1,5 @@
 """Regression tests for the lightweight automatic fulfillment retry scan."""
 
-from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy.dialects import postgresql
