@@ -317,10 +317,10 @@ async def list_my_badges(
     profile page can render the badge artwork without a per-row HTTP call.
     """
     member_row = await db.execute(
-        select(Member).where(Member.auth_id == current_user.user_id)
+        select(Member.id).where(Member.auth_id == current_user.user_id)
     )
-    member = member_row.scalar_one_or_none()
-    if not member:
+    member_id = member_row.scalar_one_or_none()
+    if not member_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Member profile not found.",
@@ -329,7 +329,7 @@ async def list_my_badges(
     rows = await db.execute(
         select(ChallengeBadgeAward)
         .where(
-            ChallengeBadgeAward.member_id == member.id,
+            ChallengeBadgeAward.member_id == member_id,
             # Hide badges revoked by HQ. The row stays in the DB for audit
             # but doesn't surface on the member's profile/public pages.
             ChallengeBadgeAward.revoked_at.is_(None),
