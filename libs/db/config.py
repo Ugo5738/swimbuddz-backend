@@ -14,7 +14,14 @@ db_host = (db_url.host or "").lower()
 using_supabase_pooler = db_host.endswith(".pooler.supabase.com")
 # Preserve previous behavior unless explicitly enabled for a measured worker.
 # An app pool on all services can exhaust the Free plan's connection capacity.
-use_null_pool = using_supabase_pooler and not settings.DB_USE_LOCAL_POOL
+def should_use_null_pool(host: str, *, local_pool_enabled: bool) -> bool:
+    """Default to Supavisor-managed connections unless locally opted in."""
+    return host.endswith(".pooler.supabase.com") and not local_pool_enabled
+
+
+use_null_pool = should_use_null_pool(
+    db_host, local_pool_enabled=settings.DB_USE_LOCAL_POOL
+)
 
 connect_args: dict = {}
 if db_host.endswith(".supabase.com") or using_supabase_pooler:
