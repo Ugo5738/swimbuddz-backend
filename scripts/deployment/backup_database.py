@@ -183,7 +183,19 @@ def run_backup(env_file, destination, image="postgres:17-alpine"):
             )
             deadline = time.monotonic() + 60
             while subprocess.run(
-                ["docker", "exec", restore_name, "pg_isready", "-U", "postgres"],
+                # The image starts a temporary Unix-socket-only server during
+                # initdb, then restarts it. TCP readiness waits for the final
+                # server so restoration cannot race that initialization stop.
+                [
+                    "docker",
+                    "exec",
+                    restore_name,
+                    "pg_isready",
+                    "-h",
+                    "127.0.0.1",
+                    "-U",
+                    "postgres",
+                ],
                 stdout=log,
                 stderr=log,
             ).returncode:
