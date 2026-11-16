@@ -107,16 +107,15 @@ async def _apply_order_status_change(
             status_code=409,
             detail="Verify payment through the payment review workflow before marking an order paid",
         )
-    if (
-        old_status in {OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_FAILED}
-        and new_status in {
-            OrderStatus.PROCESSING,
-            OrderStatus.READY_FOR_PICKUP,
-            OrderStatus.PICKED_UP,
-            OrderStatus.SHIPPED,
-            OrderStatus.DELIVERED,
-        }
-    ):
+    unpaid_statuses = {OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_FAILED}
+    fulfillment_statuses = {
+        OrderStatus.PROCESSING,
+        OrderStatus.READY_FOR_PICKUP,
+        OrderStatus.PICKED_UP,
+        OrderStatus.SHIPPED,
+        OrderStatus.DELIVERED,
+    }
+    if old_status in unpaid_statuses and new_status in fulfillment_statuses:
         raise HTTPException(
             status_code=409,
             detail="Order must have a verified payment before fulfillment",
