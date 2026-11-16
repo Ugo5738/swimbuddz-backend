@@ -22,6 +22,7 @@ the Yaba booking is NGN 5200, paid with 52 Bubbles and zero cash.
 
 `scripts/ops/reallocate_amara_bubbles_20261116.py` is dry-run by default. It checks
 exact identities, amounts, zero cash/provider exposure, original wallet metadata,
+and the existing internal `free:PAY-08475` zero-value reference (not a bank/PSP receipt),
 absence of competing payments, holds and promo grants, and the reviewed balance.
 The maintenance transaction locks affected records, adds a 52-Bubble refund and a
 100-Bubble Community purchase, links the refund, preserves the original paid

@@ -116,8 +116,8 @@ async def repair(
         and payment["status"] == "paid"
         and payment["amount"] == 0
         and payment["currency"] == "NGN"
-        and not payment["provider"]
-        and not payment["provider_reference"]
+        and payment["provider"] == "internal"
+        and payment["provider_reference"] == "free:PAY-08475"
         and not meta.get("paystack")
         and not meta.get("provider_initialization_started_at")
         and meta.get("booking_id") == OLD_BOOKING
