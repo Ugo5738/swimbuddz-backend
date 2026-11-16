@@ -10,7 +10,10 @@ from sqlalchemy.dialects import postgresql
 
 from services.media_service.routers.vaults import bandwidth_summary
 from services.members_service.models import Member
-from services.members_service.routers._helpers import member_eager_load_options
+from services.members_service.routers._helpers import (
+    member_eager_load_options,
+    member_read_only_joined_options,
+)
 
 
 class _Rows:
@@ -77,7 +80,7 @@ async def test_vault_bandwidth_derivative_only_month_remains_visible():
 
 
 def test_full_member_detail_uses_one_to_one_joins():
-    query = select(Member).options(*member_eager_load_options())
+    query = select(Member).options(*member_read_only_joined_options())
     sql = str(query.compile(dialect=postgresql.dialect()))
     for relation_table in (
         "member_profiles",
@@ -89,3 +92,10 @@ def test_full_member_detail_uses_one_to_one_joins():
     ):
         assert relation_table in sql
     assert sql.count("LEFT OUTER JOIN") >= 6
+
+
+def test_locked_member_query_keeps_nullable_relations_outside_for_update():
+    query = select(Member).options(*member_eager_load_options()).with_for_update()
+    sql = str(query.compile(dialect=postgresql.dialect()))
+    assert "FOR UPDATE" in sql
+    assert "LEFT OUTER JOIN" not in sql
