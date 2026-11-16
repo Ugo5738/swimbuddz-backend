@@ -60,7 +60,8 @@ def test_batch_transfer_scoring_keeps_signed_url_window_and_identity():
     )
     too_old = SimpleNamespace(
         created_at=event.occurred_at - timedelta(hours=3),
-        ip_address=event.remote_ip, user_agent=event.user_agent,
+        ip_address=event.remote_ip,
+        user_agent=event.user_agent,
     )
     assert _best_transfer(event, [later, too_old, best], ttl=3600) is best
     assert _best_transfer(event, [too_old], ttl=3600) is None
@@ -146,6 +147,7 @@ async def test_retry_marks_last_failed_attempt_terminal_without_deleting_event()
     assert stored.next_match_attempt_at is None
     assert stored.bytes_sent == event.bytes_sent
     db.commit.assert_awaited_once()
+
 
 @pytest.mark.asyncio
 async def test_emergency_pause_does_not_touch_media_storage(monkeypatch):
