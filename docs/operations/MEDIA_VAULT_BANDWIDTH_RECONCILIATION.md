@@ -71,6 +71,28 @@ audit metadata in terminal states. Ingestion remains idempotent.
 
 ### Diagnostic and rollout checklist
 
+The November 16 production release is gated by
+[verified database recovery](PRODUCTION_DATABASE_RECOVERY.md). Deploy the backend
+and retry migration first; validate health, original/export accounting and
+member/payment reads before promoting the frontend. Leave local pooling off for
+the first measured window so the retry/query changes have an independent
+baseline. Then evaluate a media-worker-only two-connection pilot separately.
+
+Safety clearance now uses one narrow joined query per single/batch request.
+Member report reads skip unrelated rosters/plan-session/participant relationships.
+Attendance still reconciles default-Present Academy classes every five minutes;
+hourly current-quarter reporting remains unchanged. These cadences are product
+requirements, not incidental polling to disable.
+
+Compare counter **deltas** with their `pg_stat_statements_info.stats_reset` time;
+do not reset production statistics. Record matched/unattributed/expired/exhausted
+counts and the sum of immutable event bytes before/after the migration. Use path
+counts from service logs to distinguish safety checks from member navigation.
+Supavisor auth log entries are neither a one-to-one connection count nor bytes
+of egress. Validate actual Usage-dashboard egress/log ingestion over several full
+days against the 100 MB/day and 20 MB/day engineering targets. Passing tests or
+fewer queries does not prove the renewed Free-plan quota will suffice.
+
 1. Record baseline counts per `match_status`, reconciliation query calls,
    Supavisor connection events, log ingestion and 24-hour egress.
 2. Apply the media migration once, on a verified single migration head.

@@ -4,12 +4,20 @@ Comprehensive deployment guide for the SwimBuddz microservices backend.
 
 ## Production release workflow
 
+Production migrations are gated by a real snapshot-consistent backup and
+isolated restore/count comparison. See
+[Production database recovery](operations/PRODUCTION_DATABASE_RECOVERY.md) for
+retention, private logs, partial-migration handling and application rollback.
+The gate fails closed; the media-worker connection-reuse pilot stays off for the
+first November 16 rollout.
+
 Make application and deployment changes on a feature branch, validate them in CI,
 and merge into `develop`. Promote the tested `develop` changes to `main` for a
 production release. Do not edit source files inside running containers or the
 production checkout; those edits are outside the release history.
 
-The production job in `.github/workflows/deploy.yml` loads deployment scripts
+The production job in `.github/workflows/deploy.yml` and the manual
+`deploy-server.yml` workflow load deployment scripts
 from the fetched release into a private temporary directory before switching the
 server checkout. `scripts/deployment/sync_repository.py` archives modified source
 files and untracked files that conflict with the release, then synchronizes the

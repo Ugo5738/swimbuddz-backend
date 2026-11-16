@@ -131,7 +131,11 @@ def test_untracked_parent_symlink_is_archived_without_following_it(tmp_path):
         assert archive.getnames() == ["package"]
 
 
-def test_ssh_bootstrap_loads_release_scripts_before_syncing_dirty_checkout(tmp_path):
+@pytest.mark.parametrize("backup_ok", [True, False])
+@pytest.mark.parametrize("workflow_file", ["deploy.yml", "deploy-server.yml"])
+def test_ssh_bootstrap_loads_release_scripts_before_syncing_dirty_checkout(
+    tmp_path, backup_ok, workflow_file
+):
     # The old bootstrap failed at checkout before deploy-production.sh could
     # recover. Run the real workflow/deploy scripts with local Git and fake
     # Docker/GPG binaries, including migration-before-start ordering.
@@ -144,6 +148,14 @@ def test_ssh_bootstrap_loads_release_scripts_before_syncing_dirty_checkout(tmp_p
             ).read_text(),
             "scripts/deployment/_common.sh": (scripts / "_common.sh").read_text(),
             "scripts/deployment/sync_repository.py": SYNC.read_text(),
+            "scripts/deployment/capture_recovery.py": (
+                scripts / "capture_recovery.py"
+            ).read_text(),
+            "scripts/deployment/backup_database.py": (
+                "import os, sys\n"
+                "with open(os.environ['DEPLOYMENT_DOCKER_LOG'], 'a') as log: log.write('backup-verified\\n')\n"
+                f"sys.exit({0 if backup_ok else 1})\n"
+            ),
             "scripts/deployment/verify-production.sh": '#!/usr/bin/env bash\nprintf verified > "$DEPLOY_PATH/verification-result"\n',
             ".env.prod.gpg": "encrypted fixture",
         },
@@ -180,13 +192,13 @@ def test_ssh_bootstrap_loads_release_scripts_before_syncing_dirty_checkout(tmp_p
     for binary in binaries.iterdir():
         binary.chmod(0o755)
     docker_log = tmp_path / "docker.log"
-    workflow = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())
+    workflow = yaml.safe_load((ROOT / ".github/workflows" / workflow_file).read_text())
     bootstrap = workflow["jobs"]["deploy"]["steps"][0]["with"]["script"]
     bootstrap = bootstrap.replace(
         "export DEPLOY_PATH=/home/deploy/swimbuddz-backend",
         f"export DEPLOY_PATH={shlex.quote(str(root))}",
     )
-    subprocess.run(
+    result = subprocess.run(
         ["bash", "-c", bootstrap],
         env={
             "PATH": f"{binaries}{os.pathsep}{os.environ['PATH']}",
@@ -197,16 +209,25 @@ def test_ssh_bootstrap_loads_release_scripts_before_syncing_dirty_checkout(tmp_p
             "DOCKER_PASSWORD": "test-only",
             "LE_EMAIL": "test@example.invalid",
             "DEPLOYMENT_DOCKER_LOG": str(docker_log),
+            "RECOVERY_ROOT": str(tmp_path / "recovery"),
         },
-        check=True,
         capture_output=True,
         text=True,
     )
     assert git(root, "rev-parse", "HEAD") == release
+    commands = docker_log.read_text().splitlines()
+    if not backup_ok:
+        assert result.returncode != 0
+        assert not any(
+            "migrate-prod.sh" in line or " up -d" in line for line in commands
+        )
+        assert not (root / "verification-result").exists()
+        return
+    assert result.returncode == 0, result.stderr
     assert (root / "verification-result").read_text() == "verified"
     assert (root / "app.py").read_text() == "released\n"
     assert (root / ".env.prod").stat().st_mode & 0o777 == 0o600
-    commands = docker_log.read_text().splitlines()
+    backup = commands.index("backup-verified")
     migrate = next(i for i, line in enumerate(commands) if "migrate-prod.sh" in line)
     start = next(i for i, line in enumerate(commands) if " up -d --wait" in line)
-    assert migrate < start
+    assert backup < migrate < start

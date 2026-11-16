@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import raiseload
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
@@ -46,12 +47,20 @@ async def get_reporting_summary(
             )
 
     clubs = (
-        (await db.execute(select(Club).where(Club.created_at < end))).scalars().all()
+        (
+            await db.execute(
+                select(Club).options(raiseload("*")).where(Club.created_at < end)
+            )
+        )
+        .scalars()
+        .all()
     )
     pods = (
         (
             await db.execute(
-                select(Pod).where(
+                select(Pod)
+                .options(raiseload("*"))
+                .where(
                     Pod.created_at < end,
                     or_(Pod.dissolved_at.is_(None), Pod.dissolved_at >= end),
                 )
@@ -60,14 +69,22 @@ async def get_reporting_summary(
         .scalars()
         .all()
     )
-    assignment_query = select(PodAssignment).where(
-        PodAssignment.joined_at < end,
-        or_(PodAssignment.left_at.is_(None), PodAssignment.left_at > start),
+    assignment_query = (
+        select(PodAssignment)
+        .options(raiseload("*"))
+        .where(
+            PodAssignment.joined_at < end,
+            or_(PodAssignment.left_at.is_(None), PodAssignment.left_at > start),
+        )
     )
-    enrollment_query = select(ClubEnrollment).where(
-        ClubEnrollment.starts_at < end,
-        ClubEnrollment.ends_at >= start,
-        ClubEnrollment.status == "active",
+    enrollment_query = (
+        select(ClubEnrollment)
+        .options(raiseload("*"))
+        .where(
+            ClubEnrollment.starts_at < end,
+            ClubEnrollment.ends_at >= start,
+            ClubEnrollment.status == "active",
+        )
     )
     if member_id:
         assignment_query = assignment_query.where(PodAssignment.member_id == member_id)
@@ -115,7 +132,9 @@ async def get_reporting_summary(
     plans = (
         (
             await db.execute(
-                select(ClubPlanVersion).where(
+                select(ClubPlanVersion)
+                .options(raiseload("*"))
+                .where(
                     ClubPlanVersion.published_at < end,
                     ClubPlanVersion.period_start <= date_to.date(),
                     ClubPlanVersion.period_end >= date_from.date(),
@@ -127,18 +146,27 @@ async def get_reporting_summary(
         if not member_id
         else []
     )
-    orders_query = select(CommunityExperienceOrder).where(
-        CommunityExperienceOrder.created_at >= start,
-        CommunityExperienceOrder.created_at < end,
-        CommunityExperienceOrder.status == "confirmed",
+    orders_query = (
+        select(CommunityExperienceOrder)
+        .options(raiseload("*"))
+        .where(
+            CommunityExperienceOrder.created_at >= start,
+            CommunityExperienceOrder.created_at < end,
+            CommunityExperienceOrder.status == "confirmed",
+        )
     )
-    purchases_query = select(CommunityExperiencePurchase).where(
-        CommunityExperiencePurchase.created_at >= start,
-        CommunityExperiencePurchase.created_at < end,
-        CommunityExperiencePurchase.status == "active",
+    purchases_query = (
+        select(CommunityExperiencePurchase)
+        .options(raiseload("*"))
+        .where(
+            CommunityExperiencePurchase.created_at >= start,
+            CommunityExperiencePurchase.created_at < end,
+            CommunityExperiencePurchase.status == "active",
+        )
     )
     checkins_query = (
         select(CommunityExperienceAttendance)
+        .options(raiseload("*"))
         .join(
             CommunityExperienceParticipant,
             CommunityExperienceParticipant.id

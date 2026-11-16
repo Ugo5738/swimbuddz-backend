@@ -31,6 +31,15 @@ require_command docker
 mkdir -p "$DEPLOY_PATH"
 cd "$DEPLOY_PATH"
 
+# Capture the currently running release before replacing its checkout or env.
+# These files include secrets and remain private, outside the repository.
+umask 077
+RECOVERY_ROOT="${RECOVERY_ROOT:-/home/deploy/operational-backups/releases}"
+recovery_path="$RECOVERY_ROOT/$(date -u +'%Y%m%dT%H%M%SZ')-$$"
+python3 "$SCRIPT_DIR/capture_recovery.py" \
+  --repository "$DEPLOY_PATH" --destination "$recovery_path" \
+  --project "$COMPOSE_PROJECT_NAME" --compose-file "$COMPOSE_FILE"
+
 log "Synchronising repository branch: $DEPLOY_BRANCH"
 if [ ! -d .git ]; then
   git clone --branch "$DEPLOY_BRANCH" "$REPO_URL" .
@@ -69,6 +78,12 @@ printf '%s' "$DOCKER_PASSWORD" | \
 
 log "Pulling production images"
 compose pull
+
+# No migrations or service replacement is allowed unless the archive has
+# actually restored and matched its snapshot counts in an isolated database.
+log "Verifying production database recovery backup"
+python3 "$SCRIPT_DIR/backup_database.py" \
+  --env-file "$DEPLOY_PATH/.env.prod" --destination "$recovery_path/database"
 
 log "Running production database migrations"
 compose run --rm --no-deps gateway \

@@ -6,16 +6,45 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, load_only, raiseload
 
 from libs.auth.dependencies import require_service_role
 from libs.db.session import get_async_db
-from services.members_service.models import Member
+from services.members_service.models import (
+    Member,
+    MemberEmergencyContact,
+    MemberProfile,
+)
 
 router = APIRouter(tags=["internal-academy-clearance"])
 
 
 class ClearanceBatchRequest(BaseModel):
     member_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+
+
+def clearance_query(member_ids: list[uuid.UUID]):
+    """One safety-only read; never hydrate membership, coaching or medical data."""
+    return (
+        select(Member)
+        .where(Member.id.in_(member_ids))
+        .options(
+            load_only(Member.id, Member.is_active, raiseload=True),
+            raiseload("*"),
+            joinedload(Member.profile).load_only(
+                MemberProfile.phone,
+                MemberProfile.swim_level,
+                MemberProfile.deep_water_comfort,
+                raiseload=True,
+            ),
+            joinedload(Member.emergency_contact).load_only(
+                MemberEmergencyContact.name,
+                MemberEmergencyContact.phone,
+                MemberEmergencyContact.contact_relationship,
+                raiseload=True,
+            ),
+        )
+    )
 
 
 def missing_requirements(member: Member | None) -> list[str]:
@@ -44,7 +73,7 @@ async def academy_clearance(
     _service=Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
-    member = await db.get(Member, member_id)
+    member = (await db.execute(clearance_query([member_id]))).scalar_one_or_none()
     missing = missing_requirements(member)
     return {"member_id": str(member_id), "ready": not missing, "missing": missing}
 
@@ -55,11 +84,7 @@ async def academy_clearance_batch(
     _service=Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
-    members = (
-        (await db.execute(select(Member).where(Member.id.in_(body.member_ids))))
-        .scalars()
-        .all()
-    )
+    members = (await db.execute(clearance_query(body.member_ids))).scalars().all()
     mapping = {member.id: member for member in members}
     return {
         str(member_id): {
