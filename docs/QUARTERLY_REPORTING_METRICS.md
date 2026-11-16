@@ -10,6 +10,13 @@ Regeneration updates existing member rows and preserves their leaderboard opt-ou
 
 ## Domain-owned sources
 
+The Members summary suppresses automatic ORM loading of pod rosters, plan
+session links and Experience participants when it only uses scalar columns.
+Explicit assignment and named-ticket queries retain the same quarter definitions
+and member scope. The hourly current-quarter refresh (including startup) remains
+unchanged: internal call totals must be interpreted against the eligible member
+count and refresh runs before being called a polling defect.
+
 All seven GET endpoints require a service JWT and accept `from` and `to`. Reporting fetches them over HTTP; each service queries only its own domain tables. Members and wallet also accept `member_auth_id` for private individual detail.
 
 | Endpoint | Definitions |

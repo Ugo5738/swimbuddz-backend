@@ -10,7 +10,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, raiseload
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
@@ -31,7 +31,11 @@ async def get_member_by_auth_id(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Look up a member by Supabase auth_id."""
-    result = await db.execute(select(Member).where(Member.auth_id == auth_id))
+    result = await db.execute(
+        select(Member)
+        .where(Member.auth_id == auth_id)
+        .options(raiseload("*"), joinedload(Member.profile))
+    )
     member = result.scalar_one_or_none()
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -61,7 +65,11 @@ async def get_active_members(
     """Get all active members (for notifications/communications)."""
     result = await db.execute(
         select(Member)
-        .options(selectinload(Member.membership))
+        .options(
+            raiseload("*"),
+            joinedload(Member.profile),
+            joinedload(Member.membership),
+        )
         .where(Member.is_active.is_(True))
     )
     members = result.scalars().all()
@@ -96,6 +104,7 @@ async def search_members(
     term = f"%{q.strip()}%"
     result = await db.execute(
         select(Member)
+        .options(raiseload("*"))
         .where(
             (Member.first_name.ilike(term))
             | (Member.last_name.ilike(term))
@@ -129,7 +138,7 @@ async def get_approved_members_list(
 
     result = await db.execute(
         select(Member)
-        .options(selectinload(Member.membership))
+        .options(raiseload("*"), joinedload(Member.membership))
         .where(
             Member.approval_status == "approved",
             Member.is_active.is_(True),

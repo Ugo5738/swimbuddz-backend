@@ -12,7 +12,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, raiseload
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
@@ -175,6 +175,7 @@ async def get_member_tier_history(
     """
     member_result = await db.execute(
         select(Member, MemberMembership)
+        .options(raiseload("*"))
         .outerjoin(MemberMembership, MemberMembership.member_id == Member.id)
         .where(Member.id == member_id)
     )
@@ -253,7 +254,11 @@ async def get_member_by_id(
     result = await db.execute(
         select(Member)
         .where(Member.id == member_id)
-        .options(selectinload(Member.membership))
+        .options(
+            raiseload("*"),
+            joinedload(Member.membership),
+            joinedload(Member.profile),
+        )
     )
     member = result.scalar_one_or_none()
     if not member:
@@ -290,7 +295,11 @@ async def get_members_bulk(
     result = await db.execute(
         select(Member)
         .where(Member.id.in_(uuids))
-        .options(selectinload(Member.membership))
+        .options(
+            raiseload("*"),
+            joinedload(Member.membership),
+            joinedload(Member.profile),
+        )
     )
     members = result.scalars().all()
     response = [

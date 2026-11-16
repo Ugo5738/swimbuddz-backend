@@ -6,6 +6,117 @@ deduplicates requests by AWS request ID, matches each request to the most likely
 authorization using object key, signed-URL time window, IP address and user
 agent, and stores the bytes S3 actually sent.
 
+## S3 bandwidth dashboard accounting (November 16, 2026)
+
+The admin bandwidth summary now includes all `vault-derivatives/` request
+bytes observed in S3 access logs, whether the request is classified as
+`unmatched`, `unattributed`, `expired` or `exhausted`. Matched
+original/export request bytes remain separately accounted for.
+
+Its **effective** monthly total is the sum of three *disjoint* categories:
+1. Authorized-byte estimates for original/export transfers without an S3 match.
+2. Actual S3 bytes for matched original/export download events.
+3. Actual S3 bytes for unattributed derivative/preview events.
+
+The first category is an estimate, so an unmatched original S3 event is **not**
+added again: doing so can double-count the same transfer. Each derivative
+request is counted from its immutable AWS request record, independently of
+whether a corresponding member authorization exists. `download_reconciled_bytes`
+continues to refer only to matched original/export requests. The UI computes
+its preview bytes from the effective-minus-matched-minus-pending invariant,
+retaining backward-compatible OpenAPI schemas.
+
+This is a **vault-only estimate** of S3 usage. It is not Supabase egress, it
+does not include all AWS account activity, and it must not be presented as
+authoritative remaining AWS free allowance. The AWS billing record is final.
+
+## Cost-safe matching and attribution (November 2026)
+
+The worker ingests immutable S3 request evidence whether or not it can attribute
+that delivery to a signed-original/export authorization. **Do not delete S3
+request records or zero their measured bytes to make reconciliation succeed.**
+
+- `matched`: request linked to an authorized original/export transfer;
+  `media_transfer_logs` receives measured bytes from the request ledger.
+- `unattributed`: derivative/proxy/preview GET without corresponding
+  authorization in the original/export transfer ledger. These S3-delivered
+  bytes remain measurable and auditable, but no match is repeatedly attempted.
+- `unmatched`: original/export candidate with bounded delayed retries.
+  Retries start after one hour and back off exponentially up to one day.
+- `exhausted`: no match after the configured maximum number of attempts.
+  Attribution is unresolved, not proof of unauthorized use.
+- `expired`: an unmatched request older than the configured access-log
+  lookback. It remains in the access ledger for investigation and accounting.
+
+The migration classifies historical derivative records without deleting them.
+The worker classifies older unmatched original/export events against the actual
+configured lookback. New derivative records never trigger transfer lookups.
+
+Each retry batch selects only due unmatched rows with `FOR UPDATE SKIP LOCKED`,
+makes a single bounded query for presigned-transfer candidates, then scores by
+the signed-URL time window, IP and user agent. Legacy per-item matching is used
+only when any legacy transfer row without `object_key` remains.
+
+Configuration:
+
+```dotenv
+MEDIA_VAULT_BANDWIDTH_RECONCILIATION_ENABLED=true
+MEDIA_VAULT_MATCH_BATCH_SIZE=200
+MEDIA_VAULT_MATCH_MAX_ATTEMPTS=7
+MEDIA_VAULT_MATCH_INITIAL_BACKOFF_MINUTES=60
+```
+
+The worker retains source object keys, AWS request IDs, measured bytes and
+audit metadata in terminal states. Ingestion remains idempotent.
+
+### Diagnostic and rollout checklist
+
+The November 16 production release is gated by
+[verified database recovery](PRODUCTION_DATABASE_RECOVERY.md). Deploy the backend
+and retry migration first; validate health, original/export accounting and
+member/payment reads before promoting the frontend. Leave local pooling off for
+the first measured window so the retry/query changes have an independent
+baseline. Then evaluate a media-worker-only two-connection pilot separately.
+
+Safety clearance now uses one narrow joined query per single/batch request.
+Member report reads skip unrelated rosters/plan-session/participant relationships.
+Attendance still reconciles default-Present Academy classes every five minutes;
+hourly current-quarter reporting remains unchanged. These cadences are product
+requirements, not incidental polling to disable.
+
+Compare counter **deltas** with their `pg_stat_statements_info.stats_reset` time;
+do not reset production statistics. Record matched/unattributed/expired/exhausted
+counts and the sum of immutable event bytes before/after the migration. Use path
+counts from service logs to distinguish safety checks from member navigation.
+Supavisor auth log entries are neither a one-to-one connection count nor bytes
+of egress. Validate actual Usage-dashboard egress/log ingestion over several full
+days against the 100 MB/day and 20 MB/day engineering targets. Passing tests or
+fewer queries does not prove the renewed Free-plan quota will suffice.
+
+1. Record baseline counts per `match_status`, reconciliation query calls,
+   Supavisor connection events, log ingestion and 24-hour egress.
+2. Apply the media migration once, on a verified single migration head.
+3. Deploy the code, then check that derivative records become
+   `unattributed`, old unmatched records `expired`, and newly pending
+   original/export records are retried only when due.
+4. Verify original and export matches still update measured transfer bytes
+   (including range GETs) without double-counting events.
+5. Monitor daily egress and log ingestion for several days. Do not infer
+   reduction from query count alone.
+6. For transaction-mode Supavisor, retain disabled psycopg prepared statements.
+   The production Docker Compose file exposes a **media-worker-only** pilot:
+   `MEDIA_WORKER_DB_USE_LOCAL_POOL=true` (default false),
+   `MEDIA_WORKER_DB_POOL_SIZE=2` and `MEDIA_WORKER_DB_MAX_OVERFLOW=0`.
+   These are Docker Compose interpolation variables, supplied to the Compose
+   process (shell or Compose `.env`). They are not activated merely by
+   adding `MEDIA_WORKER_DB_USE_LOCAL_POOL` inside the container's `.env.prod`.
+   These values are passed only to `media-worker`, while the other services
+   retain their existing connection behavior. Enable after a connection-budget
+   review, compare performance and auth events, and revert the pilot by setting
+   `MEDIA_WORKER_DB_USE_LOCAL_POOL=false`. Do **not** add global
+   `DB_USE_LOCAL_POOL=true` to the shared `.env.prod`; that would enable
+   pooling for all microservices and background workers.
+
 S3 access-log delivery is delayed and best-effort. A matched request is an AWS
 measurement, but a missing request is not proof that no data was sent. The
 dashboard therefore keeps authorized bytes as a conservative estimate until an

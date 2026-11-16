@@ -84,6 +84,18 @@ All endpoints assume Bearer authentication with a Supabase access token unless m
 
 These are mounted on the members service directly (not exposed through the gateway) and require an internal service-role JWT.
 
+#### Academy swim clearance (November 16 query-cost review)
+
+`GET /internal/members/academy-swim-clearance/{member_id}` and
+`POST /internal/members/academy-swim-clearance/batch` retain their existing readiness and
+missing-field responses. A single joined query loads only account activity,
+contact phone, swimming background and emergency-contact completeness, including
+the batch (1–50 IDs). Missing/inactive members remain not ready; emergency and
+medical details are never returned. This does not cache or relax safety checks.
+
+`GET /internal/members/reporting-summary` retains its service-only contract and
+quarter/member filters while avoiding unrelated automatic relationship reads.
+
 #### `GET /internal/members/birthdays-today`
 
 - **Auth:** Internal service header

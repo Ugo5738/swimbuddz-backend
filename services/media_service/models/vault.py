@@ -593,6 +593,16 @@ class MediaAccessLogEvent(Base):
     match_status: Mapped[str] = mapped_column(
         String(24), nullable=False, default="unmatched", index=True
     )
+    # Retain each S3 access event regardless of attribution. Only unmatched
+    # original/export downloads are retryable; derivative previews are accounted
+    # for as unattributed delivery without a member transfer authorization.
+    match_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_match_attempt_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    next_match_attempt_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     remote_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(

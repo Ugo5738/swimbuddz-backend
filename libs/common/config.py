@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = 5  # Reduced to prevent MaxClientsInSessionMode error
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800
+    # Opt-in for persistent backends only; do not enable across every service
+    # without checking aggregate connection limits on the Supabase Free tier.
+    DB_USE_LOCAL_POOL: bool = False
 
     # Supabase
     # Default placeholder values keep local/test runs from failing when Supabase
@@ -224,10 +227,15 @@ class Settings(BaseSettings):
     MEDIA_VAULT_AUTO_CREATE_SESSION_TYPES: str = "club,community,cohort_class,event"
     # S3 server access logs for billing-grade vault download reconciliation.
     # Keep the log bucket private and separate from the source media bucket.
+    # Emergency kill switch: pauses only bandwidth reconciliation, not uploads.
+    MEDIA_VAULT_BANDWIDTH_RECONCILIATION_ENABLED: bool = True
     MEDIA_VAULT_ACCESS_LOG_BUCKET: str = ""
     MEDIA_VAULT_S3_ACCESS_LOG_PREFIX: str = "media-vault/s3/"
     MEDIA_VAULT_ACCESS_LOG_LOOKBACK_DAYS: int = 7
     MEDIA_VAULT_ACCESS_LOG_MAX_OBJECTS_PER_RUN: int = 500
+    MEDIA_VAULT_MATCH_BATCH_SIZE: int = 200
+    MEDIA_VAULT_MATCH_MAX_ATTEMPTS: int = 7
+    MEDIA_VAULT_MATCH_INITIAL_BACKOFF_MINUTES: int = 60
     # Stroke Lab media is owned by media_service and stored in AWS_S3_BUCKET_PRIVATE
     # under Stroke Lab object prefixes.
 
