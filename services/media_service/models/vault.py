@@ -596,9 +596,7 @@ class MediaAccessLogEvent(Base):
     # Retain each S3 access event regardless of attribution. Only unmatched
     # original/export downloads are retryable; derivative previews are accounted
     # for as unattributed delivery without a member transfer authorization.
-    match_attempts: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
+    match_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_match_attempt_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
