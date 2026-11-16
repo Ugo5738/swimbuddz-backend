@@ -10,8 +10,8 @@ from fastapi import HTTPException
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
 from services.store_service.models import OrderStatus
-from services.store_service.routers.admin_inventory import orders as order_routes
 from services.store_service.routers.admin_inventory import _helpers
+from services.store_service.routers.admin_inventory import orders as order_routes
 
 
 def _service_user():
@@ -34,7 +34,10 @@ async def test_only_service_role_can_confirm_store_payment():
             AuthUser(sub=str(uuid.uuid4()), role="authenticated")
         )
     assert err.value.status_code == 403
-    assert any(route.path == "/orders/{order_id}/mark-paid" for route in order_routes.router.routes)
+    assert any(
+        route.path == "/orders/{order_id}/mark-paid"
+        for route in order_routes.router.routes
+    )
 
 
 @pytest.mark.asyncio
