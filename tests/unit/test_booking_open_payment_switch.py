@@ -257,3 +257,74 @@ async def test_switch_method_settles_if_paystack_reports_success(monkeypatch):
     )
     assert res["outcome"] == "already_paid"
     mark_paid.assert_awaited_once()
+
+
+def _reversed_wallet_receipt():
+    audit_id, refund_id, txn_id = (str(uuid4()) for _ in range(3))
+    row = _payment(
+        status=PaymentStatus.PAID,
+        provider=None,
+        amount=0,
+        metadata={
+            "wallet_transaction_id": txn_id,
+            "bubbles_to_apply": 52,
+            "server_price": {"total_kobo": 520000},
+            "booking_reconciliation": {
+                "reason": "wallet_settlement_reversed",
+                "audit_id": audit_id,
+                "refund_transaction_id": refund_id,
+                "refunded_bubbles": 52,
+            },
+        },
+    )
+    row.provider_reference = None
+    row.admin_review_note = f"wallet_settlement_reversed:{audit_id}"
+    return row
+
+
+async def test_reviewed_wallet_refund_reopens_checkout_but_keeps_paid_receipt(
+    monkeypatch,
+):
+    row = _reversed_wallet_receipt()
+    monkeypatch.setattr(
+        booking_payment_attempts, "booking_payments", AsyncMock(return_value=[row])
+    )
+    result = await booking_payment_attempts.get_open_booking_payment_for_member(
+        SimpleNamespace(), uuid4(), "member-1"
+    )
+    assert result == {"open_payment": None, "already_settled": False}
+    assert row.status == PaymentStatus.PAID
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "forged_metadata",
+        "cash",
+        "provider",
+        "partial_refund",
+        "wrong_total",
+        "bad_id",
+        "same_transaction",
+    ],
+)
+def test_reversal_exception_rejects_unreviewed_or_incomplete_proof(change):
+    row = _reversed_wallet_receipt()
+    meta = row.payment_metadata
+    if change == "forged_metadata":
+        row.admin_review_note = None
+    elif change == "cash":
+        row.amount = 100
+    elif change == "provider":
+        row.provider = "paystack"
+    elif change == "partial_refund":
+        meta["booking_reconciliation"]["refunded_bubbles"] = 51
+    elif change == "wrong_total":
+        meta["server_price"]["total_kobo"] = 530000
+    elif change == "bad_id":
+        meta["booking_reconciliation"]["refund_transaction_id"] = "fake"
+    elif change == "same_transaction":
+        meta["booking_reconciliation"]["refund_transaction_id"] = meta[
+            "wallet_transaction_id"
+        ]
+    assert booking_payment_attempts.blocks_new_attempt(row)
