@@ -1,6 +1,6 @@
 """Shared helper functions for members service routers."""
 
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload
 
 from libs.common.media_utils import resolve_media_urls
 from services.members_service.models import Member
@@ -8,14 +8,19 @@ from services.members_service.services import member_service
 
 
 def member_eager_load_options():
-    """Return selectinload options for all Member relationships."""
+    """Fully hydrate the six one-to-one member relations in one SQL roundtrip.
+
+    These are single-row relationships, not collections; joinedload avoids the
+    six additional SELECTs that selectinload caused on every /members/me call.
+    Slim internal endpoints must opt into only the relationships they need.
+    """
     return [
-        selectinload(Member.profile),
-        selectinload(Member.emergency_contact),
-        selectinload(Member.availability),
-        selectinload(Member.membership),
-        selectinload(Member.preferences),
-        selectinload(Member.coach_profile),
+        joinedload(Member.profile),
+        joinedload(Member.emergency_contact),
+        joinedload(Member.availability),
+        joinedload(Member.membership),
+        joinedload(Member.preferences),
+        joinedload(Member.coach_profile),
     ]
 
 
