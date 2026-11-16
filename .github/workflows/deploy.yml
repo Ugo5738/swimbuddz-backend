@@ -60,6 +60,7 @@ jobs:
       - name: Lint with Ruff
         run: |
           ruff check .
+          ruff format --diff libs/db/config.py services/media_service/models/vault.py services/media_service/tasks/vault_bandwidth.py tests/unit/test_media_bandwidth_retries.py
           ruff format --check .
 
       - name: Check every service has one migration head
