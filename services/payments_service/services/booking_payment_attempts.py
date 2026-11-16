@@ -73,6 +73,36 @@ def provider_exposed(payment: Payment) -> bool:
 
 def blocks_new_attempt(payment: Payment) -> bool:
     meta = payment.payment_metadata or {}
+    reversal = meta.get("booking_reconciliation") or {}
+    # Only an operator-verified, fully refunded zero-cash wallet settlement
+    # can reopen a paid booking. Member-controlled checkout metadata alone
+    # cannot supply the private admin_review_note attestation.
+    if (
+        isinstance(reversal, dict)
+        and reversal.get("reason") == "wallet_settlement_reversed"
+    ):
+        try:
+            audit_id = str(uuid.UUID(reversal["audit_id"]))
+            refund_id = str(uuid.UUID(reversal["refund_transaction_id"]))
+            original_id = str(uuid.UUID(meta["wallet_transaction_id"]))
+            bubbles = int(meta["bubbles_to_apply"])
+            verified = (
+                getattr(payment, "admin_review_note", None)
+                == f"wallet_settlement_reversed:{audit_id}"
+                and payment.purpose == PaymentPurpose.SESSION_BOOKING
+                and payment.status == PaymentStatus.PAID
+                and payment.currency == "NGN"
+                and payment.amount == 0
+                and not provider_exposed(payment)
+                and bubbles > 0
+                and reversal["refunded_bubbles"] == bubbles
+                and meta["server_price"]["total_kobo"] == bubbles * 10000
+                and refund_id != original_id
+            )
+        except (KeyError, ValueError, TypeError, AttributeError):
+            verified = False
+        if verified:
+            return False
     if payment.status == PaymentStatus.FAILED and (
         meta.get("checkout_closed_unpaid") or meta.get("booking_attempt_superseded")
     ):
