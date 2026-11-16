@@ -3927,11 +3927,14 @@ async def bandwidth_summary(
         ),
         reconciliation_last_processed_at=last_processed_at,
         measurement_note=(
-            "Effective download usage uses actual S3 bytes for reconciled requests, "
-            "and authorized bytes while reconciliation is pending or outside log "
-            "coverage. S3 access logs are best-effort and can be delayed or omitted. "
-            "AWS's 100 GB allowance is shared account-wide, so AWS Billing remains "
-            "authoritative."
+            "Estimated vault usage includes S3-measured matched original/export "
+            "downloads, S3-measured unattributed preview/derivative downloads, "
+            "and authorized-byte estimates for original/export transfers not yet "
+            "reconciled. Unmatched original S3 requests are excluded to avoid "
+            "potential double counting against estimates. S3 access logs are "
+            "best-effort and can be delayed or incomplete. The 100 GiB allowance "
+            "is AWS-account-wide; AWS Billing remains authoritative, and these "
+            "figures do not measure Supabase egress."
         ),
     )
 
