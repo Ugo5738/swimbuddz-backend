@@ -95,9 +95,13 @@ jobs:
         run: |
           umask 077
           printf '%s\n' 'DATABASE_SESSION_URL=postgresql://test:test@host.docker.internal:5432/test_db?sslmode=disable' > "$RUNNER_TEMP/backup-test.env"
-          python scripts/deployment/backup_database.py \
+          if ! python scripts/deployment/backup_database.py \
             --env-file "$RUNNER_TEMP/backup-test.env" \
-            --destination "$RUNNER_TEMP/recovery-drill"
+            --destination "$RUNNER_TEMP/recovery-drill"; then
+            # This database contains CI fixtures only. Production logs remain private.
+            tail -80 "$RUNNER_TEMP/recovery-drill/verification.log"
+            exit 1
+          fi
           test -s "$RUNNER_TEMP/recovery-drill/verified.json"
           rm -rf "$RUNNER_TEMP/recovery-drill" "$RUNNER_TEMP/backup-test.env"
 
