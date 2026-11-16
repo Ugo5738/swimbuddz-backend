@@ -24,8 +24,9 @@ request records or zero their measured bytes to make reconciliation succeed.**
 - `expired`: an unmatched request older than the configured access-log
   lookback. It remains in the access ledger for investigation and accounting.
 
-The existing records are classified by the database migration without being
-deleted. New derivative records never trigger transfer lookups.
+The migration classifies historical derivative records without deleting them.
+The worker classifies older unmatched original/export events against the actual
+configured lookback. New derivative records never trigger transfer lookups.
 
 Each retry batch selects only due unmatched rows with `FOR UPDATE SKIP LOCKED`,
 makes a single bounded query for presigned-transfer candidates, then scores by
