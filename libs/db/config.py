@@ -12,6 +12,8 @@ db_host = (db_url.host or "").lower()
 # "pooling a pool" by disabling SQLAlchemy pooling (NullPool) and letting
 # PgBouncer handle connection reuse.
 using_supabase_pooler = db_host.endswith(".pooler.supabase.com")
+
+
 # Preserve previous behavior unless explicitly enabled for a measured worker.
 # An app pool on all services can exhaust the Free plan's connection capacity.
 def should_use_null_pool(host: str, *, local_pool_enabled: bool) -> bool:
