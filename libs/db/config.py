@@ -11,10 +11,13 @@ db_host = (db_url.host or "").lower()
 # Supabase commonly uses PgBouncer. When using Supabase pooler hosts, avoid
 # "pooling a pool" by disabling SQLAlchemy pooling (NullPool) and letting
 # PgBouncer handle connection reuse.
-use_null_pool = db_host.endswith(".pooler.supabase.com")
+using_supabase_pooler = db_host.endswith(".pooler.supabase.com")
+# Preserve previous behavior unless explicitly enabled for a measured worker.
+# An app pool on all services can exhaust the Free plan's connection capacity.
+use_null_pool = using_supabase_pooler and not settings.DB_USE_LOCAL_POOL
 
 connect_args: dict = {}
-if db_host.endswith(".supabase.com") or use_null_pool:
+if db_host.endswith(".supabase.com") or using_supabase_pooler:
     # Be explicit about SSL when connecting to Supabase-managed Postgres.
     connect_args["sslmode"] = "require"
     # Keepalive settings help reduce intermittent SSL EOF disconnects on long-lived
@@ -24,8 +27,8 @@ if db_host.endswith(".supabase.com") or use_null_pool:
     connect_args["keepalives_interval"] = 10
     connect_args["keepalives_count"] = 5
 
-if use_null_pool:
-    # Supabase pooler runs through PgBouncer. Disable psycopg server-side
+if using_supabase_pooler:
+    # Supabase pooler runs through Supavisor. Disable psycopg server-side
     # prepared statements so transaction-pooled connections don't trip over
     # reused "_pg3_*" statement names.
     connect_args["prepare_threshold"] = None
