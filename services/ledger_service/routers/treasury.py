@@ -275,6 +275,8 @@ async def decide_request(request_id: uuid.UUID, payload: Decision, request: Requ
         raise HTTPException(403, "You cannot approve your own request")
     if payload.action == "reject" and not (payload.reason or "").strip():
         raise HTTPException(422, "Rejection requires a reason")
+    if payload.action == "approve" and item.budget_id is None and not (payload.reason or "").strip():
+        raise HTTPException(422, "An unbudgeted commitment requires a written owner exception reason")
     if payload.action == "approve" and item.budget_id is not None:
         budget = await session.scalar(select(TreasuryBudget).where(TreasuryBudget.org_id == org, TreasuryBudget.id == item.budget_id).with_for_update())
         if budget is None:
@@ -289,7 +291,8 @@ async def decide_request(request_id: uuid.UUID, payload: Decision, request: Requ
     item.approved_by = actor.id if item.status == "approved" else None
     item.approved_at = utc_now() if item.status == "approved" else None
     item.rejected_reason = (payload.reason or "").strip() if item.status == "rejected" else None
-    _audit(session, org, actor, "request_" + item.status, item.id, reason=item.rejected_reason)
+    item.approval_note = (payload.reason or "").strip() if item.status == "approved" else None
+    _audit(session, org, actor, "request_" + item.status, item.id, reason=item.rejected_reason or item.approval_note)
     await session.commit()
     await session.refresh(item)
     return item

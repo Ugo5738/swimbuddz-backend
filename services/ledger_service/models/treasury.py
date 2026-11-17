@@ -107,6 +107,7 @@ class TreasuryRequest(Base):
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("ledger_users.id"))
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     rejected_reason: Mapped[Optional[str]] = mapped_column(Text)
+    approval_note: Mapped[Optional[str]] = mapped_column(Text)
     bank_line_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("treasury_statement_lines.id"))
     destination_bank_line_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("treasury_statement_lines.id"))
     confirmed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("ledger_users.id"))

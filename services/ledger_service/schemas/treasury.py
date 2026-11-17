@@ -100,6 +100,7 @@ class RequestOut(BaseModel):
     approved_by: Optional[UUID]
     approved_at: Optional[datetime]
     rejected_reason: Optional[str]
+    approval_note: Optional[str] = None
     bank_line_id: Optional[UUID]
     vendor_name: Optional[str] = None
     invoice_reference: Optional[str] = None
