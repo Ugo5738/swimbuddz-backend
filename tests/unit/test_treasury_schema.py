@@ -4,7 +4,7 @@ from datetime import date
 from uuid import uuid4
 import pytest
 from pydantic import ValidationError
-from services.ledger_service.schemas.treasury import BankCreate, BudgetCreate, RequestCreate, StatementImport
+from services.ledger_service.schemas.treasury import BankCreate, BudgetCreate, RequestCreate, StatementImport, ForecastCreate, SnapshotCreate, PostConfirmedRequest
 
 def _request(**overrides):
     data = {"kind": "funding", "amount_minor": 100_000, "purpose": "Pool allocations",
@@ -44,3 +44,31 @@ def test_statement_signed_amount(amount):
 def test_known_bank_codes_only():
     with pytest.raises(ValidationError):
         BankCreate(code="personal")
+
+
+def test_expense_documents_and_programme_are_structured():
+    req = RequestCreate(
+        kind="expense", amount_minor=150000, purpose="Pool hire for Academy",
+        category="pool_fees", source_bank_id=uuid4(),
+        vendor_name="Pool operator", invoice_reference="POOL-17",
+        programme="academy", cost_center_code="YABA",
+    )
+    assert req.vendor_name == "Pool operator"
+    assert req.programme == "academy"
+    assert req.destination_bank_id is None
+
+def test_forecast_is_not_negative_and_requires_valid_scenario():
+    with pytest.raises(ValidationError):
+        ForecastCreate(direction="outflow", scenario="base", effective_on="2026-12-01",
+                       amount_minor=-100, purpose="Coaching fee")
+    with pytest.raises(ValidationError):
+        ForecastCreate(direction="outflow", scenario="certain", effective_on="2026-12-01",
+                       amount_minor=100, purpose="Coaching fee")
+
+def test_snapshot_accepts_signed_balance_with_original_evidence_id():
+    item = SnapshotCreate(as_of=date(2026, 11, 17), balance_minor=-1500,
+                          evidence_reference="stanbic-statement-nov-17")
+    assert item.balance_minor == -1500
+
+def test_ledger_posting_requires_explicit_owner_acknowledgement():
+    assert PostConfirmedRequest().acknowledgement is False
