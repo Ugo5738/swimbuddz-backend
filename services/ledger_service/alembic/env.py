@@ -33,6 +33,11 @@ from services.ledger_service.models import (  # noqa: F401
     Period,
     ReconciliationBreak,
     RevenueRecognitionSchedule,
+    TreasuryBankAccount,
+    TreasuryStatementLine,
+    TreasuryBudget,
+    TreasuryRequest,
+    TreasuryAuditEvent,
 )
 
 settings = get_settings()
@@ -54,6 +59,11 @@ target_metadata = Base.metadata
 # the B2B-extracted DB clean too. Final names decided in P1.1. Example:
 SERVICE_TABLES: set[str] = {
     "ledger_organizations",
+    "treasury_bank_accounts",
+    "treasury_statement_lines",
+    "treasury_budgets",
+    "treasury_requests",
+    "treasury_audit_events",
     "chart_of_accounts",
     "cost_centers",
     "journal_entries",
