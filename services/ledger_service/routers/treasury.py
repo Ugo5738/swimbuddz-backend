@@ -624,6 +624,19 @@ async def post_confirmed_to_ledger(request_id: uuid.UUID, payload: PostConfirmed
         debit_ref = expense_acct.code
     if source.journal_entry_id or (dest and dest.journal_entry_id):
         raise HTTPException(409, "Evidence already reconciled to another journal; link instead of posting twice")
+    if not source.reference:
+        raise HTTPException(409, "Automated posting needs a bank transaction reference; otherwise reconcile manually")
+    possible_duplicate = await session.scalar(select(JournalEntry.id).select_from(JournalEntry).join(
+        JournalLine, JournalLine.entry_id == JournalEntry.id,
+    ).where(
+        JournalEntry.org_id == org, JournalLine.org_id == org,
+        JournalLine.account_id == bank.ledger_account_id,
+        JournalLine.external_ref == source.reference,
+        JournalLine.credit_minor - JournalLine.debit_minor == item.amount_minor,
+    ).limit(1))
+    if possible_duplicate:
+        raise HTTPException(409, "Matching bank ledger movement already exists; link the entry instead of double-posting")
+
     # Force a separate fiscal review of older, already-posted payout entries:
     # the OWNER acknowledges there is no duplicate entry in the existing ledger.
     lines = [
