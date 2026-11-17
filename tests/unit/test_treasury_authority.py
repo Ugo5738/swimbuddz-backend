@@ -40,7 +40,7 @@ async def test_requestor_cannot_approve_own_expense():
     session = _session(item)
     with pytest.raises(HTTPException) as exc:
         await decide_request(
-            item.id, Decision(action="approve"), _request_context(),
+            item.id, Decision(action="approve", reason="Urgent pool repair approved as a documented exception"), _request_context(),
             actor=actor, session=session,
         )
     assert exc.value.status_code == 403
@@ -52,7 +52,7 @@ async def test_approval_is_internal_only_not_paid():
     actor = SimpleNamespace(id=uuid4())
     item = SimpleNamespace(
         id=uuid4(), status="requested", requested_by=uuid4(),
-        budget_id=None, approved_by=None, approved_at=None, rejected_reason=None,
+        budget_id=None, approved_by=None, approved_at=None, rejected_reason=None, approval_note=None,
     )
     session = _session(item)
     await decide_request(
@@ -78,5 +78,16 @@ async def test_approved_request_cannot_be_confirmed_without_bank_debit():
             item.id, ConfirmRequest(source_line_id=uuid4()),
             _request_context(), actor=actor, session=session,
         )
+    assert exc.value.status_code == 422
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unbudgeted_approval_requires_reason():
+    actor = SimpleNamespace(id=uuid4())
+    item = SimpleNamespace(id=uuid4(), status="requested", requested_by=uuid4(), budget_id=None)
+    session = _session(item)
+    with pytest.raises(HTTPException) as exc:
+        await decide_request(item.id, Decision(action="approve"), _request_context(), actor=actor, session=session)
     assert exc.value.status_code == 422
     session.commit.assert_not_awaited()
