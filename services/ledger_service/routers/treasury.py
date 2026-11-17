@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from libs.common.datetime_utils import utc_now
 from services.ledger_service.app.deps import get_ledger_db, require_ledger_role
 from services.ledger_service.models import (
-    ChartOfAccounts, JournalEntry, JournalLine, LedgerUser,
+    ChartOfAccounts, JournalEntry, JournalLine,
     TreasuryAuditEvent, TreasuryBankAccount, TreasuryBudget,
     TreasuryRequest, TreasuryStatementLine,
 )
@@ -105,10 +105,9 @@ async def link_bank_ledger(bank_id: uuid.UUID, payload: LedgerAccountLink, reque
     ))
     if account is None or account.type != AccountType.ASSET or account.normal_balance != NormalBalance.DEBIT:
         raise HTTPException(422, "Only an active bank asset ledger account can be linked")
-    if bank.code == "stanbic" and account.account_metadata and account.account_metadata.get("maps_to") != "bank_operating_ngn":
-        raise HTTPException(422, "Stanbic's existing settlement mapping must be reviewed before using another ledger account")
-    if bank.code == "moniepoint" and account.account_metadata and account.account_metadata.get("maps_to") == "bank_operating_ngn":
-        raise HTTPException(422, "Do not reuse the existing customer settlement account for Moniepoint")
+    expected = "bank_operating_ngn" if bank.code == "stanbic" else "bank_moniepoint_ngn"
+    if not account.account_metadata or account.account_metadata.get("maps_to") != expected:
+        raise HTTPException(422, "Select the designated ledger account for this bank; do not mix bank balances")
     other = await session.scalar(select(TreasuryBankAccount).where(
         TreasuryBankAccount.org_id == org,
         TreasuryBankAccount.id != bank_id,
