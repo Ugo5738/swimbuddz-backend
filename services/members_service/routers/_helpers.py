@@ -1,6 +1,6 @@
 """Shared helper functions for members service routers."""
 
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload, raiseload, selectinload
 
 from libs.common.media_utils import resolve_media_urls
 from services.members_service.models import Member
@@ -17,6 +17,11 @@ def member_eager_load_options():
         selectinload(Member.preferences),
         selectinload(Member.coach_profile),
     ]
+
+
+def member_membership_only_options():
+    """Lock the member without nullable joins or unrelated profile reads."""
+    return [raiseload("*"), selectinload(Member.membership)]
 
 
 def member_read_only_joined_options():

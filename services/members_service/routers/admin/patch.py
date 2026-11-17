@@ -8,7 +8,10 @@ from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from pydantic import BaseModel
 from services.members_service.models import Member, MemberMembership
-from services.members_service.routers._helpers import member_eager_load_options
+from services.members_service.routers._helpers import (
+    member_membership_only_options,
+    member_read_only_joined_options,
+)
 from services.members_service.schemas import MemberResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,7 +38,7 @@ async def admin_patch_membership_by_auth(
     query = (
         select(Member)
         .where(Member.auth_id == auth_id)
-        .options(*member_eager_load_options())
+        .options(*member_membership_only_options())
         .with_for_update()
     )
     result = await db.execute(query)
@@ -71,13 +74,14 @@ async def admin_patch_membership_by_auth(
             member.membership.pending_payment_reference = reference
 
     db.add(member)
+    member_id = member.id
     await db.commit()
-    await db.refresh(member)
 
     query = (
         select(Member)
-        .where(Member.id == member.id)
-        .options(*member_eager_load_options())
+        .where(Member.id == member_id)
+        .options(*member_read_only_joined_options())
+        .execution_options(populate_existing=True)
     )
     result = await db.execute(query)
     return result.scalar_one()

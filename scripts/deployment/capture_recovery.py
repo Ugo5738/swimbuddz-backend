@@ -29,6 +29,8 @@ def capture(repository, destination, project, compose_file):
         "MEDIA_WORKER_DB_USE_LOCAL_POOL",
         "MEDIA_WORKER_DB_POOL_SIZE",
         "MEDIA_WORKER_DB_MAX_OVERFLOW",
+        "MEMBERS_API_DB_USE_LOCAL_POOL",
+        "CHAT_API_DB_USE_LOCAL_POOL",
     )
     interpolation = {}
     for key in interpolation_keys:
@@ -37,9 +39,6 @@ def capture(repository, destination, project, compose_file):
             if "\n" in value or "\r" in value or "'" in value:
                 raise ValueError("Invalid Compose interpolation value")
             interpolation[key] = value
-    (destination / "compose-shell.env").write_text(
-        "".join(f"{key}='{value}'\n" for key, value in interpolation.items())
-    )
     ids = subprocess.check_output(
         [
             "docker",
@@ -57,12 +56,39 @@ def capture(repository, destination, project, compose_file):
     images = []
     for container in containers:
         service = container["Config"]["Labels"]["com.docker.compose.service"]
+        runtime_env = dict(
+            value.split("=", 1)
+            for value in container["Config"].get("Env", [])
+            if "=" in value
+        )
+        switch = {
+            "members-service": "MEMBERS_API_DB_USE_LOCAL_POOL",
+            "chat-service": "CHAT_API_DB_USE_LOCAL_POOL",
+            "media-worker": "MEDIA_WORKER_DB_USE_LOCAL_POOL",
+        }.get(service)
+        if switch:
+            # The new deployment's shell may already request a different flag.
+            # Rollback must capture the old *running* state, not that request.
+            interpolation[switch] = (
+                "true"
+                if runtime_env.get("DB_USE_LOCAL_POOL", "false").lower()
+                in {"true", "1", "yes", "on"}
+                else "false"
+            )
+        if service == "media-worker":
+            for setting in ("DB_POOL_SIZE", "DB_MAX_OVERFLOW"):
+                value = runtime_env.get(setting)
+                if value is not None and value.isdigit():
+                    interpolation["MEDIA_WORKER_" + setting] = value
         tag = f"swimbuddz-rollback:{destination.name}-{service}"
         subprocess.run(["docker", "tag", container["Image"], tag], check=True)
         services[service] = {"image": tag, "pull_policy": "never"}
         images.append(
             {"service": service, "image_id": container["Image"], "rollback_tag": tag}
         )
+    (destination / "compose-shell.env").write_text(
+        "".join(f"{key}='{value}'\n" for key, value in interpolation.items())
+    )
     previous = subprocess.run(
         ["git", "-C", str(repository), "rev-parse", "HEAD"],
         text=True,

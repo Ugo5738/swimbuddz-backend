@@ -40,6 +40,13 @@ SwimBuddz Members Service manages member profiles, registration, and member-rela
 
 ## Database Tables
 
+Pending-reference and Academy projection mutations load only membership while
+holding the Member row lock. Their complete MemberResponse is loaded once using
+read-only joins after the mutation; no nullable joins are added to FOR UPDATE.
+Programme dates, idempotency and conditional pending-reference clearing remain
+authoritative. The default-off API pool canary is documented in
+`docs/operations/SUPABASE_CONNECTION_CANARY.md`.
+
 - `members` - Core member profiles
 - `pending_registrations` - Registration approval queue
 - `volunteer_roles` - Available volunteer positions

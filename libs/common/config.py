@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # Opt-in for persistent backends only; do not enable across every service
     # without checking aggregate connection limits on the Supabase Free tier.
     DB_USE_LOCAL_POOL: bool = False
+    DB_APPLICATION_NAME: str = Field(default="", max_length=63)
 
     # Supabase
     # Default placeholder values keep local/test runs from failing when Supabase

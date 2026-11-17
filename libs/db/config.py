@@ -14,7 +14,7 @@ db_host = (db_url.host or "").lower()
 using_supabase_pooler = db_host.endswith(".pooler.supabase.com")
 
 
-# Preserve previous behavior unless explicitly enabled for a measured worker.
+# Preserve previous behavior unless explicitly enabled for a measured role.
 # An app pool on all services can exhaust the Free plan's connection capacity.
 def should_use_null_pool(host: str, *, local_pool_enabled: bool) -> bool:
     """Default to Supavisor-managed connections unless locally opted in."""
@@ -26,6 +26,8 @@ use_null_pool = should_use_null_pool(
 )
 
 connect_args: dict = {}
+if settings.DB_APPLICATION_NAME:
+    connect_args["application_name"] = settings.DB_APPLICATION_NAME
 if db_host.endswith(".supabase.com") or using_supabase_pooler:
     # Be explicit about SSL when connecting to Supabase-managed Postgres.
     connect_args["sslmode"] = "require"
