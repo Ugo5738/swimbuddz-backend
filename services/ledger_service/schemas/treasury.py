@@ -142,3 +142,7 @@ class BudgetOut(BaseModel):
     amount_minor: int
     starts_on: date
     ends_on: date
+
+
+class LedgerAccountLink(BaseModel):
+    account_id: UUID

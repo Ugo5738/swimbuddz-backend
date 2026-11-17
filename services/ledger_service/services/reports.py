@@ -44,6 +44,7 @@ SUPPORTED_GROUP_BY = ("none", "dimension_1")
 # maps_to ref → "bank" (settled) vs "clearing" (collected, not yet settled).
 CASH_ACCOUNTS = {
     "bank_operating_ngn": "bank",
+    "bank_moniepoint_ngn": "bank",
     "bank_operating_usd": "bank",
     "paystack_clearing": "clearing",
     "flutterwave_clearing": "clearing",

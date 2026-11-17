@@ -15,10 +15,10 @@ from services.ledger_service.models import (
     TreasuryAuditEvent, TreasuryBankAccount, TreasuryBudget,
     TreasuryRequest, TreasuryStatementLine,
 )
-from services.ledger_service.models.enums import LedgerRole
+from services.ledger_service.models.enums import AccountType, LedgerRole, NormalBalance
 from services.ledger_service.schemas.treasury import (
     BankCreate, BankOut, BudgetCreate, BudgetOut, ConfirmRequest, Decision,
-    MatchJournal, RequestCreate, RequestOut, StatementImport,
+    MatchJournal, LedgerAccountLink, RequestCreate, RequestOut, StatementImport,
     StatementOut, TreasurySummary,
 )
 from sqlalchemy import func, select
@@ -77,6 +77,87 @@ async def create_bank(payload: BankCreate, request: Request, actor=Depends(requi
     session.add(bank)
     await session.flush()
     _audit(session, org, actor, "bank_created", bank.id, code=bank.code)
+    await session.commit()
+    await session.refresh(bank)
+    return bank
+
+
+@router.get("/ledger-options")
+async def ledger_options(request: Request, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    assets = (await session.scalars(select(ChartOfAccounts).where(
+        ChartOfAccounts.org_id == org,
+        ChartOfAccounts.is_active.is_(True),
+        ChartOfAccounts.type == AccountType.ASSET,
+        ChartOfAccounts.normal_balance == NormalBalance.DEBIT,
+    ).order_by(ChartOfAccounts.code))).all()
+    return [{"id": str(a.id), "code": a.code, "name": a.name} for a in assets
+            if a.code.startswith("11") and a.code != "1100"]
+
+
+@router.post("/banks/{bank_id}/link-ledger", response_model=BankOut)
+async def link_bank_ledger(bank_id: uuid.UUID, payload: LedgerAccountLink, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    bank = await _bank(session, org, bank_id)
+    account = await session.scalar(select(ChartOfAccounts).where(
+        ChartOfAccounts.id == payload.account_id,
+        ChartOfAccounts.org_id == org, ChartOfAccounts.is_active.is_(True),
+    ))
+    if account is None or account.type != AccountType.ASSET or account.normal_balance != NormalBalance.DEBIT:
+        raise HTTPException(422, "Only an active bank asset ledger account can be linked")
+    if bank.code == "stanbic" and account.account_metadata and account.account_metadata.get("maps_to") != "bank_operating_ngn":
+        raise HTTPException(422, "Stanbic's existing settlement mapping must be reviewed before using another ledger account")
+    if bank.code == "moniepoint" and account.account_metadata and account.account_metadata.get("maps_to") == "bank_operating_ngn":
+        raise HTTPException(422, "Do not reuse the existing customer settlement account for Moniepoint")
+    other = await session.scalar(select(TreasuryBankAccount).where(
+        TreasuryBankAccount.org_id == org,
+        TreasuryBankAccount.id != bank_id,
+        TreasuryBankAccount.ledger_account_id == account.id,
+    ))
+    if other:
+        raise HTTPException(409, "This ledger account is already linked to a different bank")
+    bank.ledger_account_id = account.id
+    _audit(session, org, actor, "bank_ledger_linked", bank.id, account_code=account.code)
+    await session.commit()
+    await session.refresh(bank)
+    return bank
+
+
+@router.post("/banks/{bank_id}/create-operations-ledger", response_model=BankOut)
+async def create_operations_ledger(bank_id: uuid.UUID, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    bank = await _bank(session, org, bank_id)
+    if bank.code != "moniepoint":
+        raise HTTPException(422, "A dedicated account can only be created for Moniepoint operations")
+    base = await session.scalar(select(ChartOfAccounts).where(
+        ChartOfAccounts.org_id == org, ChartOfAccounts.code == "1110",
+    ))
+    if base is None or base.type != AccountType.ASSET:
+        raise HTTPException(409, "The existing NGN bank account must be configured first")
+    existing = await session.scalar(select(ChartOfAccounts).where(
+        ChartOfAccounts.org_id == org, ChartOfAccounts.code == "1115",
+    ))
+    if existing:
+        if existing.account_metadata != {"maps_to": "bank_moniepoint_ngn"}:
+            raise HTTPException(409, "Account code 1115 already exists for a different purpose")
+        account = existing
+    else:
+        account = ChartOfAccounts(
+            org_id=org, code="1115", name="Bank — Moniepoint Operations (NGN)",
+            type=AccountType.ASSET, normal_balance=NormalBalance.DEBIT,
+            parent_id=base.parent_id, is_active=True, is_system=True,
+            account_metadata={"maps_to": "bank_moniepoint_ngn"},
+        )
+        session.add(account)
+        await session.flush()
+    other = await session.scalar(select(TreasuryBankAccount).where(
+        TreasuryBankAccount.org_id == org,
+        TreasuryBankAccount.id != bank_id, TreasuryBankAccount.ledger_account_id == account.id,
+    ))
+    if other:
+        raise HTTPException(409, "This ledger account belongs to a different bank")
+    bank.ledger_account_id = account.id
+    _audit(session, org, actor, "bank_operations_ledger_created", bank.id, account_code="1115")
     await session.commit()
     await session.refresh(bank)
     return bank
@@ -254,3 +335,54 @@ async def summary(request: Request, _actor=Depends(require_ledger_role(LedgerRol
         TreasuryRequest.org_id == org, TreasuryRequest.kind == "expense", TreasuryRequest.status == "confirmed",
     )) or 0)
     return TreasurySummary(banks=banks, pending_requests=pending, approved_awaiting_bank_evidence=approved, unmatched_statement_lines=unmatched, confirmed_expenses_minor=spent)
+
+
+@router.post("/statements/{line_id}/match-journal", response_model=StatementOut)
+async def match_journal(line_id: uuid.UUID, payload: MatchJournal, request: Request, actor=Depends(require_ledger_role(LedgerRole.ACCOUNTANT)), session: AsyncSession = Depends(get_ledger_db)):
+    """Review an actual bank statement line against a previously posted ledger entry.
+
+    Does not post a new journal entry or overwrite the existing accounting system.
+    A bank-to-bank transfer can have two lines pointing to one balanced journal entry.
+    """
+    org = request.state.org_id
+    line = await session.scalar(select(TreasuryStatementLine).where(
+        TreasuryStatementLine.org_id == org, TreasuryStatementLine.id == line_id,
+    ).with_for_update())
+    if line is None:
+        raise HTTPException(404, "Statement row not found")
+    if line.journal_entry_id:
+        raise HTTPException(409, "This row is already matched to a journal entry")
+    bank = await _bank(session, org, line.bank_account_id)
+    if bank.ledger_account_id is None:
+        raise HTTPException(409, "The bank must first be linked to a distinct accounting ledger account")
+    entry = await session.scalar(select(JournalEntry).where(
+        JournalEntry.org_id == org, JournalEntry.id == payload.journal_entry_id,
+    ))
+    if entry is None or entry.status.value != "posted":
+        raise HTTPException(422, "A posted journal entry is required")
+    legs = (await session.execute(select(
+        func.coalesce(func.sum(JournalLine.debit_minor), 0),
+        func.coalesce(func.sum(JournalLine.credit_minor), 0),
+    ).where(
+        JournalLine.org_id == org, JournalLine.entry_id == entry.id,
+        JournalLine.account_id == bank.ledger_account_id,
+    ))).one()
+    net_minor = int(legs[0]) - int(legs[1])
+    if net_minor != line.amount_minor:
+        raise HTTPException(422, "This journal entry does not record the same signed bank movement")
+    # For a customer payment/PSP posting, a single journal can carry several
+    # other legs, but only an equal bank movement can substantiate this row.
+    already = await session.scalar(select(TreasuryStatementLine.id).where(
+        TreasuryStatementLine.org_id == org,
+        TreasuryStatementLine.id != line.id,
+        TreasuryStatementLine.bank_account_id == line.bank_account_id,
+        TreasuryStatementLine.journal_entry_id == entry.id,
+    ))
+    if already:
+        raise HTTPException(409, "This ledger bank movement was already assigned to another statement row")
+    line.journal_entry_id = entry.id
+    line.match_status = "matched_journal"
+    _audit(session, org, actor, "bank_statement_matched_to_ledger", line.id, journal_entry_id=str(entry.id))
+    await session.commit()
+    await session.refresh(line)
+    return line
