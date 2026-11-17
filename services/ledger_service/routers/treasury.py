@@ -6,19 +6,24 @@ a different finance OWNER, and confirmed only with real imported bank evidence.
 All queries are scoped by org_id; the bank remains the final payment authority.
 """
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from libs.common.datetime_utils import utc_now
 from services.ledger_service.app.deps import get_ledger_db, require_ledger_role
 from services.ledger_service.models import (
-    ChartOfAccounts, JournalEntry, JournalLine,
+    ChartOfAccounts, JournalEntry, JournalLine, CostCenter,
+    TreasuryBankSnapshot, TreasuryForecastLine,
     TreasuryAuditEvent, TreasuryBankAccount, TreasuryBudget,
     TreasuryRequest, TreasuryStatementLine,
 )
 from services.ledger_service.models.enums import AccountType, LedgerRole, NormalBalance
+from services.ledger_service.schemas.journal import JournalEntryCreate
+from services.ledger_service.services.posting import post_entry, LedgerError
 from services.ledger_service.schemas.treasury import (
     BankCreate, BankOut, BudgetCreate, BudgetOut, ConfirmRequest, Decision,
+    SnapshotCreate, ForecastCreate, ForecastOut, CashProjection, BankReconciliationRow,
+    PostConfirmedRequest,
     MatchJournal, LedgerAccountLink, RequestCreate, RequestOut, StatementImport,
     StatementOut, TreasurySummary,
 )
@@ -197,9 +202,16 @@ async def create_request(payload: RequestCreate, request: Request, actor=Depends
         dest = await _bank(session, org, payload.destination_bank_id)
         if source.purpose != "treasury" or dest.purpose != "operations":
             raise HTTPException(422, "Funding requests must move from treasury to operations")
+    if payload.cost_center_code:
+        center = await session.scalar(select(CostCenter.id).where(
+            CostCenter.org_id == org, CostCenter.code == payload.cost_center_code,
+            CostCenter.is_active.is_(True),
+        ))
+        if center is None:
+            raise HTTPException(422, "Unknown or inactive cost centre")
     if payload.budget_id is not None:
         budget = await session.scalar(select(TreasuryBudget).where(TreasuryBudget.org_id == org, TreasuryBudget.id == payload.budget_id))
-        if budget is None or budget.category != payload.category:
+        if budget is None or budget.category != payload.category or budget.kind != payload.kind:
             raise HTTPException(422, "Budget not found or category mismatch")
         if not (budget.starts_on <= date.today() <= budget.ends_on):
             raise HTTPException(422, "Budget is not active")
@@ -333,6 +345,8 @@ async def confirm_request(request_id: uuid.UUID, payload: ConfirmRequest, reques
         dest.match_status, dest.request_id = "matched_request", item.id
         item.destination_bank_line_id = dest.id
     item.bank_line_id = source.id
+    if item.kind == "expense" and not (item.evidence_reference or item.invoice_reference):
+        raise HTTPException(422, "Expense confirmation requires receipt or invoice evidence reference")
     item.status = "confirmed"
     item.confirmed_by = actor.id
     item.confirmed_at = utc_now()
@@ -406,3 +420,239 @@ async def match_journal(line_id: uuid.UUID, payload: MatchJournal, request: Requ
     await session.commit()
     await session.refresh(line)
     return line
+
+@router.post("/banks/{bank_id}/snapshot", response_model=BankOut)
+async def attest_bank_snapshot(bank_id: uuid.UUID, payload: SnapshotCreate, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    """Owner records a dated verified statement closing balance. No pretend live API."""
+    org = request.state.org_id
+    bank = await session.scalar(select(TreasuryBankAccount).where(
+        TreasuryBankAccount.org_id == org, TreasuryBankAccount.id == bank_id,
+    ).with_for_update())
+    if bank is None:
+        raise HTTPException(404, "Bank not found")
+    if payload.as_of > date.today():
+        raise HTTPException(422, "Cannot attest a future bank balance")
+    newest = await session.scalar(select(func.max(TreasuryBankSnapshot.as_of)).where(
+        TreasuryBankSnapshot.org_id == org, TreasuryBankSnapshot.bank_account_id == bank_id,
+    ))
+    if newest and payload.as_of <= newest:
+        raise HTTPException(409, "A same-day or later verified snapshot exists; audit before correction")
+    session.add(TreasuryBankSnapshot(
+        org_id=org, bank_account_id=bank_id, as_of=payload.as_of,
+        balance_minor=payload.balance_minor, evidence_reference=payload.evidence_reference,
+        attested_by=actor.id,
+    ))
+    bank.statement_balance_minor = payload.balance_minor
+    bank.statement_as_of = payload.as_of
+    bank.statement_verified_at = utc_now()
+    bank.statement_evidence = payload.evidence_reference
+    _audit(session, org, actor, "statement_balance_attested", bank_id, as_of=str(payload.as_of), reference=payload.evidence_reference)
+    await session.commit()
+    await session.refresh(bank)
+    return bank
+
+
+@router.get("/reconciliation/banks", response_model=list[BankReconciliationRow])
+async def reconcile_banks(request: Request, as_of: date | None = None, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    """An as-of account reconciliation; mismatched statement dates are flagged."""
+    org = request.state.org_id
+    end = as_of or date.today()
+    banks = list((await session.scalars(select(TreasuryBankAccount).where(
+        TreasuryBankAccount.org_id == org,
+    ))).all())
+    result = []
+    for bank in banks:
+        snap = await session.scalar(select(TreasuryBankSnapshot).where(
+            TreasuryBankSnapshot.org_id == org, TreasuryBankSnapshot.bank_account_id == bank.id,
+            TreasuryBankSnapshot.as_of <= end,
+        ).order_by(TreasuryBankSnapshot.as_of.desc()).limit(1))
+        ledger_minor = None
+        if bank.ledger_account_id:
+            ledger_minor = int((await session.scalar(select(
+                func.coalesce(func.sum(JournalLine.debit_minor - JournalLine.credit_minor), 0)
+            ).select_from(JournalLine).join(JournalEntry, JournalLine.entry_id == JournalEntry.id).where(
+                JournalLine.org_id == org,
+                JournalLine.account_id == bank.ledger_account_id,
+                JournalEntry.entry_date <= end,
+            ))) or 0)
+        counts = (await session.execute(select(
+            TreasuryStatementLine.match_status, func.count(TreasuryStatementLine.id),
+        ).where(
+            TreasuryStatementLine.org_id == org,
+            TreasuryStatementLine.bank_account_id == bank.id,
+            TreasuryStatementLine.occurred_on <= end,
+        ).group_by(TreasuryStatementLine.match_status))).all()
+        match_count = sum(int(n) for status, n in counts if status != "unmatched")
+        unmatch_count = sum(int(n) for status, n in counts if status == "unmatched")
+        # Do not compare a snapshot from last week to today's ledger as if same date.
+        comparable_ledger = None
+        if snap is not None and bank.ledger_account_id:
+            comparable_ledger = int((await session.scalar(select(
+                func.coalesce(func.sum(JournalLine.debit_minor - JournalLine.credit_minor), 0)
+            ).select_from(JournalLine).join(JournalEntry, JournalLine.entry_id == JournalEntry.id).where(
+                JournalLine.org_id == org, JournalLine.account_id == bank.ledger_account_id,
+                JournalEntry.entry_date <= snap.as_of,
+            ))) or 0)
+        difference = snap.balance_minor - comparable_ledger if snap and comparable_ledger is not None else None
+        result.append(BankReconciliationRow(
+            bank_id=bank.id, code=bank.code,
+            latest_statement_balance_minor=snap.balance_minor if snap else None,
+            latest_statement_date=snap.as_of if snap else None,
+            ledger_balance_minor=comparable_ledger,
+            difference_minor=difference, matched_rows=match_count,
+            unmatched_rows=unmatch_count,
+            status=("not_configured" if not bank.ledger_account_id else
+                    "needs_snapshot" if not snap else
+                    "balanced" if difference == 0 and unmatch_count == 0 else "needs_reconciliation"),
+        ))
+    return result
+
+
+@router.post("/forecasts", response_model=ForecastOut, status_code=201)
+async def create_forecast(payload: ForecastCreate, request: Request, actor=Depends(require_ledger_role(LedgerRole.OPERATIONS)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    if payload.effective_on < date.today():
+        raise HTTPException(422, "Forecast assumptions must be dated today or later")
+    line = TreasuryForecastLine(org_id=org, created_by=actor.id, **payload.model_dump())
+    session.add(line)
+    await session.flush()
+    _audit(session, org, actor, "forecast_assumption_created", line.id, amount_minor=line.amount_minor)
+    await session.commit()
+    await session.refresh(line)
+    return line
+
+
+@router.get("/forecasts", response_model=list[ForecastOut])
+async def list_forecasts(request: Request, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    return list((await session.scalars(select(TreasuryForecastLine).where(
+        TreasuryForecastLine.org_id == request.state.org_id,
+    ).order_by(TreasuryForecastLine.effective_on).limit(300))).all())
+
+
+@router.get("/cash-projection", response_model=CashProjection)
+async def cash_projection(request: Request, scenario: str = "base", days: int = 30, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    if scenario not in ("base", "optimistic", "conservative") or not 1 <= days <= 365:
+        raise HTTPException(422, "Invalid scenario or forecasting horizon")
+    org = request.state.org_id
+    today = date.today()
+    lines = (await session.scalars(select(TreasuryForecastLine).where(
+        TreasuryForecastLine.org_id == org,
+        TreasuryForecastLine.effective_on >= today,
+        TreasuryForecastLine.effective_on <= today + timedelta(days=days),
+        TreasuryForecastLine.scenario == scenario,
+    ))).all()
+    incoming = sum(l.amount_minor for l in lines if l.direction == "inflow")
+    outgoing = sum(l.amount_minor for l in lines if l.direction == "outflow")
+    banks = (await session.scalars(select(TreasuryBankAccount).where(
+        TreasuryBankAccount.org_id == org,
+    ))).all()
+    # Starting cash needs two comparable, explicitly attested balances.
+    snapshots = [b for b in banks if b.statement_balance_minor is not None and b.statement_as_of is not None]
+    starting = sum(b.statement_balance_minor for b in snapshots) if len(snapshots) == 2 and len(banks) == 2 and len({b.statement_as_of for b in snapshots}) == 1 else None
+    approved_expenses = int((await session.scalar(select(func.coalesce(func.sum(TreasuryRequest.amount_minor), 0)).where(
+        TreasuryRequest.org_id == org, TreasuryRequest.kind == "expense", TreasuryRequest.status == "approved",
+    ))) or 0)
+    # Pending approved expenses are deducted unless explicitly in forecast lines;
+    # an independent expense budget is a ceiling, not an expense or cash flow.
+    projected = starting + incoming - outgoing - approved_expenses if starting is not None else None
+    return CashProjection(
+        scenario=scenario, latest_bank_snapshot_minor=starting,
+        latest_bank_snapshot_date=snapshots[0].statement_as_of if starting is not None else None,
+        planned_inflows_minor=incoming, planned_outflows_minor=outgoing,
+        projected_ending_minor=projected, pending_approved_expenses_minor=approved_expenses,
+        caveat="Planning model, not live bank data. Ensure planned outflows exclude approved requests to prevent double counting.",
+    )
+
+
+@router.post("/requests/{request_id}/post-ledger", response_model=RequestOut)
+async def post_confirmed_to_ledger(request_id: uuid.UUID, payload: PostConfirmedRequest, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    """Controlled automatic double-entry posting; never executes a bank transfer."""
+    org = request.state.org_id
+    item = await _request(session, org, request_id, lock=True)
+    if item.status != "confirmed":
+        raise HTTPException(409, "Only bank-evidence-confirmed requests can post")
+    if actor.id == item.requested_by:
+        raise HTTPException(403, "Requestor cannot book own transfer")
+    if not payload.acknowledgement:
+        raise HTTPException(422, "Owner must acknowledge verified original bank evidence")
+    if item.journal_entry_id:
+        raise HTTPException(409, "Request already posted to ledger")
+    source = await session.scalar(select(TreasuryStatementLine).where(
+        TreasuryStatementLine.org_id == org, TreasuryStatementLine.id == item.bank_line_id,
+    ))
+    bank = await _bank(session, org, item.source_bank_id)
+    if not source or source.request_id != item.id or source.amount_minor != -item.amount_minor or not bank.ledger_account_id:
+        raise HTTPException(409, "Source bank or debit evidence not valid/linked")
+    source_acct = await session.scalar(select(ChartOfAccounts).where(
+        ChartOfAccounts.org_id == org, ChartOfAccounts.id == bank.ledger_account_id,
+    ))
+    if not source_acct:
+        raise HTTPException(409, "Source ledger not linked")
+    destination = None
+    dest = None
+    expense_acct = None
+    if item.kind == "funding":
+        dest = await session.scalar(select(TreasuryStatementLine).where(
+            TreasuryStatementLine.org_id == org, TreasuryStatementLine.id == item.destination_bank_line_id,
+        ))
+        destination = await _bank(session, org, item.destination_bank_id)
+        if not dest or dest.request_id != item.id or dest.amount_minor != item.amount_minor or not destination.ledger_account_id:
+            raise HTTPException(409, "Destination credit evidence is missing")
+        dest_acct = await session.scalar(select(ChartOfAccounts).where(
+            ChartOfAccounts.org_id == org, ChartOfAccounts.id == destination.ledger_account_id,
+        ))
+        if not dest_acct:
+            raise HTTPException(409, "Destination ledger not linked")
+        if payload.expense_account_code:
+            raise HTTPException(422, "Interbank funding is not a business expense")
+        debit_ref = dest_acct.code
+    else:
+        if not item.evidence_reference and not item.invoice_reference:
+            raise HTTPException(409, "Expense documentation is missing")
+        if not payload.expense_account_code:
+            raise HTTPException(422, "Expense posting requires the reviewed expense account code")
+        expense_acct = await session.scalar(select(ChartOfAccounts).where(
+            ChartOfAccounts.org_id == org,
+            ChartOfAccounts.code == payload.expense_account_code,
+            ChartOfAccounts.type == AccountType.EXPENSE,
+            ChartOfAccounts.is_active.is_(True),
+        ))
+        if not expense_acct:
+            raise HTTPException(422, "Invalid or inactive expense account")
+        debit_ref = expense_acct.code
+    if source.journal_entry_id or (dest and dest.journal_entry_id):
+        raise HTTPException(409, "Evidence already reconciled to another journal; link instead of posting twice")
+    # Force a separate fiscal review of older, already-posted payout entries:
+    # the OWNER acknowledges there is no duplicate entry in the existing ledger.
+    lines = [
+        dict(account_ref=debit_ref, debit=item.amount_minor, credit=0, currency="NGN",
+             dimension_1=item.programme or None, cost_center=item.cost_center_code,
+             external_ref=source.reference, description=item.purpose),
+        dict(account_ref=source_acct.code, debit=0, credit=item.amount_minor, currency="NGN",
+             dimension_1=item.programme or None, cost_center=item.cost_center_code,
+             external_ref=source.reference, description=item.purpose),
+    ]
+    entry_payload = JournalEntryCreate(
+        idempotency_key=f"treasury:request:{item.id}",
+        entry_date=source.occurred_on, description=item.purpose,
+        source_service="ledger", source_type="treasury_expense" if item.kind == "expense" else "treasury_internal_funding",
+        source_id=str(item.id),
+        metadata={"request_id": str(item.id), "verified_bank_statement_id": source.statement_id},
+        lines=lines,
+    )
+    try:
+        entry = await post_entry(session, org_id=org, payload=entry_payload,
+                                 posted_by_user_id=actor.id, posted_by_service="treasury")
+    except LedgerError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    item.journal_entry_id = entry.entry_id
+    item.ledger_posted_at = utc_now()
+    source.journal_entry_id = entry.entry_id
+    source.match_status = "matched_journal"
+    if dest:
+        dest.journal_entry_id = entry.entry_id
+        dest.match_status = "matched_journal"
+    _audit(session, org, actor, "request_posted_to_ledger", item.id, entry_id=str(entry.entry_id), replay=entry.idempotent_replay)
+    await session.commit()
+    await session.refresh(item)
+    return item
