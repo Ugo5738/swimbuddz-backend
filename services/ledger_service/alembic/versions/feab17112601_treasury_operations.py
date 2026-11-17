@@ -86,6 +86,7 @@ def upgrade():
         sa.Column("approved_at", sa.DateTime(timezone=True)),
         sa.Column("rejected_reason", sa.Text()),
         sa.Column("bank_line_id", UUID(as_uuid=True), sa.ForeignKey("treasury_statement_lines.id")),
+        sa.Column("destination_bank_line_id", UUID(as_uuid=True), sa.ForeignKey("treasury_statement_lines.id")),
         sa.Column("confirmed_by", UUID(as_uuid=True), sa.ForeignKey("ledger_users.id")),
         sa.Column("confirmed_at", sa.DateTime(timezone=True)),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),

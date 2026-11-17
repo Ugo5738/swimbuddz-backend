@@ -15,6 +15,7 @@ from services.ledger_service.routers.admin import router as admin_router
 from services.ledger_service.routers.internal import router as internal_router
 from services.ledger_service.routers.manual import router as manual_router
 from services.ledger_service.routers.users import router as users_router
+from services.ledger_service.routers.treasury import router as treasury_router
 
 
 def create_app() -> FastAPI:
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(manual_router)
     app.include_router(users_router)
+    app.include_router(treasury_router)
 
     # Internal service-to-service routes (not proxied by gateway; service-role JWT)
     app.include_router(internal_router)

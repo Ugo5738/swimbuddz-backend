@@ -1,0 +1,256 @@
+"""Controlled treasury evidence and approval workflow.
+
+No endpoint triggers an external bank payment. A request can be approved only by
+a different finance OWNER, and confirmed only with real imported bank evidence.
+All queries are scoped by org_id; the bank remains the final payment authority.
+"""
+import uuid
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from libs.common.datetime_utils import utc_now
+from services.ledger_service.app.deps import get_ledger_db, require_ledger_role
+from services.ledger_service.models import (
+    ChartOfAccounts, JournalEntry, JournalLine, LedgerUser,
+    TreasuryAuditEvent, TreasuryBankAccount, TreasuryBudget,
+    TreasuryRequest, TreasuryStatementLine,
+)
+from services.ledger_service.models.enums import LedgerRole
+from services.ledger_service.schemas.treasury import (
+    BankCreate, BankOut, BudgetCreate, BudgetOut, ConfirmRequest, Decision,
+    MatchJournal, RequestCreate, RequestOut, StatementImport,
+    StatementOut, TreasurySummary,
+)
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+router = APIRouter(prefix="/admin/finance/treasury", tags=["treasury"])
+
+
+def _audit(session, org, actor, action, subject, **details):
+    session.add(TreasuryAuditEvent(
+        org_id=org, actor_id=actor.id, action=action,
+        subject_id=str(subject), details=details,
+    ))
+
+
+async def _bank(session, org, bank_id):
+    bank = await session.scalar(select(TreasuryBankAccount).where(
+        TreasuryBankAccount.org_id == org, TreasuryBankAccount.id == bank_id,
+    ))
+    if bank is None:
+        raise HTTPException(404, "Bank account not found")
+    return bank
+
+
+async def _request(session, org, request_id, *, lock=False):
+    stmt = select(TreasuryRequest).where(
+        TreasuryRequest.org_id == org, TreasuryRequest.id == request_id,
+    )
+    if lock:
+        stmt = stmt.with_for_update()
+    item = await session.scalar(stmt)
+    if item is None:
+        raise HTTPException(404, "Request not found")
+    return item
+
+
+@router.get("/banks", response_model=list[BankOut])
+async def list_banks(request: Request, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    return list((await session.scalars(select(TreasuryBankAccount).where(
+        TreasuryBankAccount.org_id == request.state.org_id,
+    ).order_by(TreasuryBankAccount.code))).all())
+
+
+@router.post("/banks", response_model=BankOut, status_code=201)
+async def create_bank(payload: BankCreate, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    existing = await session.scalar(select(TreasuryBankAccount).where(TreasuryBankAccount.org_id == org, TreasuryBankAccount.code == payload.code))
+    if existing:
+        raise HTTPException(409, "This bank already exists. No duplicate account was created.")
+    bank = TreasuryBankAccount(
+        org_id=org, code=payload.code,
+        bank_name={"stanbic": "Stanbic IBTC", "moniepoint": "Moniepoint"}[payload.code],
+        purpose={"stanbic": "treasury", "moniepoint": "operations"}[payload.code],
+        last_four=payload.last_four,
+    )
+    session.add(bank)
+    await session.flush()
+    _audit(session, org, actor, "bank_created", bank.id, code=bank.code)
+    await session.commit()
+    await session.refresh(bank)
+    return bank
+
+
+@router.get("/budgets", response_model=list[BudgetOut])
+async def list_budgets(request: Request, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    return list((await session.scalars(select(TreasuryBudget).where(
+        TreasuryBudget.org_id == request.state.org_id,
+    ).order_by(TreasuryBudget.starts_on.desc()).limit(100))).all())
+
+
+@router.post("/budgets", response_model=BudgetOut, status_code=201)
+async def create_budget(payload: BudgetCreate, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    budget = TreasuryBudget(org_id=org, created_by=actor.id, **payload.model_dump())
+    session.add(budget)
+    await session.flush()
+    _audit(session, org, actor, "budget_created", budget.id, amount_minor=budget.amount_minor)
+    await session.commit()
+    await session.refresh(budget)
+    return budget
+
+
+@router.get("/requests", response_model=list[RequestOut])
+async def list_requests(request: Request, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    return list((await session.scalars(select(TreasuryRequest).where(
+        TreasuryRequest.org_id == request.state.org_id,
+    ).order_by(TreasuryRequest.created_at.desc()).limit(200))).all())
+
+
+@router.post("/requests", response_model=RequestOut, status_code=201)
+async def create_request(payload: RequestCreate, request: Request, actor=Depends(require_ledger_role(LedgerRole.ACCOUNTANT)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    source = await _bank(session, org, payload.source_bank_id)
+    if payload.kind == "funding":
+        dest = await _bank(session, org, payload.destination_bank_id)
+        if source.purpose != "treasury" or dest.purpose != "operations":
+            raise HTTPException(422, "Funding requests must move from treasury to operations")
+    if payload.budget_id is not None:
+        budget = await session.scalar(select(TreasuryBudget).where(TreasuryBudget.org_id == org, TreasuryBudget.id == payload.budget_id))
+        if budget is None or budget.category != payload.category:
+            raise HTTPException(422, "Budget not found or category mismatch")
+        if not (budget.starts_on <= date.today() <= budget.ends_on):
+            raise HTTPException(422, "Budget is not active")
+    item = TreasuryRequest(org_id=org, requested_by=actor.id, **payload.model_dump())
+    session.add(item)
+    await session.flush()
+    _audit(session, org, actor, "request_created", item.id, kind=item.kind, amount_minor=item.amount_minor)
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
+@router.post("/requests/{request_id}/decision", response_model=RequestOut)
+async def decide_request(request_id: uuid.UUID, payload: Decision, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    item = await _request(session, org, request_id, lock=True)
+    if item.status != "requested":
+        raise HTTPException(409, "Only pending requests can be decided")
+    if actor.id == item.requested_by:
+        raise HTTPException(403, "You cannot approve your own request")
+    if payload.action == "reject" and not (payload.reason or "").strip():
+        raise HTTPException(422, "Rejection requires a reason")
+    if payload.action == "approve" and item.budget_id is not None:
+        budget = await session.scalar(select(TreasuryBudget).where(TreasuryBudget.org_id == org, TreasuryBudget.id == item.budget_id).with_for_update())
+        if budget is None:
+            raise HTTPException(409, "Budget was removed")
+        allocated = await session.scalar(select(func.coalesce(func.sum(TreasuryRequest.amount_minor), 0)).where(
+            TreasuryRequest.org_id == org, TreasuryRequest.budget_id == budget.id,
+            TreasuryRequest.status.in_(("approved", "confirmed")),
+        ))
+        if int(allocated) + item.amount_minor > budget.amount_minor:
+            raise HTTPException(409, "Budget exceeded: increase the budget through a separate authorisation")
+    item.status = "approved" if payload.action == "approve" else "rejected"
+    item.approved_by = actor.id if item.status == "approved" else None
+    item.approved_at = utc_now() if item.status == "approved" else None
+    item.rejected_reason = (payload.reason or "").strip() if item.status == "rejected" else None
+    _audit(session, org, actor, "request_" + item.status, item.id, reason=item.rejected_reason)
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
+@router.get("/statements", response_model=list[StatementOut])
+async def list_statements(request: Request, bank_id: uuid.UUID | None = None, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    stmt = select(TreasuryStatementLine).where(TreasuryStatementLine.org_id == request.state.org_id)
+    if bank_id:
+        await _bank(session, request.state.org_id, bank_id)
+        stmt = stmt.where(TreasuryStatementLine.bank_account_id == bank_id)
+    return list((await session.scalars(stmt.order_by(TreasuryStatementLine.occurred_on.desc(), TreasuryStatementLine.row_number.desc()).limit(250))).all())
+
+
+@router.post("/banks/{bank_id}/statements")
+async def import_statement(bank_id: uuid.UUID, payload: StatementImport, request: Request, actor=Depends(require_ledger_role(LedgerRole.ACCOUNTANT)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    await _bank(session, org, bank_id)
+    if len(set(row.row_number for row in payload.rows)) != len(payload.rows):
+        raise HTTPException(422, "A statement has repeated row numbers")
+    # Lock the bank to serialize concurrent imports for this bank.
+    await session.scalar(select(TreasuryBankAccount.id).where(TreasuryBankAccount.org_id == org, TreasuryBankAccount.id == bank_id).with_for_update())
+    existing = list((await session.scalars(select(TreasuryStatementLine).where(
+        TreasuryStatementLine.org_id == org,
+        TreasuryStatementLine.bank_account_id == bank_id,
+        TreasuryStatementLine.statement_id == payload.statement_id,
+    ))).all())
+    saved = {row.row_number: row for row in existing}
+    inserted = 0
+    for row in payload.rows:
+        old = saved.get(row.row_number)
+        if old is not None:
+            if (old.occurred_on, old.amount_minor, old.description, old.reference) != (
+                row.occurred_on, row.amount_minor, row.description, row.reference,
+            ):
+                raise HTTPException(409, f"Previously imported row {row.row_number} differs; use a new statement ID after review")
+            continue
+        session.add(TreasuryStatementLine(
+            org_id=org, bank_account_id=bank_id, statement_id=payload.statement_id,
+            imported_by=actor.id, **row.model_dump(),
+        ))
+        inserted += 1
+    _audit(session, org, actor, "statement_imported", bank_id, statement_id=payload.statement_id, inserted=inserted)
+    await session.commit()
+    return {"inserted": inserted, "already_present": len(payload.rows) - inserted, "status": "unmatched_until_reviewed"}
+
+
+@router.post("/requests/{request_id}/confirm", response_model=RequestOut)
+async def confirm_request(request_id: uuid.UUID, payload: ConfirmRequest, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    item = await _request(session, org, request_id, lock=True)
+    if item.status != "approved":
+        raise HTTPException(409, "Only approved requests can be confirmed")
+    if actor.id == item.requested_by:
+        raise HTTPException(403, "Requestor cannot confirm their own payment")
+    source = await session.scalar(select(TreasuryStatementLine).where(
+        TreasuryStatementLine.org_id == org, TreasuryStatementLine.id == payload.source_line_id,
+    ).with_for_update())
+    if source is None or source.bank_account_id != item.source_bank_id or source.amount_minor != -item.amount_minor or source.match_status != "unmatched":
+        raise HTTPException(422, "Unmatched source bank debit evidence of the exact requested amount is required")
+    dest = None
+    if item.kind == "funding":
+        if not payload.destination_line_id or payload.destination_line_id == payload.source_line_id:
+            raise HTTPException(422, "Funding requires separate destination bank credit evidence")
+        dest = await session.scalar(select(TreasuryStatementLine).where(
+            TreasuryStatementLine.org_id == org, TreasuryStatementLine.id == payload.destination_line_id,
+        ).with_for_update())
+        if dest is None or dest.bank_account_id != item.destination_bank_id or dest.amount_minor != item.amount_minor or dest.match_status != "unmatched":
+            raise HTTPException(422, "Unmatched destination bank credit evidence of the exact amount is required")
+    elif payload.destination_line_id:
+        raise HTTPException(422, "An expense must not have a destination bank credit")
+    source.match_status, source.request_id = "matched_request", item.id
+    if dest:
+        dest.match_status, dest.request_id = "matched_request", item.id
+        item.destination_bank_line_id = dest.id
+    item.bank_line_id = source.id
+    item.status = "confirmed"
+    item.confirmed_by = actor.id
+    item.confirmed_at = utc_now()
+    _audit(session, org, actor, "request_confirmed_from_bank_evidence", item.id, source_line=str(source.id), dest_line=str(dest.id) if dest else None)
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
+@router.get("/summary", response_model=TreasurySummary)
+async def summary(request: Request, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    banks = list((await session.scalars(select(TreasuryBankAccount).where(TreasuryBankAccount.org_id == org).order_by(TreasuryBankAccount.code))).all())
+    async def count(where):
+        return int(await session.scalar(select(func.count()).select_from(where[0]).where(*where[1])) or 0)
+    pending = await count((TreasuryRequest, (TreasuryRequest.org_id == org, TreasuryRequest.status == "requested")))
+    approved = await count((TreasuryRequest, (TreasuryRequest.org_id == org, TreasuryRequest.status == "approved")))
+    unmatched = await count((TreasuryStatementLine, (TreasuryStatementLine.org_id == org, TreasuryStatementLine.match_status == "unmatched")))
+    spent = int(await session.scalar(select(func.coalesce(func.sum(TreasuryRequest.amount_minor), 0)).where(
+        TreasuryRequest.org_id == org, TreasuryRequest.kind == "expense", TreasuryRequest.status == "confirmed",
+    )) or 0)
+    return TreasurySummary(banks=banks, pending_requests=pending, approved_awaiting_bank_evidence=approved, unmatched_statement_lines=unmatched, confirmed_expenses_minor=spent)
