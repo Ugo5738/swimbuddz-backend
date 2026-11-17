@@ -477,15 +477,6 @@ async def reconcile_banks(request: Request, as_of: date | None = None, _actor=De
             TreasuryBankSnapshot.org_id == org, TreasuryBankSnapshot.bank_account_id == bank.id,
             TreasuryBankSnapshot.as_of <= end,
         ).order_by(TreasuryBankSnapshot.as_of.desc()).limit(1))
-        ledger_minor = None
-        if bank.ledger_account_id:
-            ledger_minor = int((await session.scalar(select(
-                func.coalesce(func.sum(JournalLine.debit_minor - JournalLine.credit_minor), 0)
-            ).select_from(JournalLine).join(JournalEntry, JournalLine.entry_id == JournalEntry.id).where(
-                JournalLine.org_id == org,
-                JournalLine.account_id == bank.ledger_account_id,
-                JournalEntry.entry_date <= end,
-            ))) or 0)
         counts = (await session.execute(select(
             TreasuryStatementLine.match_status, func.count(TreasuryStatementLine.id),
         ).where(
@@ -552,8 +543,8 @@ async def cash_projection(request: Request, scenario: str = "base", days: int = 
         TreasuryForecastLine.effective_on <= today + timedelta(days=days),
         TreasuryForecastLine.scenario == scenario,
     ))).all()
-    incoming = sum(l.amount_minor for l in lines if l.direction == "inflow")
-    outgoing = sum(l.amount_minor for l in lines if l.direction == "outflow")
+    incoming = sum(forecast_line.amount_minor for forecast_line in lines if forecast_line.direction == "inflow")
+    outgoing = sum(forecast_line.amount_minor for forecast_line in lines if forecast_line.direction == "outflow")
     banks = (await session.scalars(select(TreasuryBankAccount).where(
         TreasuryBankAccount.org_id == org,
     ))).all()
