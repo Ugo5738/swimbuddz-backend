@@ -14,6 +14,7 @@ depends_on = None
 
 
 def upgrade():
+    op.execute("ALTER TYPE ledger_role_enum ADD VALUE IF NOT EXISTS 'operations'")
     op.create_table(
         "treasury_bank_accounts",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
@@ -118,5 +119,6 @@ def upgrade():
 
 
 def downgrade():
+    # PostgreSQL enum values cannot be safely removed while preserving existing users.
     for table in ("treasury_audit_events", "treasury_requests", "treasury_budgets", "treasury_statement_lines", "treasury_bank_accounts"):
         op.drop_table(table)

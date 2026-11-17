@@ -74,6 +74,7 @@ class LedgerRole(str, enum.Enum):
     """Finance-team roles (design doc §15). Hierarchy: owner > admin > accountant > viewer."""
 
     VIEWER = "viewer"
+    OPERATIONS = "operations"
     ACCOUNTANT = "accountant"
     ADMIN = "admin"
     OWNER = "owner"
@@ -96,7 +97,8 @@ class AuditActionType(str, enum.Enum):
 # Ordered rank for LedgerRole capability inheritance (owner ⊇ admin ⊇ accountant ⊇ viewer).
 LEDGER_ROLE_RANK = {
     LedgerRole.VIEWER: 0,
-    LedgerRole.ACCOUNTANT: 1,
-    LedgerRole.ADMIN: 2,
-    LedgerRole.OWNER: 3,
+    LedgerRole.OPERATIONS: 1,
+    LedgerRole.ACCOUNTANT: 2,
+    LedgerRole.ADMIN: 3,
+    LedgerRole.OWNER: 4,
 }

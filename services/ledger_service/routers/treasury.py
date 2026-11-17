@@ -190,7 +190,7 @@ async def list_requests(request: Request, _actor=Depends(require_ledger_role(Led
 
 
 @router.post("/requests", response_model=RequestOut, status_code=201)
-async def create_request(payload: RequestCreate, request: Request, actor=Depends(require_ledger_role(LedgerRole.ACCOUNTANT)), session: AsyncSession = Depends(get_ledger_db)):
+async def create_request(payload: RequestCreate, request: Request, actor=Depends(require_ledger_role(LedgerRole.OPERATIONS)), session: AsyncSession = Depends(get_ledger_db)):
     org = request.state.org_id
     source = await _bank(session, org, payload.source_bank_id)
     if payload.kind == "funding":
@@ -252,7 +252,7 @@ async def list_statements(request: Request, bank_id: uuid.UUID | None = None, _a
 
 
 @router.post("/banks/{bank_id}/statements")
-async def import_statement(bank_id: uuid.UUID, payload: StatementImport, request: Request, actor=Depends(require_ledger_role(LedgerRole.ACCOUNTANT)), session: AsyncSession = Depends(get_ledger_db)):
+async def import_statement(bank_id: uuid.UUID, payload: StatementImport, request: Request, actor=Depends(require_ledger_role(LedgerRole.OPERATIONS)), session: AsyncSession = Depends(get_ledger_db)):
     org = request.state.org_id
     await _bank(session, org, bank_id)
     if len(set(row.row_number for row in payload.rows)) != len(payload.rows):
@@ -338,7 +338,7 @@ async def summary(request: Request, _actor=Depends(require_ledger_role(LedgerRol
 
 
 @router.post("/statements/{line_id}/match-journal", response_model=StatementOut)
-async def match_journal(line_id: uuid.UUID, payload: MatchJournal, request: Request, actor=Depends(require_ledger_role(LedgerRole.ACCOUNTANT)), session: AsyncSession = Depends(get_ledger_db)):
+async def match_journal(line_id: uuid.UUID, payload: MatchJournal, request: Request, actor=Depends(require_ledger_role(LedgerRole.OPERATIONS)), session: AsyncSession = Depends(get_ledger_db)):
     """Review an actual bank statement line against a previously posted ledger entry.
 
     Does not post a new journal entry or overwrite the existing accounting system.

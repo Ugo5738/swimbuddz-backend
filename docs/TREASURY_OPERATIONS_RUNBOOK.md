@@ -5,13 +5,13 @@ STATUS: staged code change, not a production bank integration.
 ## Bank roles
 Stanbic IBTC remains the existing primary customer collections and treasury account.
 Moniepoint is the operating account, funded by approved interbank transfers.
-Comfort: finance-team Accountant in SwimBuddz, external bank Initiator.
+Comfort: finance-team Operations in SwimBuddz, external bank Initiator. This avoids granting journal adjustment and reversal privileges.
 Founder: finance-team Owner, external bank Approver.
 An internal approval never executes a bank payment.
 
 ## Deployment and setup
 1. Apply ledger Alembic migration feab17112601 in staging, with its organization-level RLS.
-2. Test finance Viewer, Accountant and Owner permissions, including organization isolation.
+2. Test finance Viewer, Operations, Accountant and Owner permissions, including organization isolation.
 3. Owner registers the two bank records in Finance > Treasury & Operations.
 4. Verify the existing bank_operating_ngn ledger attribution before linking Stanbic.
 5. Create the dedicated Moniepoint bank ledger account, leaving Paystack settlement mappings alone.
