@@ -1,3 +1,4 @@
+# fmt: off
 """Controlled treasury evidence and approval workflow.
 
 No endpoint triggers an external bank payment. A request can be approved only by

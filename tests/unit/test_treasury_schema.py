@@ -1,3 +1,4 @@
+# fmt: off
 """Treasury schemas reject unsafe transfer shapes and malformed inputs."""
 from datetime import date
 from uuid import uuid4

@@ -1,3 +1,4 @@
+# fmt: off
 """Validated schemas for internal treasury operations. Amounts are integer kobo."""
 from datetime import date, datetime
 from typing import Literal, Optional

@@ -1,3 +1,4 @@
+# fmt: off
 """Treasury operations: bank-statement evidence, budgets, and requests.
 
 These are operational records, NOT a bank API or an independent general ledger.
