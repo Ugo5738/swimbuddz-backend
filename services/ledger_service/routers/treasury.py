@@ -358,7 +358,7 @@ async def summary(request: Request, _actor=Depends(require_ledger_role(LedgerRol
 
 
 @router.post("/statements/{line_id}/match-journal", response_model=StatementOut)
-async def match_journal(line_id: uuid.UUID, payload: MatchJournal, request: Request, actor=Depends(require_ledger_role(LedgerRole.OPERATIONS)), session: AsyncSession = Depends(get_ledger_db)):
+async def match_journal(line_id: uuid.UUID, payload: MatchJournal, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
     """Review an actual bank statement line against a previously posted ledger entry.
 
     Does not post a new journal entry or overwrite the existing accounting system.
