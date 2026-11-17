@@ -408,7 +408,9 @@ async def complete_manual_payout(
                 detail="Manual payout requires a recorded approval before payment confirmation",
             )
         if not data.payment_reference.strip():
-            raise HTTPException(status_code=422, detail="Verified bank reference is required")
+            raise HTTPException(
+                status_code=422, detail="Verified bank reference is required"
+            )
 
         payout.status = PayoutStatus.PAID
         payout.payout_method = data.payout_method
