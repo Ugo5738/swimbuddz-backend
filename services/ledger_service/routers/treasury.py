@@ -205,6 +205,36 @@ async def list_requests(request: Request, _actor=Depends(require_ledger_role(Led
     ).order_by(TreasuryRequest.created_at.desc()).limit(200))).all())
 
 
+@router.get("/budgets/utilization")
+async def budget_utilization(request: Request, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    budgets = (await session.scalars(select(TreasuryBudget).where(
+        TreasuryBudget.org_id == org,
+    ).order_by(TreasuryBudget.starts_on.desc()).limit(100))).all()
+    grouped = (await session.execute(select(
+        TreasuryRequest.budget_id, TreasuryRequest.status,
+        func.coalesce(func.sum(TreasuryRequest.amount_minor), 0),
+    ).where(
+        TreasuryRequest.org_id == org, TreasuryRequest.budget_id.is_not(None),
+        TreasuryRequest.status.in_(("approved", "confirmed")),
+    ).group_by(TreasuryRequest.budget_id, TreasuryRequest.status))).all()
+    amounts = {(budget_id, status): int(amount) for budget_id, status, amount in grouped}
+    result = []
+    for budget in budgets:
+        committed = amounts.get((budget.id, "approved"), 0)
+        confirmed = amounts.get((budget.id, "confirmed"), 0)
+        result.append({
+            "id": str(budget.id), "kind": budget.kind,
+            "name": budget.name, "category": budget.category,
+            "limit_minor": budget.amount_minor,
+            "committed_minor": committed,
+            "confirmed_minor": confirmed,
+            "remaining_minor": budget.amount_minor - committed - confirmed,
+            "starts_on": str(budget.starts_on), "ends_on": str(budget.ends_on),
+        })
+    return result
+
+
 @router.post("/requests", response_model=RequestOut, status_code=201)
 async def create_request(payload: RequestCreate, request: Request, actor=Depends(require_ledger_role(LedgerRole.OPERATIONS)), session: AsyncSession = Depends(get_ledger_db)):
     org = request.state.org_id
@@ -621,6 +651,8 @@ async def post_confirmed_to_ledger(request_id: uuid.UUID, payload: PostConfirmed
         ))
         if not expense_acct:
             raise HTTPException(422, "Invalid or inactive expense account")
+        if expense_acct.code in ("5300", "5400", "6100") or item.category in ("coach_payout", "refund", "paystack_fee", "payment_processing"):
+            raise HTTPException(409, "This cost is handled by an existing payout/refund/PSP ledger workflow; reconcile its entry instead")
         debit_ref = expense_acct.code
     if source.journal_entry_id or (dest and dest.journal_entry_id):
         raise HTTPException(409, "Evidence already reconciled to another journal; link instead of posting twice")
