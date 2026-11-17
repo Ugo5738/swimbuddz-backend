@@ -396,7 +396,6 @@ async def complete_manual_payout(
 
         if payout.status not in [
             PayoutStatus.APPROVED,
-            PayoutStatus.PENDING,
             PayoutStatus.FAILED,
         ]:
             raise HTTPException(
@@ -404,19 +403,15 @@ async def complete_manual_payout(
                 detail=f"Cannot complete payout with status: {payout.status.value}",
             )
 
-        # If paying straight from PENDING (no prior approve step), recompute from
-        # final attendance first. An already-APPROVED payout keeps its approved
-        # amount. Best-effort.
-        if payout.status == PayoutStatus.PENDING:
-            try:
-                await recompute_payout_amount(session, payout)
-            except Exception:
-                logger.warning(
-                    "Recompute before manual completion failed for payout %s "
-                    "(best-effort); paying the stored amount",
-                    payout_id,
-                    exc_info=True,
-                )
+        # A pending payout must first pass the explicit approval endpoint.
+        # Failed payouts can be retried only when there is prior approval.
+        if not payout.approved_by or not payout.approved_at:
+            raise HTTPException(
+                status_code=409,
+                detail="Manual payout requires a recorded approval before payment confirmation",
+            )
+        if not data.payment_reference.strip():
+            raise HTTPException(status_code=422, detail="Verified bank reference is required")
 
         payout.status = PayoutStatus.PAID
         payout.payout_method = data.payout_method
@@ -424,11 +419,6 @@ async def complete_manual_payout(
         payout.paid_at = utc_now()
         if data.admin_notes:
             payout.admin_notes = data.admin_notes
-
-        # Ensure approved fields are set
-        if not payout.approved_by:
-            payout.approved_by = admin.email or admin.user_id
-            payout.approved_at = utc_now()
 
         await session.commit()
         await session.refresh(payout)
