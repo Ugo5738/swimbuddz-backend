@@ -143,6 +143,8 @@ def upgrade():
         sa.Column("amount_minor", sa.BigInteger(), nullable=False),
         sa.Column("purpose", sa.String(400), nullable=False),
         sa.Column("programme", sa.String(80)),
+        sa.Column("cancelled_at", sa.DateTime(timezone=True)),
+        sa.Column("cancelled_by", UUID(as_uuid=True), sa.ForeignKey("ledger_users.id")),
         sa.Column("created_by", UUID(as_uuid=True), sa.ForeignKey("ledger_users.id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint("direction IN ('inflow','outflow')", name="ck_treasury_forecast_direction"),

@@ -561,6 +561,7 @@ async def create_forecast(payload: ForecastCreate, request: Request, actor=Depen
 async def list_forecasts(request: Request, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
     return list((await session.scalars(select(TreasuryForecastLine).where(
         TreasuryForecastLine.org_id == request.state.org_id,
+        TreasuryForecastLine.cancelled_at.is_(None),
     ).order_by(TreasuryForecastLine.effective_on).limit(300))).all())
 
 
@@ -572,6 +573,7 @@ async def cash_projection(request: Request, scenario: str = "base", days: int = 
     today = date.today()
     lines = (await session.scalars(select(TreasuryForecastLine).where(
         TreasuryForecastLine.org_id == org,
+        TreasuryForecastLine.cancelled_at.is_(None),
         TreasuryForecastLine.effective_on >= today,
         TreasuryForecastLine.effective_on <= today + timedelta(days=days),
         TreasuryForecastLine.scenario == scenario,
@@ -740,3 +742,20 @@ async def link_existing_request_ledger(request_id: uuid.UUID, payload: MatchJour
     await session.commit()
     await session.refresh(item)
     return item
+
+@router.delete("/forecasts/{line_id}", status_code=204)
+async def cancel_forecast(line_id: uuid.UUID, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    """Keep audit history of a cancelled planning assumption."""
+    org = request.state.org_id
+    item = await session.scalar(select(TreasuryForecastLine).where(
+        TreasuryForecastLine.id == line_id, TreasuryForecastLine.org_id == org,
+    ).with_for_update())
+    if item is None:
+        raise HTTPException(404, "Forecast assumption not found")
+    if item.cancelled_at:
+        raise HTTPException(409, "Forecast assumption already cancelled")
+    item.cancelled_at = utc_now()
+    item.cancelled_by = actor.id
+    _audit(session, org, actor, "forecast_assumption_cancelled", item.id)
+    await session.commit()
+    return None

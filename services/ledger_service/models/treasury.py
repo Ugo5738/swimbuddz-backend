@@ -159,6 +159,8 @@ class TreasuryForecastLine(Base):
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     purpose: Mapped[str] = mapped_column(String(400), nullable=False)
     programme: Mapped[Optional[str]] = mapped_column(String(80))
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    cancelled_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("ledger_users.id"))
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ledger_users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     __table_args__ = (
