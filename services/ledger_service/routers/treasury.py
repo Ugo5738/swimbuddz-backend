@@ -517,8 +517,8 @@ async def reconcile_banks(request: Request, as_of: date | None = None, _actor=De
             TreasuryStatementLine.bank_account_id == bank.id,
             TreasuryStatementLine.occurred_on <= end,
         ).group_by(TreasuryStatementLine.match_status))).all()
-        match_count = sum(int(n) for status, n in counts if status != "unmatched")
-        unmatch_count = sum(int(n) for status, n in counts if status == "unmatched")
+        match_count = sum(int(n) for status, n in counts if status == "matched_journal")
+        unmatch_count = sum(int(n) for status, n in counts if status != "matched_journal")
         # Do not compare a snapshot from last week to today's ledger as if same date.
         comparable_ledger = None
         if snap is not None and bank.ledger_account_id:
