@@ -34,8 +34,10 @@ from services.ledger_service.models import (  # noqa: F401
     ReconciliationBreak,
     RevenueRecognitionSchedule,
     TreasuryBankAccount,
+    TreasuryBankSnapshot,
     TreasuryStatementLine,
     TreasuryBudget,
+    TreasuryForecastLine,
     TreasuryRequest,
     TreasuryAuditEvent,
 )
@@ -60,6 +62,8 @@ target_metadata = Base.metadata
 SERVICE_TABLES: set[str] = {
     "ledger_organizations",
     "treasury_bank_accounts",
+    "treasury_bank_snapshots",
+    "treasury_forecast_lines",
     "treasury_statement_lines",
     "treasury_budgets",
     "treasury_requests",

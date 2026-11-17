@@ -35,7 +35,9 @@ from services.ledger_service.models.journal import JournalEntry, JournalLine
 from services.ledger_service.models.treasury import (
     TreasuryAuditEvent,
     TreasuryBankAccount,
+    TreasuryBankSnapshot,
     TreasuryBudget,
+    TreasuryForecastLine,
     TreasuryRequest,
     TreasuryStatementLine,
 )
@@ -51,6 +53,8 @@ __all__ = [
     # Models
     "Organization",
     "TreasuryBankAccount",
+    "TreasuryBankSnapshot",
+    "TreasuryForecastLine",
     "TreasuryStatementLine",
     "TreasuryBudget",
     "TreasuryRequest",
