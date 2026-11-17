@@ -22,6 +22,7 @@ class BankOut(BaseModel):
     ledger_account_id: Optional[UUID] = None
     statement_balance_minor: Optional[int] = None
     statement_as_of: Optional[date] = None
+    statement_verified_at: Optional[datetime] = None
 
 
 class StatementItem(BaseModel):
@@ -44,6 +45,7 @@ class StatementImport(BaseModel):
 
 
 class BudgetCreate(BaseModel):
+    kind: Literal["expense", "funding"] = "expense"
     name: str = Field(min_length=3, max_length=160)
     category: str = Field(min_length=2, max_length=80)
     amount_minor: int = Field(gt=0)
@@ -58,6 +60,12 @@ class BudgetCreate(BaseModel):
 
 
 class RequestCreate(BaseModel):
+    vendor_name: Optional[str] = Field(None, max_length=180)
+    invoice_reference: Optional[str] = Field(None, max_length=120)
+    evidence_reference: Optional[str] = Field(None, max_length=250)
+    programme: Optional[str] = Field(None, max_length=80)
+    cost_center_code: Optional[str] = Field(None, max_length=80)
+    service_on: Optional[date] = None
     kind: Literal["expense", "funding"]
     amount_minor: int = Field(gt=0)
     purpose: str = Field(min_length=5, max_length=1000)
@@ -93,6 +101,14 @@ class RequestOut(BaseModel):
     approved_at: Optional[datetime]
     rejected_reason: Optional[str]
     bank_line_id: Optional[UUID]
+    vendor_name: Optional[str] = None
+    invoice_reference: Optional[str] = None
+    evidence_reference: Optional[str] = None
+    programme: Optional[str] = None
+    cost_center_code: Optional[str] = None
+    service_on: Optional[date] = None
+    journal_entry_id: Optional[UUID] = None
+    ledger_posted_at: Optional[datetime] = None
     destination_bank_line_id: Optional[UUID]
     confirmed_at: Optional[datetime]
     created_at: datetime
@@ -137,6 +153,7 @@ class TreasurySummary(BaseModel):
 
 class BudgetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+    kind: str
     id: UUID
     name: str
     category: str
@@ -147,3 +164,56 @@ class BudgetOut(BaseModel):
 
 class LedgerAccountLink(BaseModel):
     account_id: UUID
+
+class SnapshotCreate(BaseModel):
+    as_of: date
+    balance_minor: int
+    evidence_reference: str = Field(min_length=5, max_length=250)
+
+
+class ForecastCreate(BaseModel):
+    direction: Literal["inflow", "outflow"]
+    scenario: Literal["base", "optimistic", "conservative"] = "base"
+    effective_on: date
+    amount_minor: int = Field(gt=0)
+    purpose: str = Field(min_length=5, max_length=400)
+    programme: Optional[str] = Field(None, max_length=80)
+
+
+class ForecastOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    direction: str
+    scenario: str
+    effective_on: date
+    amount_minor: int
+    purpose: str
+    programme: Optional[str] = None
+
+
+class CashProjection(BaseModel):
+    scenario: str
+    latest_bank_snapshot_minor: Optional[int]
+    latest_bank_snapshot_date: Optional[date]
+    planned_inflows_minor: int
+    planned_outflows_minor: int
+    projected_ending_minor: Optional[int]
+    pending_approved_expenses_minor: int
+    caveat: str
+
+
+class BankReconciliationRow(BaseModel):
+    bank_id: UUID
+    code: str
+    latest_statement_balance_minor: Optional[int]
+    latest_statement_date: Optional[date]
+    ledger_balance_minor: Optional[int]
+    difference_minor: Optional[int]
+    matched_rows: int
+    unmatched_rows: int
+    status: str
+
+
+class PostConfirmedRequest(BaseModel):
+    expense_account_code: Optional[str] = None
+    acknowledgement: bool = False
