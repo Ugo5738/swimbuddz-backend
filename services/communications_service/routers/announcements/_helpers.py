@@ -84,7 +84,9 @@ async def _get_allowed_audiences(authorization: Optional[str]) -> Set[str]:
     if "academy" in tiers:
         tiers.add("club")
     tiers.add("community")
-    return tiers
+    # Membership labels (for example prospect) are not announcement enum values.
+    # Preserve existing visibility while preventing invalid enum bind failures.
+    return tiers & {audience.value for audience in AnnouncementAudience}
 
 
 def _pref_allows_email(

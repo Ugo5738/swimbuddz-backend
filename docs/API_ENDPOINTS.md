@@ -13,6 +13,14 @@ All endpoints assume Bearer authentication with a Supabase access token unless m
 
 ## Service Coverage
 
+The November 17 resource follow-up preserves endpoint contracts. Membership
+pending-reference/Academy projection writes retain row locks and conditional
+updates while loading only membership during mutation and joining the full
+response once. Announcement list/detail/stats/unread filters ignore membership
+labels absent from the existing announcement audience enum, avoiding prospect
+poll failures while preserving current visibility. See
+[the operational runbook](operations/SUPABASE_CONNECTION_CANARY.md).
+
 ✅ **Fully Documented:** Identity, Members, Sessions, Attendance, Announcements, Admin Dashboard, Academy, Payments, Transport, Events, Media, Store, Volunteers, Wallet
 
 **Note:** All major services are now documented. For complete service information including models, database schema, and implementation details, see [SERVICE_REGISTRY.md](../../docs/reference/SERVICE_REGISTRY.md).

@@ -13,6 +13,12 @@ SwimBuddz Communications Service manages announcements, content posts, and commu
 ## API Endpoints
 
 ### Announcements
+
+Audience filters accept only the `community`, `club`, and `academy` announcement
+enum values. Membership labels such as `prospect` are ignored when building the
+filter; the existing public community audience remains available. This prevents
+unread/list/detail/stats polling failures without adding entitlements or changing
+the announcement schema.
 - `GET /announcements` - List announcements (with filters)
 - `GET /announcements/{id}` - Get announcement details
 - `POST /announcements` - Create announcement

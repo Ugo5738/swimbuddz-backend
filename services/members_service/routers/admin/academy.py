@@ -12,7 +12,10 @@ from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
 from services.members_service.models import Member, MemberMembership
-from services.members_service.routers._helpers import member_eager_load_options
+from services.members_service.routers._helpers import (
+    member_membership_only_options,
+    member_read_only_joined_options,
+)
 from services.members_service.schemas import (
     ActivateAcademyRequest,
     MemberResponse,
@@ -40,7 +43,7 @@ async def _load_member_for_update(
     result = await db.execute(
         select(Member)
         .where(Member.auth_id == auth_id)
-        .options(*member_eager_load_options())
+        .options(*member_membership_only_options())
         .with_for_update()
     )
     member = result.scalar_one_or_none()
@@ -72,7 +75,8 @@ async def _response_member(db: AsyncSession, member_id) -> Member:
     result = await db.execute(
         select(Member)
         .where(Member.id == member_id)
-        .options(*member_eager_load_options())
+        .options(*member_read_only_joined_options())
+        .execution_options(populate_existing=True)
     )
     return result.scalar_one()
 
@@ -90,7 +94,7 @@ async def admin_expire_academy_membership_by_auth(
     """
     member = await _load_member_for_update(db, auth_id=auth_id)
     if not member.membership:
-        return member
+        return await _response_member(db, member.id)
 
     member.membership.academy_paid_until = utc_now()
     _normalize_stored_tiers(member)
@@ -159,7 +163,7 @@ async def admin_project_academy_membership_by_auth(
     member = await _load_member_for_update(db, auth_id=auth_id)
     if not member.membership:
         if payload.paid_until is None:
-            return member
+            return await _response_member(db, member.id)
         member.membership = MemberMembership(member_id=member.id)
         db.add(member.membership)
 
