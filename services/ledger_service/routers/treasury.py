@@ -88,6 +88,17 @@ async def create_bank(payload: BankCreate, request: Request, actor=Depends(requi
     return bank
 
 
+@router.get("/expense-ledger-options")
+async def expense_ledger_options(request: Request, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    org = request.state.org_id
+    accounts = (await session.scalars(select(ChartOfAccounts).where(
+        ChartOfAccounts.org_id == org, ChartOfAccounts.is_active.is_(True),
+        ChartOfAccounts.type == AccountType.EXPENSE,
+    ).order_by(ChartOfAccounts.code))).all()
+    return [{"code": a.code, "name": a.name} for a in accounts
+            if a.code.startswith(("5", "6")) and a.code not in ("5000", "6000")]
+
+
 @router.get("/ledger-options")
 async def ledger_options(request: Request, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
     org = request.state.org_id
