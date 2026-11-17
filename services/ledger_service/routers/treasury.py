@@ -586,6 +586,7 @@ async def cash_projection(request: Request, scenario: str = "base", days: int = 
     starting = sum(b.statement_balance_minor for b in snapshots) if len(snapshots) == 2 and len(banks) == 2 and len({b.statement_as_of for b in snapshots}) == 1 else None
     approved_expenses = int((await session.scalar(select(func.coalesce(func.sum(TreasuryRequest.amount_minor), 0)).where(
         TreasuryRequest.org_id == org, TreasuryRequest.kind == "expense", TreasuryRequest.status == "approved",
+        ((TreasuryRequest.service_on.is_(None)) | (TreasuryRequest.service_on <= today + timedelta(days=days))),
     ))) or 0)
     # Pending approved expenses are deducted unless explicitly in forecast lines;
     # an independent expense budget is a ceiling, not an expense or cash flow.
@@ -595,7 +596,7 @@ async def cash_projection(request: Request, scenario: str = "base", days: int = 
         latest_bank_snapshot_date=snapshots[0].statement_as_of if starting is not None else None,
         planned_inflows_minor=incoming, planned_outflows_minor=outgoing,
         projected_ending_minor=projected, pending_approved_expenses_minor=approved_expenses,
-        caveat="Planning model, not live bank data. Ensure planned outflows exclude approved requests to prevent double counting.",
+        caveat="Planning model, not live bank data. Only approved expenses due within the horizon are counted as commitments; ensure planned outflows exclude those requests to prevent double counting.",
     )
 
 
