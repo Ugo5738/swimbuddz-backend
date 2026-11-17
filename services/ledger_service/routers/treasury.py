@@ -703,3 +703,36 @@ async def post_confirmed_to_ledger(request_id: uuid.UUID, payload: PostConfirmed
     await session.commit()
     await session.refresh(item)
     return item
+
+@router.post("/requests/{request_id}/link-existing-ledger", response_model=RequestOut)
+async def link_existing_request_ledger(request_id: uuid.UUID, payload: MatchJournal, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    """Use an already posted journal when the legacy payments/payout emitters booked it."""
+    org = request.state.org_id
+    item = await _request(session, org, request_id, lock=True)
+    if item.status != "confirmed" or item.journal_entry_id:
+        raise HTTPException(409, "Only previously unlinked confirmed requests can be reconciled")
+    if actor.id == item.requested_by:
+        raise HTTPException(403, "Requestor cannot independently certify their own reconciliation")
+    entry = await session.scalar(select(JournalEntry).where(
+        JournalEntry.org_id == org, JournalEntry.id == payload.journal_entry_id,
+    ))
+    if not entry or entry.status.value != "posted":
+        raise HTTPException(422, "Journal entry must be posted within the same organization")
+    src = await session.scalar(select(TreasuryStatementLine).where(
+        TreasuryStatementLine.org_id == org, TreasuryStatementLine.id == item.bank_line_id,
+    ))
+    bank = await _bank(session, org, item.source_bank_id)
+    if not src or not bank.ledger_account_id or src.journal_entry_id != entry.id:
+        raise HTTPException(409, "Source bank statement must first be matched to this journal")
+    if item.kind == "funding":
+        dest = await session.scalar(select(TreasuryStatementLine).where(
+            TreasuryStatementLine.org_id == org, TreasuryStatementLine.id == item.destination_bank_line_id,
+        ))
+        if not dest or dest.journal_entry_id != entry.id:
+            raise HTTPException(409, "Both bank statement legs must match this same transfer journal")
+    item.journal_entry_id = entry.id
+    item.ledger_posted_at = entry.posted_at or utc_now()
+    _audit(session, org, actor, "request_linked_to_existing_journal", item.id, entry_id=str(entry.id))
+    await session.commit()
+    await session.refresh(item)
+    return item
