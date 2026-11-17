@@ -382,7 +382,6 @@ async def initiate_transfer(
             raise HTTPException(status_code=500, detail=f"Transfer failed: {e.message}")
 
 
-# fmt: off
 @admin_router.put("/{payout_id}/complete-manual", response_model=PayoutResponse)
 async def complete_manual_payout(
     payout_id: UUID,
@@ -395,10 +394,7 @@ async def complete_manual_payout(
         if not payout:
             raise HTTPException(status_code=404, detail="Payout not found")
 
-        if payout.status not in [
-            PayoutStatus.APPROVED,
-            PayoutStatus.FAILED,
-        ]:
+        if payout.status not in [PayoutStatus.APPROVED, PayoutStatus.FAILED]:
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot complete payout with status: {payout.status.value}",
@@ -443,7 +439,6 @@ async def complete_manual_payout(
 
         return _payout_to_response(payout)
 
-# fmt: on
 
 @admin_router.put("/{payout_id}/fail", response_model=PayoutResponse)
 async def fail_payout(
