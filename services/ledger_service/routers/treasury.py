@@ -265,6 +265,21 @@ async def import_statement(bank_id: uuid.UUID, payload: StatementImport, request
         TreasuryStatementLine.statement_id == payload.statement_id,
     ))).all())
     saved = {row.row_number: row for row in existing}
+    # Guard a common operator mistake: importing the same referenced transaction
+    # again under a different statement ID. Do this with one query, not N polls.
+    incoming_refs = {row.reference for row in payload.rows if row.reference}
+    other_rows = []
+    if incoming_refs:
+        other_rows = list((await session.scalars(select(TreasuryStatementLine).where(
+            TreasuryStatementLine.org_id == org,
+            TreasuryStatementLine.bank_account_id == bank_id,
+            TreasuryStatementLine.reference.in_(incoming_refs),
+        ))).all())
+    prior_fingerprints = {
+        (item.reference, item.occurred_on, item.amount_minor, item.description)
+        for item in other_rows if item.statement_id != payload.statement_id
+    }
+    inserted_fingerprints = set()
     inserted = 0
     for row in payload.rows:
         old = saved.get(row.row_number)
@@ -274,6 +289,11 @@ async def import_statement(bank_id: uuid.UUID, payload: StatementImport, request
             ):
                 raise HTTPException(409, f"Previously imported row {row.row_number} differs; use a new statement ID after review")
             continue
+        if row.reference:
+            fingerprint = (row.reference, row.occurred_on, row.amount_minor, row.description)
+            if fingerprint in prior_fingerprints or fingerprint in inserted_fingerprints:
+                raise HTTPException(409, "Possible duplicate bank transaction under another statement ID; review before import")
+            inserted_fingerprints.add(fingerprint)
         session.add(TreasuryStatementLine(
             org_id=org, bank_account_id=bank_id, statement_id=payload.statement_id,
             imported_by=actor.id, **row.model_dump(),
