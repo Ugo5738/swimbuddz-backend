@@ -51,6 +51,14 @@ services:
     <<: *no-generative-ai-service
     image: ${DOCKER_USERNAME}/swimbuddz-members-service:latest
     container_name: swimbuddz_members
+    environment:
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      GEMINI_API_KEY: ""
+      DB_USE_LOCAL_POOL: "${MEMBERS_API_DB_USE_LOCAL_POOL:-false}"
+      DB_POOL_SIZE: "1"
+      DB_MAX_OVERFLOW: "0"
+      DB_APPLICATION_NAME: "swimbuddz-members-api"
     env_file:
       - .env.prod
     extra_hosts:
@@ -200,6 +208,13 @@ services:
     <<: *moderation-only-service
     image: ${DOCKER_USERNAME}/swimbuddz-chat-service:latest
     container_name: swimbuddz_chat
+    environment:
+      ANTHROPIC_API_KEY: ""
+      GEMINI_API_KEY: ""
+      DB_USE_LOCAL_POOL: "${CHAT_API_DB_USE_LOCAL_POOL:-false}"
+      DB_POOL_SIZE: "1"
+      DB_MAX_OVERFLOW: "0"
+      DB_APPLICATION_NAME: "swimbuddz-chat-api"
     env_file:
       - .env.prod
     extra_hosts:
