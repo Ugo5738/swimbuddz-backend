@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from libs.common.service_client import emit_rewards_event
+from services.academy_service.services.access_control import ensure_enrollment_read_access
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
@@ -207,8 +208,13 @@ async def update_student_progress(
 )
 async def get_student_progress(
     enrollment_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
+    enrollment = await db.get(Enrollment, enrollment_id)
+    if enrollment is None:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    await ensure_enrollment_read_access(enrollment, current_user, db)
     query = select(StudentProgress).where(
         StudentProgress.enrollment_id == enrollment_id
     )
@@ -284,6 +290,11 @@ async def claim_milestone(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Milestone not found",
         )
+    if milestone.program_id != enrollment.program_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Milestone does not belong to enrollment program",
+        )
 
     # Validate required evidence
     if (
@@ -305,7 +316,18 @@ async def claim_milestone(
     progress = progress_result.scalar_one_or_none()
 
     if progress:
-        # Update existing record (handles both first claim and resubmission after rejection)
+        # Approved achievements can only be reversed through an auditable review/override.
+        if progress.status == ProgressStatus.ACHIEVED:
+            raise HTTPException(
+                status_code=409,
+                detail="Approved milestones cannot be resubmitted; request a reassessment",
+            )
+        if progress.reviewed_at is None:
+            raise HTTPException(
+                status_code=409,
+                detail="This milestone is already awaiting review",
+            )
+        # Update existing record (handles resubmission after a rejected review)
         # A claim moves the milestone into PENDING (awaiting coach review); it is
         # only ACHIEVED once a coach/admin approves it. achieved_at is set at
         # approval time, not at claim time.
