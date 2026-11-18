@@ -14,6 +14,9 @@ jobs:
   regenerate:
     if: github.repository == 'Ugo5738/swimbuddz-backend'
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+      DATABASE_SESSION_URL: postgresql+psycopg://test:test@localhost:5432/test_db
     steps:
       - uses: actions/checkout@v4
         with:
