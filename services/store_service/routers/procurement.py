@@ -21,7 +21,7 @@ from services.store_service.models.procurement import (
     StoreSupplierInvoice, StoreTradeReceivable,
 )
 from services.store_service.routers.procurement_access import procurement_reader, procurement_writer
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/procurement", tags=["store-procurement"])
@@ -331,6 +331,21 @@ async def record_supplier_invoice(
     item = await db.scalar(select(StorePurchaseOrder).where(StorePurchaseOrder.id == order_id))
     if not item or item.status not in ("approved", "partially_received", "received"):
         raise HTTPException(409, "Supplier invoice requires an approved order")
+    # Lock the purchase first: an invoice is a liability against an already
+    # approved commercial ceiling, not an unrestricted new spending authority.
+    await db.scalar(select(StorePurchaseOrder.id).where(
+        StorePurchaseOrder.id == order_id,
+    ).with_for_update())
+    approved_minor = int(await db.scalar(select(
+        func.coalesce(func.sum(
+            StorePurchaseOrderLine.quantity * StorePurchaseOrderLine.unit_landed_minor,
+        ), 0),
+    ).where(StorePurchaseOrderLine.order_id == order_id)) or 0)
+    invoiced_minor = int(await db.scalar(select(
+        func.coalesce(func.sum(StoreSupplierInvoice.total_minor), 0),
+    ).where(StoreSupplierInvoice.order_id == order_id)) or 0)
+    if invoiced_minor + payload.total_minor > approved_minor:
+        raise HTTPException(409, "Invoices exceed approved purchase order amount")
     invoice = StoreSupplierInvoice(
         supplier_id=item.supplier_id, order_id=order_id,
         reference=payload.reference, total_minor=payload.total_minor,
@@ -487,6 +502,8 @@ async def propose_trade_receivable(
         raise HTTPException(422, "Credit due date cannot be in the past")
     from decimal import Decimal
     minor = int(Decimal(str(order.total_ngn)) * 100)
+    if minor <= 0:
+        raise HTTPException(422, "Credit amount must be positive")
     row = StoreTradeReceivable(
         order_id=order.id, amount_minor=minor, due_on=payload.due_on,
         reason=payload.reason, requested_by=actor.user_id,
