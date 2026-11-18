@@ -17,6 +17,15 @@ from tests.factories import (
 )
 
 
+def auth_override(user):
+    """Return a predictable async FastAPI dependency override."""
+
+    async def _resolve():
+        return user
+
+    return _resolve
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_enrollment_and_progress_reads_require_owner_or_privileged_actor(
@@ -46,10 +55,9 @@ async def test_enrollment_and_progress_reads_require_owner_or_privileged_actor(
 
     original = app.dependency_overrides.get(get_current_user)
     try:
-        async def unrelated_member():
-            return make_member_user(user_id=str(uuid.uuid4()))
-
-        app.dependency_overrides[get_current_user] = unrelated_member
+        app.dependency_overrides[get_current_user] = auth_override(
+            make_member_user(user_id=str(uuid.uuid4()))
+        )
         enrollment_response = await academy_client.get(
             f"/academy/enrollments/{enrollment.id}"
         )
@@ -59,10 +67,9 @@ async def test_enrollment_and_progress_reads_require_owner_or_privileged_actor(
         assert enrollment_response.status_code == 403, enrollment_response.text
         assert progress_response.status_code == 403, progress_response.text
 
-        async def actual_owner():
-            return make_member_user(user_id=owner.auth_id)
-
-        app.dependency_overrides[get_current_user] = actual_owner
+        app.dependency_overrides[get_current_user] = auth_override(
+            make_member_user(user_id=owner.auth_id)
+        )
         progress_response = await academy_client.get(
             f"/academy/enrollments/{enrollment.id}/progress"
         )
@@ -118,10 +125,9 @@ async def test_member_cannot_claim_foreign_or_previously_achieved_milestone(
 
     original = app.dependency_overrides.get(get_current_user)
     try:
-        async def actual_owner():
-            return make_member_user(user_id=owner.auth_id)
-
-        app.dependency_overrides[get_current_user] = actual_owner
+        app.dependency_overrides[get_current_user] = auth_override(
+            make_member_user(user_id=owner.auth_id)
+        )
         foreign = await academy_client.post(
             f"/academy/enrollments/{enrollment.id}/progress/{foreign_milestone.id}/claim",
             json={},
