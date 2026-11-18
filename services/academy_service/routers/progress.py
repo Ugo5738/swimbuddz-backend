@@ -92,6 +92,17 @@ async def update_student_progress(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Milestone does not belong to enrollment program",
         )
+    if (
+        progress_in.status == ProgressStatus.ACHIEVED
+        and milestone.required_evidence in (
+            RequiredEvidence.VIDEO,
+            RequiredEvidence.TIME_TRIAL,
+        )
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Evidence-required milestones must be approved through coach review or admin override",
+        )
 
     # Verify coach has access to this cohort
     if enrollment.cohort_id:
