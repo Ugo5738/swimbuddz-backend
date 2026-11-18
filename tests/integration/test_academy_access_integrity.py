@@ -9,7 +9,12 @@ import pytest
 
 from libs.auth.dependencies import get_current_user
 from tests.conftest import make_member_user
-from tests.factories import CohortFactory, EnrollmentFactory, MilestoneFactory, ProgramFactory
+from tests.factories import (
+    CohortFactory,
+    EnrollmentFactory,
+    MilestoneFactory,
+    ProgramFactory,
+)
 
 
 @pytest.mark.asyncio
@@ -18,7 +23,7 @@ async def test_enrollment_and_progress_reads_require_owner_or_privileged_actor(
     academy_client, db_session, seed_member_row
 ):
     from services.academy_service.app.main import app
-    from services.academy_service.models import StudentProgress, ProgressStatus
+    from services.academy_service.models import ProgressStatus, StudentProgress
 
     owner = await seed_member_row()
     program = ProgramFactory.create()
@@ -76,8 +81,8 @@ async def test_member_cannot_claim_foreign_or_previously_achieved_milestone(
     academy_client, db_session, seed_member_row
 ):
     from services.academy_service.app.main import app
-    from services.academy_service.models import ProgressStatus, StudentProgress
     from libs.common.datetime_utils import utc_now
+    from services.academy_service.models import ProgressStatus, StudentProgress
 
     owner = await seed_member_row()
     program = ProgramFactory.create()
@@ -98,10 +103,17 @@ async def test_member_cannot_claim_foreign_or_previously_achieved_milestone(
         status=ProgressStatus.ACHIEVED,
         achieved_at=utc_now(),
     )
-    db_session.add_all([
-        program, foreign_program, cohort, enrollment,
-        own_milestone, foreign_milestone, achieved,
-    ])
+    db_session.add_all(
+        [
+            program,
+            foreign_program,
+            cohort,
+            enrollment,
+            own_milestone,
+            foreign_milestone,
+            achieved,
+        ]
+    )
     await db_session.commit()
 
     original = app.dependency_overrides.get(get_current_user)
