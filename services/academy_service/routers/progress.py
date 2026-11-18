@@ -1,7 +1,9 @@
 from fastapi import APIRouter
 
 from libs.common.service_client import emit_rewards_event
-from services.academy_service.services.access_control import ensure_enrollment_read_access
+from services.academy_service.services.access_control import (
+    ensure_enrollment_read_access,
+)
 from services.academy_service.routers._shared import (
     AsyncSession,
     AuthUser,
