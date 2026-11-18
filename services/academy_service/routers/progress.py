@@ -94,10 +94,8 @@ async def update_student_progress(
         )
     if (
         progress_in.status == ProgressStatus.ACHIEVED
-        and milestone.required_evidence in (
-            RequiredEvidence.VIDEO,
-            RequiredEvidence.TIME_TRIAL,
-        )
+        and milestone.required_evidence
+        in (RequiredEvidence.VIDEO, RequiredEvidence.TIME_TRIAL)
     ):
         raise HTTPException(
             status_code=409,
