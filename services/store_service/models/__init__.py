@@ -70,6 +70,16 @@ __all__ = [
     "Supplier",
     "SupplierPayout",
     "SupplierStatus",
+    "StoreCostEvent",
+    "StoreGoodsReceipt",
+    "StoreGoodsReceiptLine",
+    "StoreInventoryValuation",
+    "StoreOpeningReconciliation",
+    "StoreProcurementGrant",
+    "StorePurchaseOrder",
+    "StorePurchaseOrderLine",
+    "StoreSupplierInvoice",
+    "StoreTradeReceivable",
 ]
 
 from services.store_service.models.procurement import (

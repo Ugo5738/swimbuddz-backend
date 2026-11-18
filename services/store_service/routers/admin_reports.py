@@ -10,7 +10,7 @@ from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Float, case, cast, func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,7 +21,6 @@ from services.store_service.models import (
     OrderStatus,
     Product,
     ProductStatus,
-    ProductVariant,
     Supplier,
     SupplierPayout,
     StoreInventoryValuation,
