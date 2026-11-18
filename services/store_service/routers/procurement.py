@@ -110,6 +110,48 @@ async def list_purchase_orders(
     ]
 
 
+@router.get("/catalogue")
+async def procurement_catalogue(
+    _actor: AuthUser = Depends(procurement_reader),
+    db: AsyncSession = Depends(get_async_db),
+):
+    suppliers = (await db.execute(select(Supplier.id, Supplier.name).where(
+        Supplier.is_active.is_(True),
+    ).order_by(Supplier.name).limit(150))).all()
+    variants = (await db.execute(select(ProductVariant.id, ProductVariant.sku, ProductVariant.product_id).where(
+        ProductVariant.is_active.is_(True),
+    ).order_by(ProductVariant.sku).limit(1000))).all()
+    return {
+        "suppliers": [{"id": str(a), "name": b} for a, b in suppliers],
+        "variants": [{"id": str(a), "sku": b, "product_id": str(c)} for a, b, c in variants],
+    }
+
+
+@router.get("/orders/{order_id}")
+async def get_purchase_order(
+    order_id: uuid.UUID,
+    _actor: AuthUser = Depends(procurement_reader),
+    db: AsyncSession = Depends(get_async_db),
+):
+    order = await db.scalar(select(StorePurchaseOrder).where(
+        StorePurchaseOrder.id == order_id,
+    ))
+    if order is None:
+        raise HTTPException(404, "Purchase order not found")
+    rows = (await db.scalars(select(StorePurchaseOrderLine).where(
+        StorePurchaseOrderLine.order_id == order_id,
+    ).order_by(StorePurchaseOrderLine.id))).all()
+    return {
+        "id": order.id, "supplier_id": order.supplier_id,
+        "order_number": order.order_number, "status": order.status,
+        "description": order.description, "requested_by": order.requested_by,
+        "approved_by": order.approved_by,
+        "lines": [{"id": line.id, "variant_id": line.variant_id,
+                   "quantity": line.quantity, "received": line.received,
+                   "unit_landed_minor": line.unit_landed_minor} for line in rows],
+    }
+
+
 @router.post("/orders", status_code=201)
 async def create_purchase_order(
     payload: PurchaseOrderRequest,
