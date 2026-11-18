@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - feature/academy-access-and-evidence-hardening-20261118
+  pull_request:
+    branches:
+      - develop
 permissions:
   contents: write
 jobs:
