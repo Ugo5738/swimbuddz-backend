@@ -354,6 +354,42 @@ async def supplier_liabilities(
              "outstanding_minor": row.total_minor - row.verified_paid_minor} for row in rows]
 
 
+@router.get("/inventory-values")
+async def procurement_inventory_values(
+    _actor: AuthUser = Depends(procurement_reader),
+    db: AsyncSession = Depends(get_async_db),
+):
+    rows = (await db.execute(select(
+        InventoryItem.variant_id, InventoryItem.quantity_on_hand,
+        StoreInventoryValuation.quantity, StoreInventoryValuation.total_cost_minor,
+    ).outerjoin(StoreInventoryValuation,
+        StoreInventoryValuation.variant_id == InventoryItem.variant_id,
+    ).limit(400))).all()
+    return [
+        {"variant_id": variant_id, "on_hand": on_hand,
+         "valued_quantity": cost_quantity, "total_cost_minor": total_cost,
+         "reconciled": cost_quantity == on_hand}
+        for variant_id, on_hand, cost_quantity, total_cost in rows
+    ]
+
+
+@router.get("/openings")
+async def list_opening_reconciliations(
+    _actor: AuthUser = Depends(procurement_reader),
+    db: AsyncSession = Depends(get_async_db),
+):
+    rows = (await db.scalars(select(StoreOpeningReconciliation).order_by(
+        StoreOpeningReconciliation.created_at.desc(),
+    ).limit(200))).all()
+    return [
+        {"id": row.id, "variant_id": row.variant_id,
+         "source_reference": row.source_reference, "quantity": row.quantity,
+         "total_cost_minor": row.total_cost_minor, "status": row.status,
+         "proposed_by": row.proposed_by, "approved_by": row.approved_by}
+        for row in rows
+    ]
+
+
 @router.post("/openings", status_code=201)
 async def propose_opening_valuation(
     payload: OpeningRequest,
