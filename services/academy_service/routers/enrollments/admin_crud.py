@@ -28,6 +28,7 @@ from services.academy_service.schemas import (
     EnrollmentResponse,
     EnrollmentUpdate,
 )
+from services.academy_service.services.access_control import ensure_enrollment_read_access
 from services.academy_service.services.chat_sync import (
     ensure_cohort_channel,
     reconcile_cohort_membership,
@@ -239,6 +240,8 @@ async def get_enrollment(
 
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    await ensure_enrollment_read_access(enrollment, current_user, db)
 
     await _sync_installment_state_for_enrollment(db, enrollment)
     await db.commit()
