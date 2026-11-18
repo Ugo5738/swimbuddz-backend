@@ -32,6 +32,7 @@ from services.store_service.models import (
     ProductVariant,
 )
 from services.store_service.models.procurement import StoreInventoryValuation, StoreCostEvent
+from services.store_service.services.inventory_costing import consumption_cost_minor
 from services.store_service.routers._helpers import log_audit
 
 logger = get_logger(__name__)
@@ -118,9 +119,8 @@ async def _consume_fulfilled_order_stock(
             StoreInventoryValuation.variant_id == line.variant_id,
         ).with_for_update())
         if value is not None and value.quantity == inventory.quantity_on_hand and value.quantity > 0:
-            consumed_cost = (
-                value.total_cost_minor if line.quantity == value.quantity
-                else value.total_cost_minor * line.quantity // value.quantity
+            consumed_cost = consumption_cost_minor(
+                value.total_cost_minor, value.quantity, line.quantity,
             )
             value.quantity -= line.quantity
             value.total_cost_minor -= consumed_cost
