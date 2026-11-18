@@ -458,6 +458,19 @@ async def approve_opening_valuation(
     return {"id": item.id, "status": item.status}
 
 
+@router.get("/unpaid-orders")
+async def eligible_credit_orders(
+    _actor: AuthUser = Depends(procurement_reader),
+    db: AsyncSession = Depends(get_async_db),
+):
+    from services.store_service.models import Order, OrderStatus
+    orders = (await db.scalars(select(Order).where(
+        Order.status == OrderStatus.PENDING_PAYMENT, Order.paid_at.is_(None),
+    ).order_by(Order.created_at.desc()).limit(100))).all()
+    return [{"id": o.id, "order_number": o.order_number,
+             "total_minor": int(o.total_ngn * 100)} for o in orders]
+
+
 @router.post("/receivables", status_code=201)
 async def propose_trade_receivable(
     payload: ReceivableRequest,
