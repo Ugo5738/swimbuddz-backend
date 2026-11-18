@@ -24,6 +24,7 @@ from services.store_service.models import (
     ProductVariant,
     Supplier,
     SupplierPayout,
+    StoreInventoryValuation,
 )
 
 router = APIRouter(tags=["admin-store"])
@@ -63,7 +64,9 @@ class InventoryReport(BaseModel):
     total_available: int
     low_stock_count: int
     out_of_stock_count: int
-    total_stock_value_ngn: Decimal
+    total_stock_value_ngn: Optional[Decimal] = None
+    unvalued_sku_count: int = 0
+    valuation_complete: bool = False
 
 
 class SupplierPerformanceItem(BaseModel):
@@ -337,22 +340,20 @@ async def get_inventory_report(
     total_on_hand = row.total_on_hand or 0
     total_reserved = row.total_reserved or 0
 
-    # Stock value estimate (sum of on_hand × variant price)
-    value_query = select(
-        func.coalesce(
-            func.sum(
-                InventoryItem.quantity_on_hand
-                * func.coalesce(
-                    ProductVariant.price_override_ngn,
-                    cast(0, Float),
-                )
-            ),
-            0,
-        )
-    ).join(ProductVariant, InventoryItem.variant_id == ProductVariant.id)
-    value_result = await db.execute(value_query)
-    stock_value = Decimal(str(value_result.scalar() or 0))
-
+    # Value stock at independently documented acquisition cost; never use
+    # selling price as inventory cost or imply zero cost for missing history.
+    valuation_rows = (await db.execute(select(
+        InventoryItem.quantity_on_hand,
+        StoreInventoryValuation.quantity,
+        StoreInventoryValuation.total_cost_minor,
+    ).outerjoin(
+        StoreInventoryValuation,
+        StoreInventoryValuation.variant_id == InventoryItem.variant_id,
+    ))).all()
+    unvalued = sum(1 for on_hand, qty, cost in valuation_rows
+                   if qty is None or qty != on_hand)
+    valued_minor = sum(int(cost) for on_hand, qty, cost in valuation_rows
+                       if qty is not None and qty == on_hand and cost is not None)
     return InventoryReport(
         total_variants=row.total_variants or 0,
         total_stock_on_hand=total_on_hand,
@@ -360,7 +361,9 @@ async def get_inventory_report(
         total_available=total_on_hand - total_reserved,
         low_stock_count=row.low_stock or 0,
         out_of_stock_count=row.out_of_stock or 0,
-        total_stock_value_ngn=stock_value,
+        total_stock_value_ngn=(Decimal(valued_minor) / Decimal(100)) if unvalued == 0 else None,
+        unvalued_sku_count=unvalued,
+        valuation_complete=unvalued == 0,
     )
 
 
