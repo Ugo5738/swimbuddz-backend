@@ -28,7 +28,9 @@ from services.academy_service.schemas import (
     EnrollmentResponse,
     EnrollmentUpdate,
 )
-from services.academy_service.services.access_control import ensure_enrollment_read_access
+from services.academy_service.services.access_control import (
+    ensure_enrollment_read_access,
+)
 from services.academy_service.services.chat_sync import (
     ensure_cohort_channel,
     reconcile_cohort_membership,
