@@ -21,7 +21,7 @@ from services.store_service.models.procurement import (
     StoreSupplierInvoice, StoreTradeReceivable,
 )
 from services.store_service.routers.procurement_access import procurement_reader, procurement_writer
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/procurement", tags=["store-procurement"])
@@ -295,3 +295,135 @@ async def supplier_liabilities(
     return [{"id": row.id, "supplier_id": row.supplier_id, "order_id": row.order_id,
              "reference": row.reference, "due_on": row.due_on,
              "outstanding_minor": row.total_minor - row.verified_paid_minor} for row in rows]
+
+
+@router.post("/openings", status_code=201)
+async def propose_opening_valuation(
+    payload: OpeningRequest,
+    actor: AuthUser = Depends(procurement_writer),
+    db: AsyncSession = Depends(get_async_db),
+):
+    if payload.quantity and not payload.total_cost_minor:
+        raise HTTPException(422, "Historical stock must have documented nonzero acquisition cost")
+    item = await db.scalar(select(InventoryItem).where(
+        InventoryItem.variant_id == payload.variant_id,
+    ))
+    if item is None or item.quantity_on_hand != payload.quantity:
+        raise HTTPException(409, "Physical count must match existing stock; review adjustments separately")
+    proposed = StoreOpeningReconciliation(
+        variant_id=payload.variant_id,
+        source_reference=payload.source_reference,
+        quantity=payload.quantity,
+        total_cost_minor=payload.total_cost_minor,
+        reason=payload.reason, proposed_by=actor.user_id,
+    )
+    db.add(proposed)
+    await db.commit()
+    return {"id": proposed.id, "status": proposed.status}
+
+
+@router.post("/openings/{opening_id}/decision")
+async def approve_opening_valuation(
+    opening_id: uuid.UUID, approve: bool,
+    owner=Depends(require_ledger_role(LedgerRole.OWNER)),
+    db: AsyncSession = Depends(get_async_db),
+):
+    item = await db.scalar(select(StoreOpeningReconciliation).where(
+        StoreOpeningReconciliation.id == opening_id,
+    ).with_for_update())
+    if item is None:
+        raise HTTPException(404, "Opening reconciliation missing")
+    if item.status != "pending":
+        raise HTTPException(409, "Already reviewed")
+    if item.proposed_by == owner.auth_id:
+        raise HTTPException(403, "Cannot independently approve your own opening value")
+    if approve:
+        inventory = await db.scalar(select(InventoryItem).where(
+            InventoryItem.variant_id == item.variant_id,
+        ).with_for_update())
+        if not inventory or inventory.quantity_on_hand != item.quantity:
+            raise HTTPException(409, "Stock changed since physical count; recount first")
+        valuation = await db.scalar(select(StoreInventoryValuation).where(
+            StoreInventoryValuation.variant_id == item.variant_id,
+        ).with_for_update())
+        if valuation is not None and (valuation.quantity or valuation.total_cost_minor):
+            raise HTTPException(409, "Existing valuation is not empty; do not overwrite")
+        if valuation is None:
+            valuation = StoreInventoryValuation(variant_id=item.variant_id)
+            db.add(valuation)
+        valuation.quantity = item.quantity
+        valuation.total_cost_minor = item.total_cost_minor
+        db.add(StoreCostEvent(
+            variant_id=item.variant_id, event_kind="opening",
+            quantity_delta=item.quantity, cost_delta_minor=item.total_cost_minor,
+            reference=f"opening:{item.id}", evidence=item.source_reference,
+            actor_auth_id=owner.auth_id or str(owner.id),
+        ))
+    item.status = "approved" if approve else "rejected"
+    item.approved_by = owner.auth_id or str(owner.id)
+    await db.commit()
+    return {"id": item.id, "status": item.status}
+
+
+@router.post("/receivables", status_code=201)
+async def propose_trade_receivable(
+    payload: ReceivableRequest,
+    actor: AuthUser = Depends(procurement_writer),
+    db: AsyncSession = Depends(get_async_db),
+):
+    from services.store_service.models import Order, OrderStatus
+    order = await db.scalar(select(Order).where(Order.id == payload.order_id))
+    if not order:
+        raise HTTPException(404, "Store order not found")
+    if order.status != OrderStatus.PENDING_PAYMENT or order.paid_at is not None:
+        raise HTTPException(409, "Credit terms may only be requested for unpaid open orders")
+    if payload.due_on < date.today():
+        raise HTTPException(422, "Credit due date cannot be in the past")
+    from decimal import Decimal
+    minor = int(Decimal(str(order.total_ngn)) * 100)
+    row = StoreTradeReceivable(
+        order_id=order.id, amount_minor=minor, due_on=payload.due_on,
+        reason=payload.reason, requested_by=actor.user_id,
+    )
+    db.add(row)
+    await db.commit()
+    return {"id": row.id, "status": row.status, "outstanding_minor": minor}
+
+
+@router.post("/receivables/{receivable_id}/decision")
+async def decide_trade_receivable(
+    receivable_id: uuid.UUID, approve: bool,
+    owner=Depends(require_ledger_role(LedgerRole.OWNER)),
+    db: AsyncSession = Depends(get_async_db),
+):
+    from services.store_service.models import Order, OrderStatus
+    row = await db.scalar(select(StoreTradeReceivable).where(
+        StoreTradeReceivable.id == receivable_id,
+    ).with_for_update())
+    if row is None or row.status != "requested":
+        raise HTTPException(409, "Credit request must be pending")
+    order = await db.scalar(select(Order).where(Order.id == row.order_id))
+    if not order or order.paid_at is not None or order.status != OrderStatus.PENDING_PAYMENT:
+        raise HTTPException(409, "This order is no longer unpaid and open")
+    if owner.auth_id in (row.requested_by, order.member_auth_id):
+        raise HTTPException(403, "Cannot approve your own requested or personal credit")
+    row.status = "approved" if approve else "rejected"
+    row.approved_by = owner.auth_id or str(owner.id)
+    # Deliberately not marking an order PAID or fulfilling reserved inventory.
+    # Partial payments need independent bank verification and settlement before
+    # those operations can be exposed through the existing order state machine.
+    await db.commit()
+    return {"id": row.id, "status": row.status}
+
+
+@router.get("/receivables")
+async def list_receivables(
+    _actor: AuthUser = Depends(procurement_reader),
+    db: AsyncSession = Depends(get_async_db),
+):
+    rows = (await db.scalars(select(StoreTradeReceivable).order_by(
+        StoreTradeReceivable.id,
+    ).limit(250))).all()
+    return [{"id": r.id, "order_id": r.order_id, "status": r.status,
+             "due_on": r.due_on, "outstanding_minor": r.amount_minor - r.verified_paid_minor}
+            for r in rows]
