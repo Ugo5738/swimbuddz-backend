@@ -95,6 +95,21 @@ async def upsert_procurement_grant(
     return {"auth_id": grant.auth_id, "role": grant.role, "active": grant.active}
 
 
+@router.get("/me")
+async def procurement_me(
+    actor: AuthUser = Depends(procurement_reader),
+    db: AsyncSession = Depends(get_async_db),
+):
+    grant = await db.scalar(select(StoreProcurementGrant).where(
+        StoreProcurementGrant.auth_id == actor.user_id,
+        StoreProcurementGrant.active.is_(True),
+    ))
+    return {"role": grant.role if grant else "admin", "can_write": (
+        actor.role == "service_role" or actor.has_role("admin") or
+        (grant is not None and grant.role == "procurement_officer")
+    )}
+
+
 @router.get("/orders")
 async def list_purchase_orders(
     _actor: AuthUser = Depends(procurement_reader),
