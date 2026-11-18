@@ -316,7 +316,7 @@ async def receive_goods(
             quantity=line.quantity, reference_type="goods_receipt", reference_id=receipt_id,
             notes=payload.evidence_reference, performed_by=actor.user_id,
         ))
-    item.status = "received" if all(l.received == l.quantity for l in lines) else "partially_received"
+    item.status = "received" if all(item_line.received == item_line.quantity for item_line in lines) else "partially_received"
     await db.commit()
     return {"id": receipt_id, "order_id": order_id, "status": item.status}
 
