@@ -81,6 +81,13 @@ jobs:
           alembic -c services/volunteer_service/alembic.ini upgrade head
           alembic -c services/wallet_service/alembic.ini upgrade head
           alembic -c services/reporting_service/alembic.ini upgrade head
+          alembic -c services/ledger_service/alembic.ini upgrade head
+
+      - name: Verify treasury migration upgrades and downgrade in test database
+        run: |
+          # Ledger tables are needed for treasury finance and must be reversible.
+          alembic -c services/ledger_service/alembic.ini downgrade daf6485f9976
+          alembic -c services/ledger_service/alembic.ini upgrade head
 
       - name: Verify Reporting upgrades from either previous head
         run: |

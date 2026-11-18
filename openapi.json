@@ -65427,6 +65427,1133 @@
         }
       }
     },
+    "/api/v1/admin/finance/treasury/banks": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "List Banks",
+        "operationId": "list_banks_admin_finance_treasury_banks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BankOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Banks Admin Finance Treasury Banks Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Create Bank",
+        "operationId": "create_bank_admin_finance_treasury_banks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BankCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/treasury/expense-ledger-options": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Expense Ledger Options",
+        "operationId": "expense_ledger_options_admin_finance_treasury_expense_ledger_options_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/treasury/ledger-options": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Ledger Options",
+        "operationId": "ledger_options_admin_finance_treasury_ledger_options_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/treasury/banks/{bank_id}/link-ledger": {
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Link Bank Ledger",
+        "operationId": "link_bank_ledger_admin_finance_treasury_banks__bank_id__link_ledger_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Bank Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LedgerAccountLink"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/banks/{bank_id}/create-operations-ledger": {
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Create Operations Ledger",
+        "operationId": "create_operations_ledger_admin_finance_treasury_banks__bank_id__create_operations_ledger_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Bank Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/budgets": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "List Budgets",
+        "operationId": "list_budgets_admin_finance_treasury_budgets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BudgetOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Budgets Admin Finance Treasury Budgets Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Create Budget",
+        "operationId": "create_budget_admin_finance_treasury_budgets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/treasury/requests": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "List Requests",
+        "operationId": "list_requests_admin_finance_treasury_requests_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RequestOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Requests Admin Finance Treasury Requests Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Create Request",
+        "operationId": "create_request_admin_finance_treasury_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/treasury/budgets/utilization": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Budget Utilization",
+        "operationId": "budget_utilization_admin_finance_treasury_budgets_utilization_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/treasury/requests/{request_id}/decision": {
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Decide Request",
+        "operationId": "decide_request_admin_finance_treasury_requests__request_id__decision_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/statements": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "List Statements",
+        "operationId": "list_statements_admin_finance_treasury_statements_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bank Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StatementOut"
+                  },
+                  "title": "Response List Statements Admin Finance Treasury Statements Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/banks/{bank_id}/statements": {
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Import Statement",
+        "operationId": "import_statement_admin_finance_treasury_banks__bank_id__statements_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Bank Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatementImport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/requests/{request_id}/confirm": {
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Confirm Request",
+        "operationId": "confirm_request_admin_finance_treasury_requests__request_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/summary": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Summary",
+        "operationId": "summary_admin_finance_treasury_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreasurySummary"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/treasury/statements/{line_id}/match-journal": {
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Match Journal",
+        "description": "Review an actual bank statement line against a previously posted ledger entry.\n\nDoes not post a new journal entry or overwrite the existing accounting system.\nA bank-to-bank transfer can have two lines pointing to one balanced journal entry.",
+        "operationId": "match_journal_admin_finance_treasury_statements__line_id__match_journal_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "line_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Line Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchJournal"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/banks/{bank_id}/snapshot": {
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Attest Bank Snapshot",
+        "description": "Owner records a dated verified statement closing balance. No pretend live API.",
+        "operationId": "attest_bank_snapshot_admin_finance_treasury_banks__bank_id__snapshot_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Bank Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnapshotCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/reconciliation/banks": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Reconcile Banks",
+        "description": "An as-of account reconciliation; mismatched statement dates are flagged.",
+        "operationId": "reconcile_banks_admin_finance_treasury_reconciliation_banks_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BankReconciliationRow"
+                  },
+                  "title": "Response Reconcile Banks Admin Finance Treasury Reconciliation Banks Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/forecasts": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "List Forecasts",
+        "operationId": "list_forecasts_admin_finance_treasury_forecasts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ForecastOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Forecasts Admin Finance Treasury Forecasts Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Create Forecast",
+        "operationId": "create_forecast_admin_finance_treasury_forecasts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForecastCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/treasury/cash-projection": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Cash Projection",
+        "operationId": "cash_projection_admin_finance_treasury_cash_projection_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scenario",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "base",
+              "title": "Scenario"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashProjection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/requests/{request_id}/post-ledger": {
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Post Confirmed To Ledger",
+        "description": "Controlled automatic double-entry posting; never executes a bank transfer.",
+        "operationId": "post_confirmed_to_ledger_admin_finance_treasury_requests__request_id__post_ledger_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostConfirmedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/requests/{request_id}/link-existing-ledger": {
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Link Existing Request Ledger",
+        "description": "Use an already posted journal when the legacy payments/payout emitters booked it.",
+        "operationId": "link_existing_request_ledger_admin_finance_treasury_requests__request_id__link_existing_ledger_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchJournal"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/forecasts/{line_id}": {
+      "delete": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Cancel Forecast",
+        "description": "Keep audit history of a cancelled planning assumption.",
+        "operationId": "cancel_forecast_admin_finance_treasury_forecasts__line_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "line_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Line Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/ledger/journal-entries": {
       "post": {
         "tags": [
@@ -142877,6 +144004,205 @@
         ],
         "title": "BalanceSheetSection"
       },
+      "BankCreate": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "stanbic",
+              "moniepoint"
+            ],
+            "title": "Code"
+          },
+          "last_four": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{4}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Four"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "BankCreate"
+      },
+      "BankOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "bank_name": {
+            "type": "string",
+            "title": "Bank Name"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "last_four": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Four"
+          },
+          "ledger_account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Account Id"
+          },
+          "statement_balance_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statement Balance Minor"
+          },
+          "statement_as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statement As Of"
+          },
+          "statement_verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statement Verified At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "bank_name",
+          "purpose"
+        ],
+        "title": "BankOut"
+      },
+      "BankReconciliationRow": {
+        "properties": {
+          "bank_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Bank Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "latest_statement_balance_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Statement Balance Minor"
+          },
+          "latest_statement_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Statement Date"
+          },
+          "ledger_balance_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Balance Minor"
+          },
+          "difference_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference Minor"
+          },
+          "matched_rows": {
+            "type": "integer",
+            "title": "Matched Rows"
+          },
+          "unmatched_rows": {
+            "type": "integer",
+            "title": "Unmatched Rows"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bank_id",
+          "code",
+          "latest_statement_balance_minor",
+          "latest_statement_date",
+          "ledger_balance_minor",
+          "difference_minor",
+          "matched_rows",
+          "unmatched_rows",
+          "status"
+        ],
+        "title": "BankReconciliationRow"
+      },
       "BubblesLiabilityReport": {
         "properties": {
           "as_of": {
@@ -142905,6 +144231,101 @@
           "total_minor"
         ],
         "title": "BubblesLiabilityReport"
+      },
+      "BudgetCreate": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "expense",
+              "funding"
+            ],
+            "title": "Kind",
+            "default": "expense"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "title": "Name"
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 2,
+            "title": "Category"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Minor"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "category",
+          "amount_minor",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "BudgetCreate"
+      },
+      "BudgetOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          },
+          "starts_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Starts On"
+          },
+          "ends_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Ends On"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "category",
+          "amount_minor",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "BudgetOut"
       },
       "CashPositionReport": {
         "properties": {
@@ -142970,6 +144391,131 @@
           "amount_minor"
         ],
         "title": "CashPositionRow"
+      },
+      "CashProjection": {
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "title": "Scenario"
+          },
+          "latest_bank_snapshot_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Bank Snapshot Minor"
+          },
+          "latest_bank_snapshot_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Bank Snapshot Date"
+          },
+          "planned_inflows_minor": {
+            "type": "integer",
+            "title": "Planned Inflows Minor"
+          },
+          "planned_outflows_minor": {
+            "type": "integer",
+            "title": "Planned Outflows Minor"
+          },
+          "projected_ending_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Ending Minor"
+          },
+          "pending_approved_expenses_minor": {
+            "type": "integer",
+            "title": "Pending Approved Expenses Minor"
+          },
+          "caveat": {
+            "type": "string",
+            "title": "Caveat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scenario",
+          "latest_bank_snapshot_minor",
+          "latest_bank_snapshot_date",
+          "planned_inflows_minor",
+          "planned_outflows_minor",
+          "projected_ending_minor",
+          "pending_approved_expenses_minor",
+          "caveat"
+        ],
+        "title": "CashProjection"
+      },
+      "ConfirmRequest": {
+        "properties": {
+          "source_line_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Line Id"
+          },
+          "destination_line_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Line Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_line_id"
+        ],
+        "title": "ConfirmRequest"
+      },
+      "Decision": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Action"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "Decision"
       },
       "DeferredRevenueReport": {
         "properties": {
@@ -143155,6 +144701,115 @@
         ],
         "title": "ExternalTransactionIn",
         "description": "One PSP settlement transaction pushed for reconciliation."
+      },
+      "ForecastCreate": {
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": [
+              "inflow",
+              "outflow"
+            ],
+            "title": "Direction"
+          },
+          "scenario": {
+            "type": "string",
+            "enum": [
+              "base",
+              "optimistic",
+              "conservative"
+            ],
+            "title": "Scenario",
+            "default": "base"
+          },
+          "effective_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective On"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Minor"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 5,
+            "title": "Purpose"
+          },
+          "programme": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Programme"
+          }
+        },
+        "type": "object",
+        "required": [
+          "direction",
+          "effective_on",
+          "amount_minor",
+          "purpose"
+        ],
+        "title": "ForecastCreate"
+      },
+      "ForecastOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "direction": {
+            "type": "string",
+            "title": "Direction"
+          },
+          "scenario": {
+            "type": "string",
+            "title": "Scenario"
+          },
+          "effective_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective On"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "programme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Programme"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "direction",
+          "scenario",
+          "effective_on",
+          "amount_minor",
+          "purpose"
+        ],
+        "title": "ForecastOut"
       },
       "InvoiceCreate": {
         "properties": {
@@ -144262,10 +145917,25 @@
         ],
         "title": "JournalLineOut"
       },
+      "LedgerAccountLink": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id"
+        ],
+        "title": "LedgerAccountLink"
+      },
       "LedgerRole": {
         "type": "string",
         "enum": [
           "viewer",
+          "operations",
           "accountant",
           "admin",
           "owner"
@@ -144466,6 +146136,20 @@
         ],
         "title": "MarginRow"
       },
+      "MatchJournal": {
+        "properties": {
+          "journal_entry_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Journal Entry Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "journal_entry_id"
+        ],
+        "title": "MatchJournal"
+      },
       "PeriodOut": {
         "properties": {
           "id": {
@@ -144531,6 +146215,28 @@
           "to_status"
         ],
         "title": "PeriodTransitionRequest"
+      },
+      "PostConfirmedRequest": {
+        "properties": {
+          "expense_account_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Account Code"
+          },
+          "acknowledgement": {
+            "type": "boolean",
+            "title": "Acknowledgement",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "PostConfirmedRequest"
       },
       "ProfitLossReport": {
         "properties": {
@@ -144784,6 +146490,407 @@
         ],
         "title": "ReconciliationReport"
       },
+      "RequestCreate": {
+        "properties": {
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 180
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
+          },
+          "invoice_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Reference"
+          },
+          "evidence_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 250
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Reference"
+          },
+          "programme": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Programme"
+          },
+          "cost_center_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Center Code"
+          },
+          "service_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service On"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "expense",
+              "funding"
+            ],
+            "title": "Kind"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Minor"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 5,
+            "title": "Purpose"
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 2,
+            "title": "Category"
+          },
+          "source_bank_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Bank Id"
+          },
+          "destination_bank_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Bank Id"
+          },
+          "budget_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "amount_minor",
+          "purpose",
+          "category",
+          "source_bank_id"
+        ],
+        "title": "RequestCreate"
+      },
+      "RequestOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "source_bank_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Bank Id"
+          },
+          "destination_bank_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Bank Id"
+          },
+          "budget_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Id"
+          },
+          "requested_by": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Requested By"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "rejected_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected Reason"
+          },
+          "approval_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Note"
+          },
+          "bank_line_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Line Id"
+          },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
+          },
+          "invoice_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Reference"
+          },
+          "evidence_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Reference"
+          },
+          "programme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Programme"
+          },
+          "cost_center_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Center Code"
+          },
+          "service_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service On"
+          },
+          "journal_entry_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Journal Entry Id"
+          },
+          "ledger_posted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Posted At"
+          },
+          "destination_bank_line_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Bank Line Id"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "amount_minor",
+          "purpose",
+          "category",
+          "source_bank_id",
+          "destination_bank_id",
+          "budget_id",
+          "requested_by",
+          "approved_by",
+          "approved_at",
+          "rejected_reason",
+          "bank_line_id",
+          "destination_bank_line_id",
+          "confirmed_at",
+          "created_at"
+        ],
+        "title": "RequestOut"
+      },
       "ReverseRequest": {
         "properties": {
           "reason": {
@@ -144801,6 +146908,226 @@
         "type": "object",
         "title": "ReverseRequest",
         "description": "Optional body for reversing an entry."
+      },
+      "SnapshotCreate": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "balance_minor": {
+            "type": "integer",
+            "title": "Balance Minor"
+          },
+          "evidence_reference": {
+            "type": "string",
+            "maxLength": 250,
+            "minLength": 5,
+            "title": "Evidence Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "balance_minor",
+          "evidence_reference"
+        ],
+        "title": "SnapshotCreate"
+      },
+      "StatementImport": {
+        "properties": {
+          "statement_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "title": "Statement Id"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/StatementItem"
+            },
+            "type": "array",
+            "maxItems": 250,
+            "minItems": 1,
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "statement_id",
+          "rows"
+        ],
+        "title": "StatementImport"
+      },
+      "StatementItem": {
+        "properties": {
+          "row_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Row Number"
+          },
+          "occurred_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Occurred On"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Description"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 180
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "row_number",
+          "occurred_on",
+          "amount_minor",
+          "description"
+        ],
+        "title": "StatementItem"
+      },
+      "StatementOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "bank_account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Bank Account Id"
+          },
+          "statement_id": {
+            "type": "string",
+            "title": "Statement Id"
+          },
+          "row_number": {
+            "type": "integer",
+            "title": "Row Number"
+          },
+          "occurred_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Occurred On"
+          },
+          "amount_minor": {
+            "type": "integer",
+            "title": "Amount Minor"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "match_status": {
+            "type": "string",
+            "title": "Match Status"
+          },
+          "journal_entry_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Journal Entry Id"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "bank_account_id",
+          "statement_id",
+          "row_number",
+          "occurred_on",
+          "amount_minor",
+          "description",
+          "reference",
+          "match_status",
+          "journal_entry_id",
+          "request_id"
+        ],
+        "title": "StatementOut"
+      },
+      "TreasurySummary": {
+        "properties": {
+          "banks": {
+            "items": {
+              "$ref": "#/components/schemas/BankOut"
+            },
+            "type": "array",
+            "title": "Banks"
+          },
+          "pending_requests": {
+            "type": "integer",
+            "title": "Pending Requests"
+          },
+          "approved_awaiting_bank_evidence": {
+            "type": "integer",
+            "title": "Approved Awaiting Bank Evidence"
+          },
+          "unmatched_statement_lines": {
+            "type": "integer",
+            "title": "Unmatched Statement Lines"
+          },
+          "confirmed_expenses_minor": {
+            "type": "integer",
+            "title": "Confirmed Expenses Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "banks",
+          "pending_requests",
+          "approved_awaiting_bank_evidence",
+          "unmatched_statement_lines",
+          "confirmed_expenses_minor"
+        ],
+        "title": "TreasurySummary"
       },
       "TrialBalanceReport": {
         "properties": {
