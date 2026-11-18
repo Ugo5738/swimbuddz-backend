@@ -672,8 +672,9 @@ async def review_milestone_claim(
             raise HTTPException(
                 status_code=422, detail="This milestone requires video evidence"
             )
-        if evidence_required and progress.evidence_media_id:
-            # Coach-recorded submissions are uploaded under the coach's identity.
+        if progress.evidence_media_id:
+            # Even optional evidence must be verified before being used to
+            # substantiate an approval. Coach-recorded uploads use coach identity.
             # Identify the original uploader from the immutable CLAIMED event.
             last_claim = (
                 await db.execute(
