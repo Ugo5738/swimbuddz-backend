@@ -71,3 +71,16 @@ __all__ = [
     "SupplierPayout",
     "SupplierStatus",
 ]
+
+from services.store_service.models.procurement import (
+    StoreCostEvent,
+    StoreGoodsReceipt,
+    StoreGoodsReceiptLine,
+    StoreInventoryValuation,
+    StoreOpeningReconciliation,
+    StoreProcurementGrant,
+    StorePurchaseOrder,
+    StorePurchaseOrderLine,
+    StoreSupplierInvoice,
+    StoreTradeReceivable,
+)

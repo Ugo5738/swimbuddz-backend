@@ -38,6 +38,16 @@ from services.store_service.models import (  # noqa: F401
     StoreCreditTransaction,
     Supplier,
     SupplierPayout,
+    StoreCostEvent,
+    StoreGoodsReceipt,
+    StoreGoodsReceiptLine,
+    StoreInventoryValuation,
+    StoreOpeningReconciliation,
+    StoreProcurementGrant,
+    StorePurchaseOrder,
+    StorePurchaseOrderLine,
+    StoreSupplierInvoice,
+    StoreTradeReceivable,
 )
 
 settings = get_settings()
@@ -70,6 +80,16 @@ SERVICE_TABLES = {
     "store_pickup_locations",
     "store_suppliers",
     "store_supplier_payouts",
+    "store_procurement_grants",
+    "store_purchase_orders",
+    "store_purchase_order_lines",
+    "store_goods_receipts",
+    "store_goods_receipt_lines",
+    "store_inventory_valuations",
+    "store_cost_events",
+    "store_supplier_invoices",
+    "store_trade_receivables",
+    "store_opening_reconciliations",
 }
 
 url = settings.DATABASE_URL.replace("%", "%%")
