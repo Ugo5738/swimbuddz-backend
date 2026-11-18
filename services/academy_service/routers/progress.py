@@ -185,19 +185,25 @@ async def update_student_progress(
     await db.commit()
     await db.refresh(progress)
 
-    # Best-effort: emit academy milestone reward event
-    await emit_rewards_event(
-        event_type="academy.milestone_passed",
-        member_auth_id=current_user.user_id,
-        service_source="academy",
-        event_data={
-            "milestone_name": milestone.name,
-            "enrollment_id": str(enrollment_id),
-            "milestone_id": str(milestone_id),
-        },
-        idempotency_key=f"academy-milestone-{enrollment_id}-{milestone_id}",
-        calling_service="academy",
-    )
+    # Reward the learner only on a newly achieved milestone, never the reviewer
+    # or an unchanged/rejected result. Historical enrollments may lack auth IDs.
+    if (
+        progress.status == ProgressStatus.ACHIEVED
+        and previous_status != ProgressStatus.ACHIEVED
+        and enrollment.member_auth_id
+    ):
+        await emit_rewards_event(
+            event_type="academy.milestone_passed",
+            member_auth_id=str(enrollment.member_auth_id),
+            service_source="academy",
+            event_data={
+                "milestone_name": milestone.name,
+                "enrollment_id": str(enrollment_id),
+                "milestone_id": str(milestone_id),
+            },
+            idempotency_key=f"academy-milestone-{enrollment_id}-{milestone_id}",
+            calling_service="academy",
+        )
 
     return progress
 
