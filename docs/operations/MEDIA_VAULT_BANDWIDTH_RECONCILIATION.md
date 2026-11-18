@@ -71,6 +71,13 @@ audit metadata in terminal states. Ingestion remains idempotent.
 
 ### Diagnostic and rollout checklist
 
+**17 November follow-up:** the owner approved preparing independent default-off
+Members API/Chat API canaries after measured attribution showed the remaining
+traffic concentrated outside the media worker. See
+[connection canary](SUPABASE_CONNECTION_CANARY.md) for evidence, hard one/zero
+per-process limits, staged deployment and rollback. This supersedes only the
+earlier configuration scope; no pilot is enabled automatically.
+
 The November 16 production release is gated by
 [verified database recovery](PRODUCTION_DATABASE_RECOVERY.md). Deploy the backend
 and retry migration first; validate health, original/export accounting and

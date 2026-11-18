@@ -81,6 +81,13 @@ jobs:
           alembic -c services/volunteer_service/alembic.ini upgrade head
           alembic -c services/wallet_service/alembic.ini upgrade head
           alembic -c services/reporting_service/alembic.ini upgrade head
+          alembic -c services/ledger_service/alembic.ini upgrade head
+
+      - name: Verify treasury migration upgrades and downgrade in test database
+        run: |
+          # Ledger tables are needed for treasury finance and must be reversible.
+          alembic -c services/ledger_service/alembic.ini downgrade daf6485f9976
+          alembic -c services/ledger_service/alembic.ini upgrade head
 
       - name: Verify Reporting upgrades from either previous head
         run: |
@@ -131,6 +138,8 @@ jobs:
             tests/integration/test_members_entitlement_idempotency.py
 
           pytest -v tests/integration/test_members_read_cost.py
+          pytest -v tests/integration/test_member_projection_read_cost.py
+          pytest -v tests/integration/test_announcement_prospect_polling.py
           pytest -v tests/integration/test_experience_ticket_orders.py
           pytest -v tests/integration/test_club_schedule_operations.py
           pytest -v tests/integration/test_club_location_mobility.py
@@ -359,6 +368,8 @@ jobs:
           DEPLOY_BRANCH: "main"
           API_HOST: "api.swimbuddz.com"
           START_WORKERS: "true"
+          MEMBERS_API_DB_USE_LOCAL_POOL: ${{ vars.MEMBERS_API_DB_USE_LOCAL_POOL || 'false' }}
+          CHAT_API_DB_USE_LOCAL_POOL: ${{ vars.CHAT_API_DB_USE_LOCAL_POOL || 'false' }}
 
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -366,7 +377,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
 
-          envs: GPG_PASSPHRASE,DOCKER_USERNAME,DOCKER_PASSWORD,LE_EMAIL,REPO_URL,DEPLOY_BRANCH,API_HOST,START_WORKERS
+          envs: GPG_PASSPHRASE,DOCKER_USERNAME,DOCKER_PASSWORD,LE_EMAIL,REPO_URL,DEPLOY_BRANCH,API_HOST,START_WORKERS,MEMBERS_API_DB_USE_LOCAL_POOL,CHAT_API_DB_USE_LOCAL_POOL
 
           script: |
             set -Eeuo pipefail

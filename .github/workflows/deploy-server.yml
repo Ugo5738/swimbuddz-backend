@@ -44,6 +44,8 @@ jobs:
           DEPLOY_BRANCH: ${{ inputs.branch }}
           API_HOST: ${{ inputs.api_host }}
           START_WORKERS: ${{ inputs.start_workers }}
+          MEMBERS_API_DB_USE_LOCAL_POOL: ${{ vars.MEMBERS_API_DB_USE_LOCAL_POOL || 'false' }}
+          CHAT_API_DB_USE_LOCAL_POOL: ${{ vars.CHAT_API_DB_USE_LOCAL_POOL || 'false' }}
 
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -51,7 +53,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 30m
 
-          envs: GPG_PASSPHRASE,DOCKER_USERNAME,DOCKER_PASSWORD,LE_EMAIL,REPO_URL,DEPLOY_BRANCH,API_HOST,START_WORKERS
+          envs: GPG_PASSPHRASE,DOCKER_USERNAME,DOCKER_PASSWORD,LE_EMAIL,REPO_URL,DEPLOY_BRANCH,API_HOST,START_WORKERS,MEMBERS_API_DB_USE_LOCAL_POOL,CHAT_API_DB_USE_LOCAL_POOL
 
           script: |
             set -Eeuo pipefail

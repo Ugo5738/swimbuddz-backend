@@ -32,6 +32,15 @@ from services.ledger_service.models.invoice import (
     InvoiceSequence,
 )
 from services.ledger_service.models.journal import JournalEntry, JournalLine
+from services.ledger_service.models.treasury import (
+    TreasuryAuditEvent,
+    TreasuryBankAccount,
+    TreasuryBankSnapshot,
+    TreasuryBudget,
+    TreasuryForecastLine,
+    TreasuryRequest,
+    TreasuryStatementLine,
+)
 from services.ledger_service.models.organization import Organization
 from services.ledger_service.models.period import Period
 from services.ledger_service.models.recognition import RevenueRecognitionSchedule
@@ -43,6 +52,13 @@ from services.ledger_service.models.reconciliation import (
 __all__ = [
     # Models
     "Organization",
+    "TreasuryBankAccount",
+    "TreasuryBankSnapshot",
+    "TreasuryForecastLine",
+    "TreasuryStatementLine",
+    "TreasuryBudget",
+    "TreasuryRequest",
+    "TreasuryAuditEvent",
     "ChartOfAccounts",
     "CostCenter",
     "JournalEntry",
