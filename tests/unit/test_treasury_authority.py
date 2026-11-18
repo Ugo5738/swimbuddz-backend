@@ -56,7 +56,7 @@ async def test_approval_is_internal_only_not_paid():
     )
     session = _session(item)
     await decide_request(
-        item.id, Decision(action="approve"), _request_context(),
+        item.id, Decision(action="approve", reason="Emergency pool repair: owner-authorised exception"), _request_context(),
         actor=actor, session=session,
     )
     assert item.status == "approved"

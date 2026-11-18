@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from libs.common.datetime_utils import utc_now
 from services.ledger_service.app.deps import get_ledger_db, require_ledger_role
 from services.ledger_service.models import (
-    ChartOfAccounts, JournalEntry, JournalLine, CostCenter,
+    ChartOfAccounts, JournalEntry, JournalLine, CostCenter, Organization,
     TreasuryBankSnapshot, TreasuryForecastLine,
     TreasuryAuditEvent, TreasuryBankAccount, TreasuryBudget,
     TreasuryRequest, TreasuryStatementLine,
@@ -189,6 +189,22 @@ async def list_budgets(request: Request, _actor=Depends(require_ledger_role(Ledg
 @router.post("/budgets", response_model=BudgetOut, status_code=201)
 async def create_budget(payload: BudgetCreate, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
     org = request.state.org_id
+    # Serialize budget creation within the organization so two simultaneous
+    # requests cannot both pass the overlapping-date check.
+    await session.scalar(select(Organization.id).where(
+        Organization.id == org,
+    ).with_for_update())
+    overlapping = await session.scalar(select(TreasuryBudget.id).where(
+        TreasuryBudget.org_id == org,
+        TreasuryBudget.kind == payload.kind,
+        TreasuryBudget.category == payload.category,
+        TreasuryBudget.starts_on <= payload.ends_on,
+        TreasuryBudget.ends_on >= payload.starts_on,
+    ).limit(1))
+    if overlapping is not None:
+        raise HTTPException(
+            409, "A budget already covers this kind, category and date range"
+        )
     budget = TreasuryBudget(org_id=org, created_by=actor.id, **payload.model_dump())
     session.add(budget)
     await session.flush()
@@ -281,6 +297,10 @@ async def decide_request(request_id: uuid.UUID, payload: Decision, request: Requ
         budget = await session.scalar(select(TreasuryBudget).where(TreasuryBudget.org_id == org, TreasuryBudget.id == item.budget_id).with_for_update())
         if budget is None:
             raise HTTPException(409, "Budget was removed")
+        if budget.kind != item.kind or budget.category != item.category:
+            raise HTTPException(409, "Request budget category or kind no longer matches")
+        if not (budget.starts_on <= date.today() <= budget.ends_on):
+            raise HTTPException(409, "Budget period has expired; issue a new authorisation")
         allocated = await session.scalar(select(func.coalesce(func.sum(TreasuryRequest.amount_minor), 0)).where(
             TreasuryRequest.org_id == org, TreasuryRequest.budget_id == budget.id,
             TreasuryRequest.status.in_(("approved", "confirmed")),
