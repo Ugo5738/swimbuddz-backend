@@ -147,3 +147,41 @@ async def test_member_cannot_claim_foreign_or_previously_achieved_milestone(
             app.dependency_overrides[get_current_user] = original
         else:
             app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_required_video_milestone_cannot_be_awarded_by_generic_progress_route(
+    academy_client, db_session, seed_member_row
+):
+    from services.academy_service.models import RequiredEvidence, StudentProgress
+    from sqlalchemy import select
+
+    owner = await seed_member_row()
+    program = ProgramFactory.create()
+    cohort = CohortFactory.create(program_id=program.id)
+    enrollment = EnrollmentFactory.create(
+        program_id=program.id,
+        cohort_id=cohort.id,
+        member_id=owner.id,
+        member_auth_id=owner.auth_id,
+    )
+    milestone = MilestoneFactory.create(
+        program_id=program.id,
+        required_evidence=RequiredEvidence.VIDEO,
+    )
+    db_session.add_all([program, cohort, enrollment, milestone])
+    await db_session.commit()
+
+    response = await academy_client.post(
+        f"/academy/progress?enrollment_id={enrollment.id}&milestone_id={milestone.id}",
+        json={"status": "achieved"},
+    )
+    assert response.status_code == 409, response.text
+    existing = await db_session.scalar(
+        select(StudentProgress).where(
+            StudentProgress.enrollment_id == enrollment.id,
+            StudentProgress.milestone_id == milestone.id,
+        )
+    )
+    assert existing is None
