@@ -4,8 +4,6 @@ These are NOT posted financial statements. Each number carries its semantics;
 no source record is modified, and missing valuation is flagged, not invented.
 Finance permission is resolved from the Ledger user table, not JWT admin claims.
 """
-from datetime import datetime, timezone
-from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Request
 from libs.common.enums import PaymentStatus
@@ -18,11 +16,11 @@ from services.academy_service.models.enums import EnrollmentStatus, InstallmentS
 from services.members_service.models.club import ClubEnrollment
 from services.payments_service.models.core import Payment
 from services.payments_service.models.settlement import PaystackSettlement
-from services.store_service.models import InventoryItem, Order, OrderStatus, ProductVariant
+from services.store_service.models import InventoryItem, Order
 from services.store_service.models.procurement import (
     StoreInventoryValuation, StoreSupplierInvoice, StoreTradeReceivable,
 )
-from sqlalchemy import Numeric, and_, case, cast, func, select
+from sqlalchemy import Numeric, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/admin/finance", tags=["finance-intelligence"])

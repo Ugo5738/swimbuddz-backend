@@ -1,6 +1,6 @@
 """Dedicated procurement grants. A JWT role label alone never grants finance access."""
 from fastapi import Depends, HTTPException
-from libs.auth.dependencies import get_current_user, require_admin
+from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.db.session import get_async_db
 from services.store_service.models.procurement import StoreProcurementGrant
