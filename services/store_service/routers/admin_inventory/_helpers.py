@@ -31,7 +31,10 @@ from services.store_service.models import (
     Product,
     ProductVariant,
 )
-from services.store_service.models.procurement import StoreInventoryValuation, StoreCostEvent
+from services.store_service.models.procurement import (
+    StoreInventoryValuation,
+    StoreCostEvent,
+)
 from services.store_service.services.inventory_costing import consumption_cost_minor
 from services.store_service.routers._helpers import log_audit
 
@@ -95,48 +98,87 @@ async def _release_order_inventory(
 
 
 async def _consume_fulfilled_order_stock(
-    db: AsyncSession, order: Order, performed_by: str,
+    db: AsyncSession,
+    order: Order,
+    performed_by: str,
 ) -> None:
     """Decrement reserved/on-hand stock ONCE when a verified order is fulfilled.
 
     An unvalued legacy SKU may still be fulfilled to preserve operations; its
     missing COGS is flagged in Finance rather than guessed from retail price.
     """
-    lines = (await db.scalars(select(OrderItem).where(
-        OrderItem.order_id == order.id,
-    ))).all()
+    lines = (
+        await db.scalars(
+            select(OrderItem).where(
+                OrderItem.order_id == order.id,
+            )
+        )
+    ).all()
     for line in lines:
-        inventory = await db.scalar(select(InventoryItem).where(
-            InventoryItem.variant_id == line.variant_id,
-        ).with_for_update())
+        inventory = await db.scalar(
+            select(InventoryItem)
+            .where(
+                InventoryItem.variant_id == line.variant_id,
+            )
+            .with_for_update()
+        )
         if inventory is None:
             if line.is_preorder:
                 continue
-            raise HTTPException(409, "Fulfillment inventory is missing; reconcile stock first")
-        if inventory.quantity_reserved < line.quantity or inventory.quantity_on_hand < line.quantity:
-            raise HTTPException(409, "Order stock reservation is insufficient; reconcile before fulfillment")
-        value = await db.scalar(select(StoreInventoryValuation).where(
-            StoreInventoryValuation.variant_id == line.variant_id,
-        ).with_for_update())
-        if value is not None and value.quantity == inventory.quantity_on_hand and value.quantity > 0:
+            raise HTTPException(
+                409, "Fulfillment inventory is missing; reconcile stock first"
+            )
+        if (
+            inventory.quantity_reserved < line.quantity
+            or inventory.quantity_on_hand < line.quantity
+        ):
+            raise HTTPException(
+                409,
+                "Order stock reservation is insufficient; reconcile before fulfillment",
+            )
+        value = await db.scalar(
+            select(StoreInventoryValuation)
+            .where(
+                StoreInventoryValuation.variant_id == line.variant_id,
+            )
+            .with_for_update()
+        )
+        if (
+            value is not None
+            and value.quantity == inventory.quantity_on_hand
+            and value.quantity > 0
+        ):
             consumed_cost = consumption_cost_minor(
-                value.total_cost_minor, value.quantity, line.quantity,
+                value.total_cost_minor,
+                value.quantity,
+                line.quantity,
             )
             value.quantity -= line.quantity
             value.total_cost_minor -= consumed_cost
-            db.add(StoreCostEvent(
-                variant_id=line.variant_id, event_kind="sale",
-                quantity_delta=-line.quantity, cost_delta_minor=-consumed_cost,
-                reference=f"sale:{line.id}", evidence=f"fulfilled-order:{order.id}",
-                actor_auth_id=performed_by,
-            ))
+            db.add(
+                StoreCostEvent(
+                    variant_id=line.variant_id,
+                    event_kind="sale",
+                    quantity_delta=-line.quantity,
+                    cost_delta_minor=-consumed_cost,
+                    reference=f"sale:{line.id}",
+                    evidence=f"fulfilled-order:{order.id}",
+                    actor_auth_id=performed_by,
+                )
+            )
         inventory.quantity_on_hand -= line.quantity
         inventory.quantity_reserved -= line.quantity
-        db.add(InventoryMovement(
-            inventory_item_id=inventory.id, movement_type=InventoryMovementType.SALE,
-            quantity=-line.quantity, reference_type="order", reference_id=order.id,
-            notes="Fulfilled paid order", performed_by=performed_by,
-        ))
+        db.add(
+            InventoryMovement(
+                inventory_item_id=inventory.id,
+                movement_type=InventoryMovementType.SALE,
+                quantity=-line.quantity,
+                reference_type="order",
+                reference_id=order.id,
+                notes="Fulfilled paid order",
+                performed_by=performed_by,
+            )
+        )
 
 
 async def _apply_order_status_change(
@@ -170,10 +212,10 @@ async def _apply_order_status_change(
         )
     # Physical departure is separate from payment verification. Consume once,
     # not on PAID or READY status. The order row is locked by the caller.
-    if (
-        new_status in {OrderStatus.PICKED_UP, OrderStatus.DELIVERED}
-        and old_status not in {OrderStatus.PICKED_UP, OrderStatus.DELIVERED}
-    ):
+    if new_status in {
+        OrderStatus.PICKED_UP,
+        OrderStatus.DELIVERED,
+    } and old_status not in {OrderStatus.PICKED_UP, OrderStatus.DELIVERED}:
         await _consume_fulfilled_order_stock(db, order, current_user.user_id)
     order.status = new_status
 

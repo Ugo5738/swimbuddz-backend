@@ -341,18 +341,26 @@ async def get_inventory_report(
 
     # Value stock at independently documented acquisition cost; never use
     # selling price as inventory cost or imply zero cost for missing history.
-    valuation_rows = (await db.execute(select(
-        InventoryItem.quantity_on_hand,
-        StoreInventoryValuation.quantity,
-        StoreInventoryValuation.total_cost_minor,
-    ).outerjoin(
-        StoreInventoryValuation,
-        StoreInventoryValuation.variant_id == InventoryItem.variant_id,
-    ))).all()
-    unvalued = sum(1 for on_hand, qty, cost in valuation_rows
-                   if qty is None or qty != on_hand)
-    valued_minor = sum(int(cost) for on_hand, qty, cost in valuation_rows
-                       if qty is not None and qty == on_hand and cost is not None)
+    valuation_rows = (
+        await db.execute(
+            select(
+                InventoryItem.quantity_on_hand,
+                StoreInventoryValuation.quantity,
+                StoreInventoryValuation.total_cost_minor,
+            ).outerjoin(
+                StoreInventoryValuation,
+                StoreInventoryValuation.variant_id == InventoryItem.variant_id,
+            )
+        )
+    ).all()
+    unvalued = sum(
+        1 for on_hand, qty, cost in valuation_rows if qty is None or qty != on_hand
+    )
+    valued_minor = sum(
+        int(cost)
+        for on_hand, qty, cost in valuation_rows
+        if qty is not None and qty == on_hand and cost is not None
+    )
     return InventoryReport(
         total_variants=row.total_variants or 0,
         total_stock_on_hand=total_on_hand,
@@ -360,7 +368,9 @@ async def get_inventory_report(
         total_available=total_on_hand - total_reserved,
         low_stock_count=row.low_stock or 0,
         out_of_stock_count=row.out_of_stock or 0,
-        total_stock_value_ngn=(Decimal(valued_minor) / Decimal(100)) if unvalued == 0 else None,
+        total_stock_value_ngn=(Decimal(valued_minor) / Decimal(100))
+        if unvalued == 0
+        else None,
         unvalued_sku_count=unvalued,
         valuation_complete=unvalued == 0,
     )

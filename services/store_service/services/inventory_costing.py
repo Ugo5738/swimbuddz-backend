@@ -4,7 +4,9 @@ Remainder stays in stock until the last unit sells, so cost is conserved.
 """
 
 
-def consumption_cost_minor(total_cost_minor: int, stock_quantity: int, sold_quantity: int) -> int:
+def consumption_cost_minor(
+    total_cost_minor: int, stock_quantity: int, sold_quantity: int
+) -> int:
     if total_cost_minor < 0 or stock_quantity <= 0:
         raise ValueError("Valid nonnegative stock value and positive quantity required")
     if sold_quantity <= 0 or sold_quantity > stock_quantity:

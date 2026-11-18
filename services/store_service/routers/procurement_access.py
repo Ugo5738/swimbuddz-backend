@@ -1,4 +1,5 @@
 """Dedicated procurement grants. A JWT role label alone never grants finance access."""
+
 from fastapi import Depends, HTTPException
 from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
@@ -16,10 +17,12 @@ async def procurement_reader(
     # continuity; the separate procurement grant never grants admin authority.
     if user.role == "service_role" or user.has_role("admin"):
         return user
-    grant = await db.scalar(select(StoreProcurementGrant).where(
-        StoreProcurementGrant.auth_id == user.user_id,
-        StoreProcurementGrant.active.is_(True),
-    ))
+    grant = await db.scalar(
+        select(StoreProcurementGrant).where(
+            StoreProcurementGrant.auth_id == user.user_id,
+            StoreProcurementGrant.active.is_(True),
+        )
+    )
     if grant is None:
         raise HTTPException(status_code=403, detail="Store procurement access required")
     return user
@@ -31,11 +34,15 @@ async def procurement_writer(
 ) -> AuthUser:
     if user.role == "service_role" or user.has_role("admin"):
         return user
-    grant = await db.scalar(select(StoreProcurementGrant).where(
-        StoreProcurementGrant.auth_id == user.user_id,
-        StoreProcurementGrant.role == "procurement_officer",
-        StoreProcurementGrant.active.is_(True),
-    ))
+    grant = await db.scalar(
+        select(StoreProcurementGrant).where(
+            StoreProcurementGrant.auth_id == user.user_id,
+            StoreProcurementGrant.role == "procurement_officer",
+            StoreProcurementGrant.active.is_(True),
+        )
+    )
     if grant is None:
-        raise HTTPException(status_code=403, detail="Store procurement write permission required")
+        raise HTTPException(
+            status_code=403, detail="Store procurement write permission required"
+        )
     return user
