@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
+from libs.common.currency import naira_to_kobo
 from libs.common.service_client import get_partner_pool
 from libs.db.session import get_async_db
 from services.events_service.models import Event, MemberRef
@@ -82,6 +83,7 @@ class PlanReview(BaseModel):
 class VenueVerification(BaseModel):
     confirmed: bool
     reference: str | None = Field(default=None, max_length=255)
+    selling_price_naira: float | None = Field(default=None, ge=0, le=1000000)
     notes: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
@@ -114,6 +116,7 @@ def _plan_data(plan: SwimPlan) -> dict:
         "linked_event_id": str(plan.linked_event_id) if plan.linked_event_id else None,
         "admin_notes": plan.admin_notes,
         "venue_confirmation_reference": plan.venue_confirmation_reference,
+        "selling_price_kobo": plan.selling_price_kobo,
     }
 
 
@@ -266,6 +269,8 @@ async def review_plan(
     before = plan.approval_status
     plan.approval_status = "approved" if payload.approved else "rejected"
     plan.admin_notes = payload.notes
+    if payload.approved and plan.status == "rejected":
+        plan.status = "pending_availability"
     if not payload.approved:
         plan.status = "rejected"
     await _audit(db, plan, admin.user_id, "review", old=before, new=plan.approval_status)
@@ -283,9 +288,16 @@ async def verify_venue(
     plan = await _load_locked(db, plan_id)
     if plan.linked_event_id:
         raise HTTPException(409, "Published plans cannot be changed here")
+    if plan.kind == "open" and payload.confirmed and payload.selling_price_naira is None:
+        raise HTTPException(422, "Set the approved public selling price per swimmer before verification")
     previous = plan.venue_status
     plan.venue_status = "verified" if payload.confirmed else "rejected"
     plan.venue_confirmation_reference = payload.reference if payload.confirmed else None
+    plan.selling_price_kobo = (
+        naira_to_kobo(payload.selling_price_naira)
+        if payload.confirmed and payload.selling_price_naira is not None
+        else None
+    )
     plan.verified_by = admin.user_id
     plan.admin_notes = payload.notes
     if not payload.confirmed:
@@ -310,9 +322,14 @@ async def publish_open_plan(
         raise HTTPException(409, "Both publication approval and verified pool time are required")
     if not plan.pool_id or not plan.venue_confirmation_reference:
         raise HTTPException(409, "A partner pool and reservation reference are required")
+    if plan.selling_price_kobo is None:
+        raise HTTPException(409, "A verified public selling price is required")
     if plan.starts_at <= utc_now():
         raise HTTPException(409, "Cannot publish a past swim")
-    pool_fee_kobo, pool = await _snapshot_pool_fee(plan.pool_id)
+    _, pool = await _snapshot_pool_fee(plan.pool_id)
+    pool_capacity = pool.get("max_swimmers_capacity")
+    if pool_capacity and plan.participants > int(pool_capacity):
+        raise HTTPException(409, "Planned attendance exceeds pool capacity")
     event = Event(
         title=plan.title,
         description=plan.notes,
@@ -322,7 +339,7 @@ async def publish_open_plan(
         end_time=plan.ends_at,
         max_capacity=plan.participants,
         pool_id=plan.pool_id,
-        pool_fee_kobo=pool_fee_kobo,
+        pool_fee_kobo=plan.selling_price_kobo,
         organizer_surcharge_kobo=0,
         created_by=plan.member_id,
         visibility="members_only",
