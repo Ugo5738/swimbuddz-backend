@@ -43,6 +43,7 @@ def upgrade():
         sa.Column("status", sa.String(24), nullable=False),
         sa.Column("linked_event_id", pg.UUID(as_uuid=True), sa.ForeignKey("events.id", ondelete="SET NULL")),
         sa.Column("admin_notes", sa.String(1000)),
+        sa.Column("selling_price_kobo", sa.Integer()),
         sa.Column("verified_by", sa.String(160)),
         sa.Column("venue_confirmation_reference", sa.String(255)),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
