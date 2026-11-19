@@ -60,7 +60,6 @@ jobs:
       - name: Lint with Ruff
         run: |
           ruff check .
-          ruff format --diff .
           ruff format --check .
 
       - name: Check every service has one migration head
