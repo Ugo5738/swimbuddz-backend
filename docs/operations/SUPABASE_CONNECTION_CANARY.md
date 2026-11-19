@@ -1,5 +1,27 @@
 # Members/Chat connection canary — 17 November 2026
 
+## Production activation — 19 November 2026
+
+The owner separately approved the Members-only test. At 03:00 UTC (04:00 Lagos),
+only that API was recreated, using its existing image with a one-connection,
+zero-overflow cap. Chat and media reuse remain off. The GitHub **production
+Environment** variable `MEMBERS_API_DB_USE_LOCAL_POOL` is now true, so normal
+GitHub deployments preserve this test; the source-code defaults remain false.
+
+The source revision was `1dc2fc6a76af098a5c4c3b972694b04ad350806a`. The previous
+image and non-secret manifest are retained privately under
+`/home/deploy/operational-backups/canaries/members-20261119T025926Z`.
+For immediate rollback, set the production flag false and recreate only Members
+with the pinned image/configuration. Shell deployments must export the flag;
+putting it only in a container env file does not control Compose interpolation.
+
+Before activation, a 300.88-second passive sample counted 80 total connections
+and 587,325 received TCP payload bytes. Members contributed 11 connections /
+73,591 bytes; Chat contributed 33 / 221,220. Service shares vary by scheduled
+workload. These encrypted TCP/protocol measurements are not provider-billed
+egress. Initial request/socket checks do not prove a sustainable daily rate;
+compare a complete provider-usage day before evaluating Chat.
+
 The owner approved expanding the previous media-worker-only **configuration**
 scope to a default-off Members API and Chat API canary. This does not authorize
 turning it on automatically. No global pooling change or schema migration is
