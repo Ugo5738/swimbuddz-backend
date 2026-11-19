@@ -11055,6 +11055,31 @@
         }
       }
     },
+    "/api/v1/sessions/me/next-swim": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get Next Swim",
+        "description": "Return the next eligible, unbooked swim and possible alternatives.\n\nThe endpoint never creates a booking, sells a seat, or assumes an Academy\nclass requires separate payment. Results are advisory until checkout.",
+        "operationId": "get_next_swim_sessions_me_next_swim_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/sessions/{session_id}/book": {
       "post": {
         "tags": [
@@ -45371,6 +45396,101 @@
                   },
                   "title": "Response Published Offers Pools Access Offers Get"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pools/access/availability": {
+      "get": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "Published Pool Access Availability",
+        "description": "Read the capacity of *published Pool Access offers only*.\n\nThis is not a whole-pool time reservation or proof that arbitrary new\nSessions can be created. Checkout must atomically recheck capacity under\nthe existing offer row lock. Never surface negotiated partner costs.",
+        "operationId": "published_pool_access_availability_pools_access_availability_get",
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "name": "headcount",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 25,
+              "minimum": 1,
+              "default": 1,
+              "title": "Headcount"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -148374,6 +148494,28 @@
               }
             ],
             "title": "Pool Id"
+          },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id"
+          },
+          "cohort_fee_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Fee Mode"
           },
           "status": {
             "type": "string",

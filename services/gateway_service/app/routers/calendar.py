@@ -187,6 +187,8 @@ def _session_item(payload: dict[str, Any]) -> Optional[CalendarItemResponse]:
         location_name=str(location_name) if location_name else None,
         location_area=str(location_name) if location_name else None,
         pool_id=str(payload["pool_id"]) if payload.get("pool_id") else None,
+        cohort_id=str(payload["cohort_id"]) if payload.get("cohort_id") else None,
+        cohort_fee_mode=payload.get("cohort_fee_mode"),
         status=str(payload.get("status") or "scheduled").lower(),
         href=f"/sessions/{payload['id']}/book",
         bookable=bool(access.get("bookable")),
