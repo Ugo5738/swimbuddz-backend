@@ -44,6 +44,10 @@ class NoCreditsError(Exception):
     """No free analysis left and no purchased credits. Router maps this to 402."""
 
 
+class PaidVerificationRequired(Exception):
+    """The caller must verify mailbox ownership to spend an existing credit."""
+
+
 def canonicalize_email(raw: str) -> str:
     """Collapse an email to one free-tier identity: lowercase, strip ``+tag``,
     and drop Gmail dots, so ``me+1@gmail`` / ``m.e@gmail`` are one identity
@@ -144,7 +148,7 @@ def _post(
 
 
 async def acquire_for_submit(
-    db: AsyncSession, *, raw_email: str, job_id: uuid.UUID
+    db: AsyncSession, *, raw_email: str, job_id: uuid.UUID, paid_authorized: bool = False
 ) -> AnalyzerCreditLedger:
     """Secure one analysis credit for a guest submit, under the account lock:
     grant the free analysis if unused, else require a purchased credit; then
@@ -156,7 +160,8 @@ async def acquire_for_submit(
     # The free analysis is gated on free_used AND flagged_at: a refunded/
     # disputed account (flagged) loses free-tier re-access (design §7.7), even
     # if it never used the free one.
-    if not account.free_used and account.flagged_at is None:
+    free_available = not account.free_used and account.flagged_at is None
+    if free_available:
         key = f"free-{email}"
         if await _existing(db, key) is None:
             before = account.remaining_credits
@@ -175,6 +180,10 @@ async def acquire_for_submit(
 
     if account.remaining_credits < 1:
         raise NoCreditsError(email)
+    # Enforce under the account row lock. A parallel browser tab must not turn
+    # an unverified free-tier request into unauthorized paid credit consumption.
+    if not free_available and not paid_authorized:
+        raise PaidVerificationRequired(email)
 
     rkey = f"reserve-{job_id}"
     if (existing := await _existing(db, rkey)) is not None:
