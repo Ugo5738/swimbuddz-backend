@@ -40,7 +40,6 @@ from services.events_service.schemas import (
     EventInviteResponse,
     EventResponse,
     EventUpdate,
-    OpenSwimCreate,
     OpenSwimUpdate,
     RSVPCreate,
     RSVPResponse,
