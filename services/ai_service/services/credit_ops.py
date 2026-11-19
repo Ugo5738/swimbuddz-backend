@@ -215,16 +215,18 @@ async def consume_reservation(
     commit — rides the worker's ``_write_completed`` txn (design §6.1)."""
     email = canonicalize_email(raw_email)
     key = f"consume-{job_id}"
+    # The account lock serializes consume/refund for this job, even when a
+    # customer has several other pending jobs. Check opposite settlements
+    # *after* taking it, or concurrent success/failure can spend another job's
+    # reserved balance.
+    account = await _lock_account(db, email)
     if (existing := await _existing(db, key)) is not None:
         return existing
-    # A refunded analysis can be retried for free. Never settle it against a
-    # DIFFERENT job's reservation merely because this account has credits in flight.
     reserve = await find_reservation(db, job_id=job_id)
     refunded = await _existing(db, f"refund-{job_id}")
     if reserve is None or refunded is not None:
         logger.info("consume: no active job reservation for %s job=%s", email, job_id)
         return None
-    account = await _lock_account(db, email)
     if account.reserved_credits < 1:
         logger.warning("consume: inconsistent reserved balance for %s job=%s", email, job_id)
         return None
@@ -250,6 +252,7 @@ async def refund_reservation(
     commit — rides the worker's ``_mark_failed`` txn (design §6.1)."""
     email = canonicalize_email(raw_email)
     key = f"refund-{job_id}"
+    account = await _lock_account(db, email)
     if (existing := await _existing(db, key)) is not None:
         return existing
     reserve_entry = await find_reservation(db, job_id=job_id)
@@ -257,7 +260,6 @@ async def refund_reservation(
     if reserve_entry is None or consumed is not None:
         logger.info("refund: no active job reservation for %s job=%s", email, job_id)
         return None
-    account = await _lock_account(db, email)
     if account.reserved_credits < 1:
         logger.warning("refund: inconsistent reserved balance for %s job=%s", email, job_id)
         return None
