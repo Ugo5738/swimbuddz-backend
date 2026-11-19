@@ -260,22 +260,28 @@ async def delete_job_assets(
     uploaded_key: Optional[str],
     annotated_key: Optional[str],
     evidence_keys: Optional[list[str]] = None,
-) -> None:
+) -> bool:
     """Remove storage objects for a job. Best-effort — DELETE endpoint
     swallows storage failures so the DB row can still be removed. Includes coach
     evidence frames so erasure/retention sweeps don't leave orphaned images."""
+    complete = True
     if uploaded_key:
         try:
             await _delete_storage_path(uploaded_key, LEGACY_UPLOADS_PREFIX)
         except Exception as exc:
-            logger.warning("Could not delete upload %s: %s", uploaded_key, exc)
+            complete = False
+            logger.warning("Could not delete upload %s: %s uploaded_key, exc)
     if annotated_key:
         try:
             await _delete_storage_path(annotated_key, LEGACY_ANNOTATED_PREFIX)
         except Exception as exc:
-            logger.warning("Could not delete annotated %s: %s", annotated_key, exc)
+            complete = False
+            logger.warning("Could not delete annotated %s: %s annotated_key, exc)
     for key in evidence_keys or []:
         try:
             await _delete_storage_path(key, LEGACY_ANNOTATED_PREFIX)
         except Exception as exc:
-            logger.warning("Could not delete evidence %s: %s", key, exc)
+            complete = False
+            logger.warning("Could not delete evidence %s: %s key, exc)
+
+    return complete
