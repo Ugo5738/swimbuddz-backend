@@ -208,9 +208,16 @@ async def consume_reservation(
     key = f"consume-{job_id}"
     if (existing := await _existing(db, key)) is not None:
         return existing
+    # A refunded analysis can be retried for free. Never settle it against a
+    # DIFFERENT job's reservation merely because this account has credits in flight.
+    reserve = await find_reservation(db, job_id=job_id)
+    refunded = await _existing(db, f"refund-{job_id}")
+    if reserve is None or refunded is not None:
+        logger.info("consume: no active job reservation for %s job=%s", email, job_id)
+        return None
     account = await _lock_account(db, email)
     if account.reserved_credits < 1:
-        logger.warning("consume: no reservation for %s job=%s", email, job_id)
+        logger.warning("consume: inconsistent reserved balance for %s job=%s", email, job_id)
         return None
     account.reserved_credits -= 1
     account.lifetime_spent += 1
@@ -236,11 +243,15 @@ async def refund_reservation(
     key = f"refund-{job_id}"
     if (existing := await _existing(db, key)) is not None:
         return existing
+    reserve_entry = await find_reservation(db, job_id=job_id)
+    consumed = await _existing(db, f"consume-{job_id}")
+    if reserve_entry is None or consumed is not None:
+        logger.info("refund: no active job reservation for %s job=%s", email, job_id)
+        return None
     account = await _lock_account(db, email)
     if account.reserved_credits < 1:
-        logger.warning("refund: no reservation for %s job=%s", email, job_id)
+        logger.warning("refund: inconsistent reserved balance for %s job=%s", email, job_id)
         return None
-    reserve_entry = await _existing(db, f"reserve-{job_id}")
     before = account.remaining_credits
     account.remaining_credits = before + 1
     account.reserved_credits -= 1
