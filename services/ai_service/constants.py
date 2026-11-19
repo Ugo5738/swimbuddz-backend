@@ -22,9 +22,9 @@ GUMROAD_CHECKOUT_BASE = os.environ.get(
 # whole worker job_timeout. Generous so legitimate clips are never rejected.
 PUBLIC_MAX_DURATION_SECONDS = int(os.environ.get("PUBLIC_MAX_DURATION_SECONDS", "120"))
 
-# Public analyzer direct-to-storage upload cap. This applies to the browser
+# Public analyzer direct-to-storage upload cap (250 MiB by default). This applies to the browser
 # presigned-URL path only; legacy multipart uploads still use the smaller API
 # memory-safe cap in routers/analyze.py.
 PUBLIC_MAX_UPLOAD_BYTES = int(
-    os.environ.get("STROKELAB_PUBLIC_MAX_UPLOAD_BYTES", str(2 * _GIB))
+    os.environ.get("STROKELAB_PUBLIC_MAX_UPLOAD_BYTES", str(250 * 1024 * 1024))
 )
