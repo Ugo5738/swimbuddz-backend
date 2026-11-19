@@ -2,6 +2,7 @@
 
 Mock account locking and the ledger lookup; these tests do not require a DB.
 """
+
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -13,9 +14,13 @@ from services.ai_service.services import credit_ops
 
 def _account(*, reserved=1, remaining=0, free_used=True):
     return SimpleNamespace(
-        id=uuid.uuid4(), email="buyer@example.com",
-        reserved_credits=reserved, remaining_credits=remaining,
-        lifetime_spent=0, free_used=free_used, flagged_at=None,
+        id=uuid.uuid4(),
+        email="buyer@example.com",
+        reserved_credits=reserved,
+        remaining_credits=remaining,
+        lifetime_spent=0,
+        free_used=free_used,
+        flagged_at=None,
     )
 
 
@@ -25,13 +30,19 @@ async def test_refunded_job_cannot_consume_another_jobs_reservation(monkeypatch)
     account = _account(reserved=1)
     db = SimpleNamespace(add=MagicMock())
     monkeypatch.setattr(credit_ops, "_lock_account", AsyncMock(return_value=account))
-    monkeypatch.setattr(credit_ops, "find_reservation", AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4())))
+    monkeypatch.setattr(
+        credit_ops,
+        "find_reservation",
+        AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4())),
+    )
 
     async def existing(_db, key):
         return SimpleNamespace(id=uuid.uuid4()) if key == f"refund-{job_id}" else None
 
     monkeypatch.setattr(credit_ops, "_existing", existing)
-    result = await credit_ops.consume_reservation(db, raw_email=account.email, job_id=job_id)
+    result = await credit_ops.consume_reservation(
+        db, raw_email=account.email, job_id=job_id
+    )
     assert result is None
     assert account.reserved_credits == 1
     assert account.lifetime_spent == 0
@@ -44,13 +55,19 @@ async def test_consumed_job_cannot_refund_another_jobs_reservation(monkeypatch):
     account = _account(reserved=1)
     db = SimpleNamespace(add=MagicMock())
     monkeypatch.setattr(credit_ops, "_lock_account", AsyncMock(return_value=account))
-    monkeypatch.setattr(credit_ops, "find_reservation", AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4())))
+    monkeypatch.setattr(
+        credit_ops,
+        "find_reservation",
+        AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4())),
+    )
 
     async def existing(_db, key):
         return SimpleNamespace(id=uuid.uuid4()) if key == f"consume-{job_id}" else None
 
     monkeypatch.setattr(credit_ops, "_existing", existing)
-    result = await credit_ops.refund_reservation(db, raw_email=account.email, job_id=job_id)
+    result = await credit_ops.refund_reservation(
+        db, raw_email=account.email, job_id=job_id
+    )
     assert result is None
     assert account.reserved_credits == 1
     assert account.remaining_credits == 0
@@ -78,9 +95,15 @@ async def test_matching_reservation_consumes_exactly_once(monkeypatch):
     account = _account(reserved=2)
     db = SimpleNamespace(add=MagicMock())
     monkeypatch.setattr(credit_ops, "_lock_account", AsyncMock(return_value=account))
-    monkeypatch.setattr(credit_ops, "find_reservation", AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4())))
+    monkeypatch.setattr(
+        credit_ops,
+        "find_reservation",
+        AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4())),
+    )
     monkeypatch.setattr(credit_ops, "_existing", AsyncMock(return_value=None))
-    first = await credit_ops.consume_reservation(db, raw_email=account.email, job_id=job_id)
+    first = await credit_ops.consume_reservation(
+        db, raw_email=account.email, job_id=job_id
+    )
     assert first is not None
     assert account.reserved_credits == 1
     assert account.lifetime_spent == 1

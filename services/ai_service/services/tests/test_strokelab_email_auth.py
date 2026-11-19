@@ -1,4 +1,5 @@
 """Email ownership proof must not authorize a different paid-credit account."""
+
 import re
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
