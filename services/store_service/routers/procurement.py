@@ -12,8 +12,6 @@ from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from pydantic import BaseModel, Field
-from services.ledger_service.app.deps import require_ledger_role
-from services.ledger_service.models.enums import LedgerRole
 from services.store_service.models import (
     InventoryItem,
     InventoryMovement,
@@ -34,6 +32,7 @@ from services.store_service.models.procurement import (
     StoreTradeReceivable,
 )
 from services.store_service.routers.procurement_access import (
+    procurement_owner,
     procurement_reader,
     procurement_writer,
 )
@@ -95,7 +94,7 @@ class ReceivableRequest(BaseModel):
 @router.put("/grants")
 async def upsert_procurement_grant(
     payload: GrantRequest,
-    owner=Depends(require_ledger_role(LedgerRole.OWNER)),
+    owner=Depends(procurement_owner),
     db: AsyncSession = Depends(get_async_db),
 ):
     if payload.auth_id == owner.auth_id and not payload.active:
@@ -322,7 +321,7 @@ async def submit_purchase_order(
 async def decide_purchase_order(
     order_id: uuid.UUID,
     approve: bool,
-    owner=Depends(require_ledger_role(LedgerRole.OWNER)),
+    owner=Depends(procurement_owner),
     db: AsyncSession = Depends(get_async_db),
 ):
     item = await db.scalar(
@@ -664,7 +663,7 @@ async def propose_opening_valuation(
 async def approve_opening_valuation(
     opening_id: uuid.UUID,
     approve: bool,
-    owner=Depends(require_ledger_role(LedgerRole.OWNER)),
+    owner=Depends(procurement_owner),
     db: AsyncSession = Depends(get_async_db),
 ):
     item = await db.scalar(
@@ -791,7 +790,7 @@ async def propose_trade_receivable(
 async def decide_trade_receivable(
     receivable_id: uuid.UUID,
     approve: bool,
-    owner=Depends(require_ledger_role(LedgerRole.OWNER)),
+    owner=Depends(procurement_owner),
     db: AsyncSession = Depends(get_async_db),
 ):
     from services.store_service.models import Order, OrderStatus
