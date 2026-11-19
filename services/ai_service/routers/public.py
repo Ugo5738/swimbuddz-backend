@@ -138,9 +138,13 @@ class CompleteUploadBody(BaseModel):
 
 
 @router.post("/credits/email-code/request")
-async def request_strokelab_email_code(body: EmailCodeRequest, request: Request) -> dict:
+async def request_strokelab_email_code(
+    body: EmailCodeRequest, request: Request
+) -> dict:
     email = _normalize_email(body.email)
-    await request_email_code(email, requester=request.client.host if request.client else "")
+    await request_email_code(
+        email, requester=request.client.host if request.client else ""
+    )
     return {"sent": True}
 
 
@@ -383,13 +387,19 @@ async def complete_public_direct_upload(
     try:
         bal = await get_balance(db, raw_email=job.guest_email or "")
         if not bal["can_submit_free"]:
-            await require_paid_credit_owner(job.guest_email or "", body.email_auth_token if body else None)
+            await require_paid_credit_owner(
+                job.guest_email or "", body.email_auth_token if body else None
+            )
         reserve_entry = await acquire_for_submit(
-            db, raw_email=job.guest_email or "", job_id=job.id,
+            db,
+            raw_email=job.guest_email or "",
+            job_id=job.id,
             paid_authorized=not bal["can_submit_free"],
         )
     except PaidVerificationRequired:
-        raise HTTPException(status_code=403, detail={"reason": "email_verification_required"})
+        raise HTTPException(
+            status_code=403, detail={"reason": "email_verification_required"}
+        )
     except NoCreditsError:
         await delete_job_assets(job.video_storage_path, None)
         await db.delete(job)
@@ -512,11 +522,18 @@ async def create_public_analysis_job(
     # atomically. Reserve only AFTER the upload succeeded, so an upload failure
     # never leaves a dangling reservation (design §4.1).
     try:
-        reserve_entry = await acquire_for_submit(db, raw_email=email, job_id=job.id, paid_authorized=not bal["can_submit_free"])
+        reserve_entry = await acquire_for_submit(
+            db,
+            raw_email=email,
+            job_id=job.id,
+            paid_authorized=not bal["can_submit_free"],
+        )
     except PaidVerificationRequired:
         await db.rollback()
         await delete_job_assets(storage_path, None)
-        raise HTTPException(status_code=403, detail={"reason": "email_verification_required"})
+        raise HTTPException(
+            status_code=403, detail={"reason": "email_verification_required"}
+        )
     except NoCreditsError:
         await db.rollback()  # the job row never persists — no orphan job
         await delete_job_assets(storage_path, None)  # best-effort: drop the upload

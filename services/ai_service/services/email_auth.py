@@ -4,6 +4,7 @@ A guest can redeem a purchased license key, but *spending* already-granted
 credits requires demonstrating control of the credit account's mailbox.
 Short-lived codes and bearer sessions are held in Redis; no DB migration.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -37,7 +38,9 @@ async def _redis():
     try:
         pool = await create_pool(get_redis_settings())
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="Email verification temporarily unavailable") from exc
+        raise HTTPException(
+            status_code=503, detail="Email verification temporarily unavailable"
+        ) from exc
     try:
         yield pool
     finally:
@@ -59,7 +62,9 @@ async def request_email_code(email: str, *, requester: str = "") -> None:
         # enforce its own origin-aware anti-abuse policy.
         claimed = await redis.set(cooldown, "1", ex=_EMAIL_COOLDOWN, nx=True)
         if not claimed:
-            raise HTTPException(status_code=429, detail="Please wait before requesting another code")
+            raise HTTPException(
+                status_code=429, detail="Please wait before requesting another code"
+            )
         await redis.set(_email_key(email, "code"), digest, ex=_CODE_TTL)
         await redis.delete(_email_key(email, "attempts"))
 
@@ -83,24 +88,37 @@ async def verify_email_code(email: str, code: str) -> str:
         if attempts == 1:
             await redis.expire(attempts_key, _CODE_TTL)
         if attempts > _MAX_ATTEMPTS:
-            raise HTTPException(status_code=429, detail="Too many attempts. Request another code")
+            raise HTTPException(
+                status_code=429, detail="Too many attempts. Request another code"
+            )
         expected = await redis.get(_email_key(email, "code"))
         if not expected or not hmac.compare_digest(
-            expected.decode() if isinstance(expected, bytes) else str(expected), _digest(code)
+            expected.decode() if isinstance(expected, bytes) else str(expected),
+            _digest(code),
         ):
-            raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+            raise HTTPException(
+                status_code=400, detail="Invalid or expired verification code"
+            )
         await redis.delete(_email_key(email, "code"), attempts_key)
         token = secrets.token_urlsafe(32)
-        await redis.set(f"strokelab:email-auth:session:{_digest(token)}", canonicalize_email(email), ex=_SESSION_TTL)
+        await redis.set(
+            f"strokelab:email-auth:session:{_digest(token)}",
+            canonicalize_email(email),
+            ex=_SESSION_TTL,
+        )
         return token
 
 
 async def require_paid_credit_owner(email: str, token: str | None) -> None:
     if not token:
-        raise HTTPException(status_code=403, detail={"reason": "email_verification_required"})
+        raise HTTPException(
+            status_code=403, detail={"reason": "email_verification_required"}
+        )
     async with _redis() as redis:
         actual = await redis.get(f"strokelab:email-auth:session:{_digest(token)}")
     canonical = canonicalize_email(email)
     actual_email = actual.decode() if isinstance(actual, bytes) else str(actual or "")
     if not hmac.compare_digest(actual_email, canonical):
-        raise HTTPException(status_code=403, detail={"reason": "email_verification_required"})
+        raise HTTPException(
+            status_code=403, detail={"reason": "email_verification_required"}
+        )

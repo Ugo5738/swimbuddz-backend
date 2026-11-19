@@ -2,6 +2,7 @@
 
 Runs only on the isolated public AI worker, never inside API request handlers.
 """
+
 from __future__ import annotations
 
 from datetime import timedelta
@@ -32,19 +33,29 @@ async def retry_unnotified_public_jobs(limit: int = 20) -> dict:
     """
     cutoff = utc_now() - timedelta(minutes=10)
     async with AsyncSessionLocal() as session:
-        rows = (await session.execute(
-            select(AnalysisJob)
-            .where(
-                AnalysisJob.source == AnalysisJobSource.PUBLIC,
-                AnalysisJob.email_sent_at.is_(None),
-                AnalysisJob.status.in_([AnalysisJobStatus.COMPLETED, AnalysisJobStatus.FAILED]),
-                AnalysisJob.completed_at <= cutoff,
+        rows = (
+            (
+                await session.execute(
+                    select(AnalysisJob)
+                    .where(
+                        AnalysisJob.source == AnalysisJobSource.PUBLIC,
+                        AnalysisJob.email_sent_at.is_(None),
+                        AnalysisJob.status.in_(
+                            [AnalysisJobStatus.COMPLETED, AnalysisJobStatus.FAILED]
+                        ),
+                        AnalysisJob.completed_at <= cutoff,
+                    )
+                    .order_by(AnalysisJob.completed_at)
+                    .limit(limit)
+                )
             )
-            .order_by(AnalysisJob.completed_at)
-            .limit(limit)
-        )).scalars().all()
-        snapshots = [(row.id, row.status, row.guest_email, row.guest_token, row.error_message)
-                     for row in rows]
+            .scalars()
+            .all()
+        )
+        snapshots = [
+            (row.id, row.status, row.guest_email, row.guest_token, row.error_message)
+            for row in rows
+        ]
 
     sent = 0
     for job_id, status, email, token, reason in snapshots:
@@ -73,27 +84,40 @@ async def purge_expired_public_jobs(limit: int = 20) -> dict:
     """
     cutoff = utc_now() - timedelta(days=30)
     async with AsyncSessionLocal() as session:
-        rows = (await session.execute(
-            select(AnalysisJob.id)
-            .where(
-                AnalysisJob.source == AnalysisJobSource.PUBLIC,
-                AnalysisJob.created_at <= cutoff,
-                AnalysisJob.status.in_([AnalysisJobStatus.COMPLETED, AnalysisJobStatus.FAILED]),
+        rows = (
+            (
+                await session.execute(
+                    select(AnalysisJob.id)
+                    .where(
+                        AnalysisJob.source == AnalysisJobSource.PUBLIC,
+                        AnalysisJob.created_at <= cutoff,
+                        AnalysisJob.status.in_(
+                            [AnalysisJobStatus.COMPLETED, AnalysisJobStatus.FAILED]
+                        ),
+                    )
+                    .order_by(AnalysisJob.created_at)
+                    .limit(limit)
+                )
             )
-            .order_by(AnalysisJob.created_at)
-            .limit(limit)
-        )).scalars().all()
+            .scalars()
+            .all()
+        )
 
     purged = 0
     for job_id in rows:
         try:
             async with AsyncSessionLocal() as session:
                 job = await session.get(AnalysisJob, job_id)
-                if job is None or job.status not in (AnalysisJobStatus.COMPLETED, AnalysisJobStatus.FAILED):
+                if job is None or job.status not in (
+                    AnalysisJobStatus.COMPLETED,
+                    AnalysisJobStatus.FAILED,
+                ):
                     continue
-                result = (await session.execute(
-                    select(AnalysisResult).where(AnalysisResult.job_id == job_id)
-                )).scalar_one_or_none()
+                result = (
+                    await session.execute(
+                        select(AnalysisResult).where(AnalysisResult.job_id == job_id)
+                    )
+                ).scalar_one_or_none()
                 payload = (result.coach_result or {}) if result is not None else {}
                 evidence = list((payload.get("evidence_keys") or {}).values())
                 evidence.extend((payload.get("share_keys") or {}).values())
@@ -101,7 +125,10 @@ async def purge_expired_public_jobs(limit: int = 20) -> dict:
                     job.video_storage_path, job.annotated_video_storage_path, evidence
                 )
                 if not ok:
-                    logger.warning("StrokeLab retention deferred: storage cleanup failed for %s", job_id)
+                    logger.warning(
+                        "StrokeLab retention deferred: storage cleanup failed for %s",
+                        job_id,
+                    )
                     continue
                 await session.delete(job)
                 await session.commit()

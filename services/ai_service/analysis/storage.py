@@ -189,7 +189,9 @@ async def download_storage_path(
                     async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
                         downloaded += len(chunk)
                         if downloaded > PUBLIC_MAX_UPLOAD_BYTES:
-                            raise ValueError("StrokeLab video exceeds worker size limit")
+                            raise ValueError(
+                                "StrokeLab video exceeds worker size limit"
+                            )
                         output.write(chunk)
         if not downloaded:
             raise ValueError("StrokeLab video is empty")

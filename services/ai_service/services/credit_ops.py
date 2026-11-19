@@ -148,7 +148,11 @@ def _post(
 
 
 async def acquire_for_submit(
-    db: AsyncSession, *, raw_email: str, job_id: uuid.UUID, paid_authorized: bool = False
+    db: AsyncSession,
+    *,
+    raw_email: str,
+    job_id: uuid.UUID,
+    paid_authorized: bool = False,
 ) -> AnalyzerCreditLedger:
     """Secure one analysis credit for a guest submit, under the account lock:
     grant the free analysis if unused, else require a purchased credit; then
@@ -228,7 +232,9 @@ async def consume_reservation(
         logger.info("consume: no active job reservation for %s job=%s", email, job_id)
         return None
     if account.reserved_credits < 1:
-        logger.warning("consume: inconsistent reserved balance for %s job=%s", email, job_id)
+        logger.warning(
+            "consume: inconsistent reserved balance for %s job=%s", email, job_id
+        )
         return None
     account.reserved_credits -= 1
     account.lifetime_spent += 1
@@ -261,7 +267,9 @@ async def refund_reservation(
         logger.info("refund: no active job reservation for %s job=%s", email, job_id)
         return None
     if account.reserved_credits < 1:
-        logger.warning("refund: inconsistent reserved balance for %s job=%s", email, job_id)
+        logger.warning(
+            "refund: inconsistent reserved balance for %s job=%s", email, job_id
+        )
         return None
     before = account.remaining_credits
     account.remaining_credits = before + 1

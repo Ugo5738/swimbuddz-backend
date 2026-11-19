@@ -479,6 +479,8 @@ async def delete_analysis_job(
     # our only authoritative record of remaining evidence/share assets.
     cleaned = await delete_job_assets(uploaded_key, annotated_key, evidence_keys)
     if not cleaned:
-        raise HTTPException(status_code=503, detail="Storage cleanup incomplete; please retry")
+        raise HTTPException(
+            status_code=503, detail="Storage cleanup incomplete; please retry"
+        )
     await db.delete(job)
     await db.commit()
