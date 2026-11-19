@@ -767,6 +767,9 @@ async def retry_public_analysis(
     job.error_message = None
     job.started_at = None
     job.completed_at = None
+    # A failed-attempt notice must not suppress the ready notification after
+    # a successful free retry of the same job.
+    job.email_sent_at = None
     await db.commit()
     try:
         await _enqueue_analysis(
