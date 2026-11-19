@@ -20837,6 +20837,11 @@
         ],
         "summary": "Get Student Progress",
         "operationId": "get_student_progress_academy_enrollments__enrollment_id__progress_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "enrollment_id",
