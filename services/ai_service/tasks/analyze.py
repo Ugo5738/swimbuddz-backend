@@ -934,17 +934,18 @@ async def _write_completed(
         # completion (design §6.1). Member jobs have no reservation.
         if job.source == AnalysisJobSource.PUBLIC and job.guest_email:
             await consume_reservation(session, raw_email=job.guest_email, job_id=job_id)
-            # "Ready" email: set the single-send guard in THIS transaction; the
-            # actual send is best-effort, after commit (design §8.1).
+            # Only mark delivery after the mail service confirms success;
+            # otherwise a failed attempt must remain eligible for cron retry.
             if job.email_sent_at is None:
-                job.email_sent_at = utc_now()
                 ready_email = (job.guest_email, job.guest_token or "", provider_usage)
         await session.commit()
 
     if ready_email is not None:
-        await send_ready_email(
+        sent = await send_ready_email(
             job_id, ready_email[0], ready_email[1], provider_usage=ready_email[2]
         )
+        if sent:
+            await _mark_email_sent(job_id)
 
 
 def _failure_reason(exc: Exception) -> str:
@@ -1016,10 +1017,9 @@ async def _mark_failed(
         # failure (design §6.1) — a failed analysis never costs a credit.
         if job.source == AnalysisJobSource.PUBLIC and job.guest_email:
             await refund_reservation(session, raw_email=job.guest_email, job_id=job_id)
-            # "Couldn't analyze" email — single-send guard set here, sent
-            # best-effort after commit (design §8.6).
+            # Keep this NULL until delivery succeeds; the public maintenance
+            # worker will retry if the email service is temporarily unavailable.
             if job.email_sent_at is None:
-                job.email_sent_at = utc_now()
                 failed_email = (
                     job.guest_email,
                     job.error_message or "",
@@ -1028,9 +1028,20 @@ async def _mark_failed(
         await session.commit()
 
     if failed_email is not None:
-        await send_failed_email(
+        sent = await send_failed_email(
             job_id,
             failed_email[0],
             reason=failed_email[1],
             provider_usage=failed_email[2],
         )
+        if sent:
+            await _mark_email_sent(job_id)
+
+
+async def _mark_email_sent(job_id: uuid.UUID) -> None:
+    """Record successful transactional delivery without marking failures sent."""
+    async with AsyncSessionLocal() as session:
+        job = await session.get(AnalysisJob, job_id)
+        if job is not None and job.email_sent_at is None:
+            job.email_sent_at = utc_now()
+            await session.commit()
