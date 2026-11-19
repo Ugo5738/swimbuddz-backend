@@ -5,8 +5,8 @@ payment-service fulfillment, so this slice is intentionally fail-closed.
 """
 
 import uuid
-from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import get_current_user, require_admin
@@ -73,6 +73,87 @@ async def published_offers(
         if not location_area
         or location_area.casefold() in (pool.location_area or "").casefold()
     ]
+
+
+@public.get("/availability")
+async def published_pool_access_availability(
+    pool_id: uuid.UUID | None = None,
+    starts_from: datetime | None = Query(default=None, alias="from"),
+    starts_to: datetime | None = Query(default=None, alias="to"),
+    headcount: int = Query(default=1, ge=1, le=25),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Read the capacity of *published Pool Access offers only*.
+
+    This is not a whole-pool time reservation or proof that arbitrary new
+    Sessions can be created. Checkout must atomically recheck capacity under
+    the existing offer row lock. Never surface negotiated partner costs.
+    """
+    now = utc_now()
+    start = max(starts_from, now) if starts_from else now
+    end = starts_to or start + timedelta(days=31)
+    if start.tzinfo is None or end.tzinfo is None:
+        raise HTTPException(422, "Use timezone-aware date boundaries")
+    if end <= start or end - start > timedelta(days=31):
+        raise HTTPException(422, "Choose a positive availability window up to 31 days")
+
+    query = (
+        select(PoolAccessOffer, Pool)
+        .join(Pool, Pool.id == PoolAccessOffer.pool_id)
+        .where(
+            PoolAccessOffer.status == "published",
+            PoolAccessOffer.public_booking_enabled.is_(True),
+            PoolAccessOffer.self_directed_permitted.is_(True),
+            PoolAccessOffer.starts_at >= start,
+            PoolAccessOffer.starts_at < end,
+            Pool.is_active.is_(True),
+            Pool.partnership_status == PartnershipStatus.ACTIVE_PARTNER,
+            Pool.has_lifeguard.is_(True),
+        )
+        .order_by(PoolAccessOffer.starts_at, PoolAccessOffer.id)
+        .limit(100)
+    )
+    if pool_id:
+        query = query.where(PoolAccessOffer.pool_id == pool_id)
+    rows = (await db.execute(query)).all()
+    ids = [offer.id for offer, _ in rows]
+    used_by_offer: dict[uuid.UUID, int] = {}
+    if ids:
+        counts = (await db.execute(
+            select(
+                PoolAccessBooking.offer_id,
+                func.coalesce(func.sum(PoolAccessBooking.headcount), 0),
+            ).where(
+                PoolAccessBooking.offer_id.in_(ids),
+                (PoolAccessBooking.status == "confirmed")
+                | (
+                    (PoolAccessBooking.status == "pending_payment")
+                    & (PoolAccessBooking.hold_expires_at > now)
+                ),
+            ).group_by(PoolAccessBooking.offer_id)
+        )).all()
+        used_by_offer = {offer_id: int(count) for offer_id, count in counts}
+
+    return {
+        "inventory_scope": "published_pool_access_offers_only",
+        "reservation_guarantee": "none_until_checkout_hold",
+        "offers": [
+            {
+                "offer_id": str(offer.id),
+                "pool_id": str(offer.pool_id),
+                "pool_name": pool.name,
+                "title": offer.title,
+                "starts_at": offer.starts_at.isoformat(),
+                "ends_at": offer.ends_at.isoformat(),
+                "capacity": offer.capacity,
+                "remaining_capacity": max(0, offer.capacity - used_by_offer.get(offer.id, 0)),
+                "can_book": offer.capacity - used_by_offer.get(offer.id, 0) >= headcount,
+                "selling_price_kobo": offer.selling_price_kobo,
+                "currency": offer.currency,
+            }
+            for offer, pool in rows
+        ],
+    }
 
 
 @admin.get("/offers", response_model=list[AdminOfferOut])
