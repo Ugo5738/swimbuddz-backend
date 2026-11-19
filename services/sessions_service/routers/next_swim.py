@@ -118,6 +118,14 @@ async def get_next_swim(
         for row in decorated
         if uuid.UUID(str(row["id"])) not in confirmed
         and (row.get("access") or {}).get("bookable") is True
+        # An enrolled learner's regular Academy class is already allocated.
+        # It must not be recommended as an additional reservation or checkout.
+        and not (
+            row.get("session_type") == "cohort_class"
+            and row.get("cohort_id")
+            and row.get("cohort_fee_mode") != "paid_extra"
+            and (row.get("access") or {}).get("access_source") == "cohort_enrollment"
+        )
     ]
     bookable.sort(key=_ranking_key)
     confirmed_rows.sort(key=lambda row: str(row.get("starts_at") or ""))
