@@ -773,16 +773,20 @@ async def retry_public_analysis(
 )
 async def get_public_credits(
     email: str,
+    email_auth_token: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
 ) -> PublicCreditsResponse:
-    """Coarse, non-enumerable balance for the paywall. ``free_used`` is not
-    exposed (it is the 'has this email been used' leak — design §4.3)."""
+    """Never expose a customer's paid balance to an anonymous email lookup."""
     normalized = _normalize_email(email)
     bal = await get_balance(db, raw_email=normalized)
+    remaining = 0
+    if email_auth_token:
+        await require_paid_credit_owner(normalized, email_auth_token)
+        remaining = bal["remaining_credits"]
     return PublicCreditsResponse(
         email=normalized,
         can_submit_free=bal["can_submit_free"],
-        remaining_credits=bal["remaining_credits"],
+        remaining_credits=remaining,
     )
 
 
