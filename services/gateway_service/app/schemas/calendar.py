@@ -32,6 +32,8 @@ class CalendarItemResponse(BaseModel):
     location_name: Optional[str] = None
     location_area: Optional[str] = None
     pool_id: Optional[str] = None
+    cohort_id: Optional[str] = None
+    cohort_fee_mode: Optional[str] = None
     status: str = "scheduled"
     href: str
     bookable: bool = False
