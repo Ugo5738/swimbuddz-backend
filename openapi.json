@@ -40750,6 +40750,92 @@
         }
       }
     },
+    "/api/v1/ai/public/credits/email-code/request": {
+      "post": {
+        "tags": [
+          "stroke-lab-public"
+        ],
+        "summary": "Request Strokelab Email Code",
+        "operationId": "request_strokelab_email_code_ai_public_credits_email_code_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Request Strokelab Email Code Ai Public Credits Email Code Request Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/public/credits/email-code/verify": {
+      "post": {
+        "tags": [
+          "stroke-lab-public"
+        ],
+        "summary": "Verify Strokelab Email Code",
+        "operationId": "verify_strokelab_email_code_ai_public_credits_email_code_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailCodeVerify"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Verify Strokelab Email Code Ai Public Credits Email Code Verify Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/public/analyze/uploads": {
       "post": {
         "tags": [
@@ -40843,6 +40929,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CompleteUploadBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "description": "Successful Response",
@@ -41154,7 +41257,7 @@
           "stroke-lab-public"
         ],
         "summary": "Coarse analyzer credit balance for an email",
-        "description": "Coarse, non-enumerable balance for the paywall. ``free_used`` is not\nexposed (it is the 'has this email been used' leak \u2014 design \u00a74.3).",
+        "description": "Never expose a customer's paid balance to an anonymous email lookup.",
         "operationId": "get_public_credits_ai_public_credits_get",
         "parameters": [
           {
@@ -41164,6 +41267,22 @@
             "schema": {
               "type": "string",
               "title": "Email"
+            }
+          },
+          {
+            "name": "email_auth_token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email Auth Token"
             }
           }
         ],
@@ -51747,8 +51866,7 @@
                   "exclusiveMinimum": 0.0
                 },
                 {
-                  "type": "string",
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                  "type": "string"
                 }
               ],
               "title": "Amount Ngn"
@@ -74192,55 +74310,7 @@
         "title": "CoachApplicationStatusResponse",
         "description": "Minimal status response for coaches checking their application."
       },
-      "CoachAvailabilityCalendar-Input": {
-        "properties": {
-          "version": {
-            "type": "integer",
-            "title": "Version",
-            "default": 1
-          },
-          "timezone": {
-            "type": "string",
-            "title": "Timezone",
-            "description": "IANA timezone name",
-            "default": "Africa/Lagos"
-          },
-          "recurring": {
-            "items": {
-              "$ref": "#/components/schemas/RecurringBlockInput"
-            },
-            "type": "array",
-            "title": "Recurring"
-          },
-          "blackouts": {
-            "items": {
-              "$ref": "#/components/schemas/BlackoutDateInput"
-            },
-            "type": "array",
-            "title": "Blackouts"
-          },
-          "slot_minutes": {
-            "type": "integer",
-            "maximum": 240.0,
-            "minimum": 15.0,
-            "title": "Slot Minutes",
-            "description": "Default lesson/make-up length in minutes",
-            "default": 60
-          },
-          "buffer_minutes": {
-            "type": "integer",
-            "maximum": 120.0,
-            "minimum": 0.0,
-            "title": "Buffer Minutes",
-            "description": "Gap between consecutive slots in minutes",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "title": "CoachAvailabilityCalendar",
-        "description": "Canonical shape of CoachProfile.availability_calendar (JSONB).\n\nRecurring weekly blocks + blackout dates in the coach's local timezone.\nsessions_service slices this into bookable make-up slots."
-      },
-      "CoachAvailabilityCalendar-Output": {
+      "CoachAvailabilityCalendar": {
         "properties": {
           "version": {
             "type": "integer",
@@ -74330,7 +74400,7 @@
           "availability": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CoachAvailabilityCalendar-Output"
+                "$ref": "#/components/schemas/CoachAvailabilityCalendar"
               },
               {
                 "type": "null"
@@ -74356,7 +74426,7 @@
       "CoachAvailabilityUpdate": {
         "properties": {
           "availability": {
-            "$ref": "#/components/schemas/CoachAvailabilityCalendar-Input"
+            "$ref": "#/components/schemas/CoachAvailabilityCalendar"
           },
           "min_hours_between_sessions": {
             "anyOf": [
@@ -100999,7 +101069,6 @@
           },
           "band_percentage": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Band Percentage"
           },
           "block_index": {
@@ -103728,8 +103797,7 @@
                 "minimum": 0.01
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Band Percentage",
@@ -103807,7 +103875,6 @@
           },
           "band_percentage": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Band Percentage"
           },
           "total_blocks": {
@@ -103939,8 +104006,7 @@
                 "minimum": 0.01
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -115475,6 +115541,17 @@
             "type": "string",
             "title": "Guest Email"
           },
+          "email_auth_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Auth Token"
+          },
           "stroke_type": {
             "type": "string",
             "title": "Stroke Type",
@@ -115844,6 +115921,23 @@
         "title": "CohortComplexityScoringResponse",
         "description": "AI-suggested cohort complexity scores."
       },
+      "CompleteUploadBody": {
+        "properties": {
+          "email_auth_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Auth Token"
+          }
+        },
+        "type": "object",
+        "title": "CompleteUploadBody"
+      },
       "ContentDraftRequest": {
         "properties": {
           "title": {
@@ -116053,6 +116147,37 @@
         ],
         "title": "DrillSuggestion",
         "description": "A drill resolved from the drill bank for an observation."
+      },
+      "EmailCodeRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "EmailCodeRequest"
+      },
+      "EmailCodeVerify": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "code"
+        ],
+        "title": "EmailCodeVerify"
       },
       "FoundingClaimRequest": {
         "properties": {
@@ -116618,6 +116743,17 @@
           "guest_email": {
             "type": "string",
             "title": "Guest Email"
+          },
+          "email_auth_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Auth Token"
           },
           "filename": {
             "type": "string",
@@ -122437,8 +122573,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -122453,8 +122588,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -122573,8 +122707,7 @@
           "commission_percentage": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -122585,8 +122718,7 @@
           "flat_session_rate_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -122757,8 +122889,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -122773,8 +122904,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -123703,8 +123833,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -123719,8 +123848,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -124779,8 +124907,7 @@
           "price_per_swimmer_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -124791,8 +124918,7 @@
           "flat_session_fee_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -125057,8 +125183,7 @@
           "computed_score": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -126045,8 +126170,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -126061,8 +126185,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -127142,8 +127265,7 @@
           "price_override_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -127191,8 +127313,7 @@
           "cost_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -127264,7 +127385,6 @@
           },
           "unit_price_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Unit Price Ngn"
           },
           "product_name": {
@@ -127375,8 +127495,7 @@
           "member_discount_percent": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -127421,19 +127540,16 @@
           },
           "subtotal_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Subtotal Ngn",
             "default": "0"
           },
           "discount_amount_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Discount Amount Ngn",
             "default": "0"
           },
           "total_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Ngn",
             "default": "0"
           }
@@ -127786,12 +127902,10 @@
           },
           "total_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Ngn"
           },
           "delivery_fee_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Delivery Fee Ngn"
           },
           "requires_payment": {
@@ -127812,8 +127926,7 @@
           "bubbles_amount_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -127824,8 +127937,7 @@
           "paystack_amount_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -128197,7 +128309,6 @@
           },
           "total_revenue_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Revenue Ngn"
           },
           "orders_today": {
@@ -128482,8 +128593,7 @@
           "total_stock_value_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -128635,7 +128745,6 @@
         "properties": {
           "total_balance_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Balance Ngn"
           },
           "credits": {
@@ -128797,12 +128906,10 @@
           },
           "unit_price_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Unit Price Ngn"
           },
           "line_total_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Line Total Ngn"
           },
           "is_preorder": {
@@ -128985,27 +129092,22 @@
           },
           "subtotal_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Subtotal Ngn"
           },
           "discount_amount_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Discount Amount Ngn"
           },
           "store_credit_applied_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Store Credit Applied Ngn"
           },
           "delivery_fee_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Delivery Fee Ngn"
           },
           "total_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Ngn"
           },
           "discount_code": {
@@ -129400,8 +129502,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Base Price Ngn"
@@ -129413,8 +129514,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -129524,8 +129624,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -129595,14 +129694,12 @@
           },
           "base_price_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Base Price Ngn"
           },
           "compare_at_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -129762,8 +129859,7 @@
           "cost_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -130079,14 +130175,12 @@
           },
           "base_price_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Base Price Ngn"
           },
           "compare_at_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -130350,8 +130444,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -130366,8 +130459,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -130507,8 +130599,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -130558,8 +130649,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -130574,8 +130664,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -130650,8 +130739,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -130666,8 +130754,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -130729,8 +130816,7 @@
           "price_override_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -130778,8 +130864,7 @@
           "cost_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -130995,14 +131080,12 @@
           },
           "base_price_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Base Price Ngn"
           },
           "compare_at_price_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -131215,8 +131298,7 @@
           "price_override_ngn": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -131414,22 +131496,18 @@
           },
           "total_revenue_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Revenue Ngn"
           },
           "total_discount_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Discount Ngn"
           },
           "total_delivery_fees_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Delivery Fees Ngn"
           },
           "average_order_value_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Average Order Value Ngn"
           },
           "total_items_sold": {
@@ -131480,8 +131558,7 @@
                 "exclusiveMinimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Amount Ngn"
@@ -131547,12 +131624,10 @@
           },
           "amount_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount Ngn"
           },
           "balance_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Balance Ngn"
           },
           "source_type": {
@@ -131702,8 +131777,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -131853,8 +131927,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Total Sales Ngn"
@@ -131866,8 +131939,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Commission Ngn"
@@ -131879,8 +131951,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               }
             ],
             "title": "Payout Amount Ngn"
@@ -131964,17 +132035,14 @@
           },
           "total_sales_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Sales Ngn"
           },
           "commission_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Commission Ngn"
           },
           "payout_amount_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Payout Amount Ngn"
           },
           "status": {
@@ -132091,17 +132159,14 @@
           },
           "total_revenue_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Revenue Ngn"
           },
           "total_payouts_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Total Payouts Ngn"
           },
           "commission_percent": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Commission Percent"
           }
         },
@@ -132179,8 +132244,7 @@
           "commission_percent": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -132268,8 +132332,7 @@
           "average_fulfillment_hours": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -132389,8 +132452,7 @@
                 "minimum": 0.0
               },
               {
-                "type": "string",
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -132497,7 +132559,6 @@
           },
           "revenue_ngn": {
             "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Revenue Ngn"
           }
         },
