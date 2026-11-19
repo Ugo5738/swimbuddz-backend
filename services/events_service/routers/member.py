@@ -33,7 +33,7 @@ from libs.common.service_client import (
 )
 from libs.common.session_access import active_paid_tiers
 from libs.db.session import get_async_db
-from services.events_service.models import Event, EventInvite, EventRSVP, MemberRef
+from services.events_service.models import Event, EventInvite, EventRSVP, MemberRef, SwimPlan, SwimPlanAudit
 from services.events_service.schemas import (
     EventCreate,
     EventInviteCreate,
@@ -729,6 +729,15 @@ async def update_open_swim(
     event = await _load_own_open_swim(event_id, current_member.id, db)
 
     fields = payload.model_dump(exclude_unset=True)
+    verified_plan = (
+        await db.execute(select(SwimPlan).where(SwimPlan.linked_event_id == event_id))
+    ).scalar_one_or_none()
+    if verified_plan and {"start_time", "end_time", "max_capacity", "organizer_surcharge_naira"} & fields.keys():
+        raise HTTPException(
+            409,
+            "Verified Open Swim time, capacity and price cannot be changed in place. "
+            "Cancel with the applicable refund process and create a new swim plan.",
+        )
     if "organizer_surcharge_naira" in fields:
         surcharge = fields.pop("organizer_surcharge_naira")
         event.organizer_surcharge_kobo = naira_to_kobo(surcharge) if surcharge else 0
@@ -789,6 +798,20 @@ async def cancel_open_swim(
                 )
 
     await db.execute(delete(EventRSVP).where(EventRSVP.event_id == event_id))
+    linked_plan = (
+        await db.execute(select(SwimPlan).where(SwimPlan.linked_event_id == event_id))
+    ).scalar_one_or_none()
+    if linked_plan:
+        linked_plan.status = "cancelled"
+        linked_plan.linked_event_id = None
+        db.add(
+            SwimPlanAudit(
+                plan_id=linked_plan.id,
+                actor_auth_id=current_member.auth_id,
+                action="cancel_published_event",
+                new_value=str(event_id),
+            )
+        )
     await db.delete(event)
     await db.commit()
     return None
