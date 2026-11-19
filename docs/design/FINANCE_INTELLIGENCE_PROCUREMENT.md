@@ -27,6 +27,27 @@ The current application uses a single SwimBuddz legal organization. Before
 multi-tenant launch, create org-scoped procurement grants and enforce tenant
 scoping across Store/Academy/Payments read models.
 
+## Container isolation and approval authorization
+
+Store images contain shared libraries and Store code only. Never import Ledger
+routers, models or dependency factories into Store. For owner-only grants,
+purchase/opening approval and credit approval, Store authenticates the caller
+and forwards the same bearer token to Ledger's existing
+`GET /admin/finance/users/me`. Ledger resolves the current active finance team
+membership; Store accepts only `owner`. An unavailable or malformed Finance
+response fails closed for that action. The public catalogue starts and remains
+independent of Finance availability. No application-admin or service-role
+shortcut grants Finance Owner access. Retain separate-person approval checks;
+an email-linked owner without a stored auth ID uses their authenticated user ID
+for Store audit and requester comparisons.
+
+The 19 November outage was a startup import failure in the new procurement
+router, which attempted to load Ledger packages absent from the Store image.
+The gateway then returned 503/name-resolution errors while Store restarted.
+An isolated subprocess import test blocks Ledger imports, and authorization
+checks cover denied roles, inactive membership, failures and token forwarding.
+No catalogue, price, inventory, order or payment data correction is required.
+
 ## Procurement state model
 
 - Purchase order: draft -> submitted -> approved -> partially_received -> received.

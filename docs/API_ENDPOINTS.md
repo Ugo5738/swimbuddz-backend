@@ -2169,3 +2169,14 @@ reopened booking. Private Admin proof is required; member metadata is insufficie
 Billing shows the reopened fee and the correct swim as settled. No new public API
 or frontend control is introduced by the scoped operator repair. See backend
 `docs/SESSION_WALLET_REALLOCATION_RUNBOOK.md` for checks and accounting replay.
+
+
+### Store procurement authorization isolation (19 Nov 2026)
+
+The existing owner-only procurement routes resolve the authenticated caller's
+current Finance role through `GET /admin/finance/users/me` on ledger_service.
+Store forwards the incoming bearer token and accepts only an active Owner;
+transport/unexpected responses return 503 and authorization denial remains 403.
+Operational Store grants/admin roles do not replace the Owner check. Public
+`/store/products` and `/store/categories` do not depend on that authorization
+request. No new public endpoint or schema change is introduced.
