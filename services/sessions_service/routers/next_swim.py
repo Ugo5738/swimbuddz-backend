@@ -49,6 +49,22 @@ def _ranking_key(row: dict) -> tuple:
     )
 
 
+def _is_rebookable(row: dict, confirmed: set[uuid.UUID]) -> bool:
+    if uuid.UUID(str(row["id"])) in confirmed:
+        return False
+    access = row.get("access") or {}
+    if access.get("bookable") is not True:
+        return False
+    # Regular Academy classes are already assigned to enrolled learners;
+    # separately-paid extra classes are still eligible for checkout.
+    return not (
+        row.get("session_type") == "cohort_class"
+        and row.get("cohort_id")
+        and row.get("cohort_fee_mode") != "paid_extra"
+        and access.get("access_source") == "cohort_enrollment"
+    )
+
+
 @router.get("/me/next-swim")
 async def get_next_swim(
     user: AuthUser = Depends(get_current_user),
@@ -113,20 +129,7 @@ async def get_next_swim(
     confirmed_rows = [
         row for row in decorated if uuid.UUID(str(row["id"])) in confirmed
     ]
-    bookable = [
-        row
-        for row in decorated
-        if uuid.UUID(str(row["id"])) not in confirmed
-        and (row.get("access") or {}).get("bookable") is True
-        # An enrolled learner's regular Academy class is already allocated.
-        # It must not be recommended as an additional reservation or checkout.
-        and not (
-            row.get("session_type") == "cohort_class"
-            and row.get("cohort_id")
-            and row.get("cohort_fee_mode") != "paid_extra"
-            and (row.get("access") or {}).get("access_source") == "cohort_enrollment"
-        )
-    ]
+    bookable = [row for row in decorated if _is_rebookable(row, confirmed)]
     bookable.sort(key=_ranking_key)
     confirmed_rows.sort(key=lambda row: str(row.get("starts_at") or ""))
     return {
