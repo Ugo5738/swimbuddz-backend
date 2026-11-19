@@ -270,18 +270,18 @@ async def delete_job_assets(
             await _delete_storage_path(uploaded_key, LEGACY_UPLOADS_PREFIX)
         except Exception as exc:
             complete = False
-            logger.warning("Could not delete upload %s: %s uploaded_key, exc)
+            logger.warning("Could not delete upload %s: %s", uploaded_key, exc)
     if annotated_key:
         try:
             await _delete_storage_path(annotated_key, LEGACY_ANNOTATED_PREFIX)
         except Exception as exc:
             complete = False
-            logger.warning("Could not delete annotated %s: %s annotated_key, exc)
+            logger.warning("Could not delete annotated %s: %s", annotated_key, exc)
     for key in evidence_keys or []:
         try:
             await _delete_storage_path(key, LEGACY_ANNOTATED_PREFIX)
         except Exception as exc:
             complete = False
-            logger.warning("Could not delete evidence %s: %s key, exc)
+            logger.warning("Could not delete evidence %s: %s", key, exc)
 
     return complete
