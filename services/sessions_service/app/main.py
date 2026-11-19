@@ -13,6 +13,7 @@ from services.sessions_service.routers.club_reservations import (
 )
 from services.sessions_service.routers.club_holds import router as club_holds_router
 from services.sessions_service.routers.bookings import router as bookings_router
+from services.sessions_service.routers.next_swim import router as next_swim_router
 from services.sessions_service.routers.academy_participation import (
     router as academy_participation_router,
 )
@@ -77,6 +78,8 @@ def create_app() -> FastAPI:
     # sessions_router for the same reason: /sessions/bookings/* and
     # /sessions/{id}/book would otherwise hit the {id} catch-all first.
     app.include_router(member_booking_details_router)
+    # Must precede /sessions/{session_id}, or "me" would be parsed as a session ID.
+    app.include_router(next_swim_router)
     app.include_router(bookings_router)
     app.include_router(academy_participation_router)
     app.include_router(session_roster_router)

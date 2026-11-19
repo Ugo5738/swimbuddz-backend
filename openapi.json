@@ -11055,6 +11055,31 @@
         }
       }
     },
+    "/api/v1/sessions/me/next-swim": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get Next Swim",
+        "description": "Return the next eligible, unbooked swim and possible alternatives.\n\nThe endpoint never creates a booking, sells a seat, or assumes an Academy\nclass requires separate payment. Results are advisory until checkout.",
+        "operationId": "get_next_swim_sessions_me_next_swim_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/sessions/{session_id}/book": {
       "post": {
         "tags": [
@@ -20837,6 +20862,11 @@
         ],
         "summary": "Get Student Progress",
         "operationId": "get_student_progress_academy_enrollments__enrollment_id__progress_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "enrollment_id",
@@ -45382,6 +45412,101 @@
         }
       }
     },
+    "/api/v1/pools/access/availability": {
+      "get": {
+        "tags": [
+          "pool-access"
+        ],
+        "summary": "Published Pool Access Availability",
+        "description": "Read the capacity of *published Pool Access offers only*.\n\nThis is not a whole-pool time reservation or proof that arbitrary new\nSessions can be created. Checkout must atomically recheck capacity under\nthe existing offer row lock. Never surface negotiated partner costs.",
+        "operationId": "published_pool_access_availability_pools_access_availability_get",
+        "parameters": [
+          {
+            "name": "pool_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pool Id"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "name": "headcount",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 25,
+              "minimum": 1,
+              "default": 1,
+              "title": "Headcount"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/pools/access/bookings": {
       "post": {
         "tags": [
@@ -52845,6 +52970,737 @@
                   },
                   "title": "Response Get Supplier Performance Admin Store Reports Suppliers Get"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/procurement/grants": {
+      "put": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Upsert Procurement Grant",
+        "operationId": "upsert_procurement_grant_admin_store_procurement_grants_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/store/procurement/me": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Procurement Me",
+        "operationId": "procurement_me_admin_store_procurement_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/store/procurement/orders": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "List Purchase Orders",
+        "operationId": "list_purchase_orders_admin_store_procurement_orders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Create Purchase Order",
+        "operationId": "create_purchase_order_admin_store_procurement_orders_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/store/procurement/catalogue": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Procurement Catalogue",
+        "operationId": "procurement_catalogue_admin_store_procurement_catalogue_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/store/procurement/orders/{order_id}": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Get Purchase Order",
+        "operationId": "get_purchase_order_admin_store_procurement_orders__order_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/procurement/orders/{order_id}/submit": {
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Submit Purchase Order",
+        "operationId": "submit_purchase_order_admin_store_procurement_orders__order_id__submit_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/procurement/orders/{order_id}/decision": {
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Decide Purchase Order",
+        "operationId": "decide_purchase_order_admin_store_procurement_orders__order_id__decision_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          },
+          {
+            "name": "approve",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean",
+              "title": "Approve"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/procurement/orders/{order_id}/receive": {
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Receive Goods",
+        "operationId": "receive_goods_admin_store_procurement_orders__order_id__receive_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoodsReceiptRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/procurement/orders/{order_id}/invoices": {
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Record Supplier Invoice",
+        "operationId": "record_supplier_invoice_admin_store_procurement_orders__order_id__invoices_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierInvoiceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/procurement/liabilities": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Supplier Liabilities",
+        "operationId": "supplier_liabilities_admin_store_procurement_liabilities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/store/procurement/inventory-values": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Procurement Inventory Values",
+        "operationId": "procurement_inventory_values_admin_store_procurement_inventory_values_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/store/procurement/openings": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "List Opening Reconciliations",
+        "operationId": "list_opening_reconciliations_admin_store_procurement_openings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Propose Opening Valuation",
+        "operationId": "propose_opening_valuation_admin_store_procurement_openings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpeningRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/store/procurement/openings/{opening_id}/decision": {
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Approve Opening Valuation",
+        "operationId": "approve_opening_valuation_admin_store_procurement_openings__opening_id__decision_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "opening_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Opening Id"
+            }
+          },
+          {
+            "name": "approve",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean",
+              "title": "Approve"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/procurement/unpaid-orders": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Eligible Credit Orders",
+        "operationId": "eligible_credit_orders_admin_store_procurement_unpaid_orders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/store/procurement/receivables": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "List Receivables",
+        "operationId": "list_receivables_admin_store_procurement_receivables_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Propose Trade Receivable",
+        "operationId": "propose_trade_receivable_admin_store_procurement_receivables_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivableRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/store/procurement/receivables/{receivable_id}/decision": {
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Decide Trade Receivable",
+        "operationId": "decide_trade_receivable_admin_store_procurement_receivables__receivable_id__decision_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "receivable_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Receivable Id"
+            }
+          },
+          {
+            "name": "approve",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean",
+              "title": "Approve"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -66552,6 +67408,31 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/admin/finance/intelligence": {
+      "get": {
+        "tags": [
+          "finance-intelligence"
+        ],
+        "summary": "Company Finance Intelligence",
+        "description": "Single-tenant cross-domain operational facts, carefully distinguished.",
+        "operationId": "company_finance_intelligence_admin_finance_intelligence_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/internal/ledger/journal-entries": {
@@ -127529,6 +128410,67 @@
         ],
         "title": "FulfillmentType"
       },
+      "GoodsReceiptRequest": {
+        "properties": {
+          "reference": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 5,
+            "title": "Reference"
+          },
+          "evidence_reference": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 5,
+            "title": "Evidence Reference"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiveLineRequest"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reference",
+          "evidence_reference",
+          "lines"
+        ],
+        "title": "GoodsReceiptRequest"
+      },
+      "GrantRequest": {
+        "properties": {
+          "auth_id": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Auth Id"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "procurement_officer",
+              "inventory_viewer"
+            ],
+            "title": "Role",
+            "default": "procurement_officer"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "auth_id"
+        ],
+        "title": "GrantRequest"
+      },
       "InventoryAdjustment": {
         "properties": {
           "quantity": {
@@ -127658,9 +128600,26 @@
             "title": "Out Of Stock Count"
           },
           "total_stock_value_ngn": {
-            "type": "string",
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Total Stock Value Ngn"
+          },
+          "unvalued_sku_count": {
+            "type": "integer",
+            "title": "Unvalued Sku Count",
+            "default": 0
+          },
+          "valuation_complete": {
+            "type": "boolean",
+            "title": "Valuation Complete",
+            "default": false
           }
         },
         "type": "object",
@@ -127670,8 +128629,7 @@
           "total_reserved",
           "total_available",
           "low_stock_count",
-          "out_of_stock_count",
-          "total_stock_value_ngn"
+          "out_of_stock_count"
         ],
         "title": "InventoryReport"
       },
@@ -127831,6 +128789,46 @@
         },
         "type": "object",
         "title": "MemberStoreSummary"
+      },
+      "OpeningRequest": {
+        "properties": {
+          "variant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Variant Id"
+          },
+          "source_reference": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 5,
+            "title": "Source Reference"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Quantity"
+          },
+          "total_cost_minor": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Cost Minor"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "variant_id",
+          "source_reference",
+          "quantity",
+          "total_cost_minor",
+          "reason"
+        ],
+        "title": "OpeningRequest"
       },
       "OrderItemImageInfo": {
         "properties": {
@@ -130405,6 +131403,111 @@
         "title": "PublicProductVariantInfo",
         "description": "Public variant response - hides internal inventory counts."
       },
+      "PurchaseLineRequest": {
+        "properties": {
+          "variant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Variant Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "landed_unit_cost_minor": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Landed Unit Cost Minor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "variant_id",
+          "quantity",
+          "landed_unit_cost_minor"
+        ],
+        "title": "PurchaseLineRequest"
+      },
+      "PurchaseOrderRequest": {
+        "properties": {
+          "supplier_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Supplier Id"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 5,
+            "title": "Description"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PurchaseLineRequest"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "supplier_id",
+          "description",
+          "lines"
+        ],
+        "title": "PurchaseOrderRequest"
+      },
+      "ReceivableRequest": {
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Order Id"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_id",
+          "due_on",
+          "reason"
+        ],
+        "title": "ReceivableRequest"
+      },
+      "ReceiveLineRequest": {
+        "properties": {
+          "purchase_line_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Purchase Line Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purchase_line_id",
+          "quantity"
+        ],
+        "title": "ReceiveLineRequest"
+      },
       "SalesSummary": {
         "properties": {
           "period_start": {
@@ -130785,6 +131888,39 @@
           "slug"
         ],
         "title": "SupplierCreate"
+      },
+      "SupplierInvoiceRequest": {
+        "properties": {
+          "reference": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Reference"
+          },
+          "total_minor": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Total Minor"
+          },
+          "due_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due On"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reference",
+          "total_minor"
+        ],
+        "title": "SupplierInvoiceRequest"
       },
       "SupplierListResponse": {
         "properties": {
@@ -147358,6 +148494,28 @@
               }
             ],
             "title": "Pool Id"
+          },
+          "cohort_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Id"
+          },
+          "cohort_fee_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Fee Mode"
           },
           "status": {
             "type": "string",
