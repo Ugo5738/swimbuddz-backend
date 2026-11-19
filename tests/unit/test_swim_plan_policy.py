@@ -26,19 +26,26 @@ def test_public_plan_requires_pool_and_valid_duration():
     start = _future()
     with pytest.raises(ValidationError):
         PlanCreate(
-            kind="open", title="Open swim", location="Unverified beach",
+            kind="open",
+            title="Open swim",
+            location="Unverified beach",
             starts_at=start.isoformat(),
             ends_at=(start + timedelta(hours=1)).isoformat(),
         )
     with pytest.raises(ValidationError):
         PlanCreate(
-            kind="solo", title="My swim", location="Yaba",
-            participants=2, starts_at=start.isoformat(),
+            kind="solo",
+            title="My swim",
+            location="Yaba",
+            participants=2,
+            starts_at=start.isoformat(),
             ends_at=(start + timedelta(hours=1)).isoformat(),
         )
     with pytest.raises(ValidationError):
         PlanCreate(
-            kind="solo", title="My swim", location="Yaba",
+            kind="solo",
+            title="My swim",
+            location="Yaba",
             starts_at=start.isoformat(),
             ends_at=(start + timedelta(hours=10)).isoformat(),
         )
@@ -54,7 +61,9 @@ def test_plan_rejects_timezone_naive_dates():
     start = _future().replace(tzinfo=None)
     with pytest.raises(ValidationError):
         PlanCreate(
-            kind="solo", title="Personal swim", location="Yaba",
+            kind="solo",
+            title="Personal swim",
+            location="Yaba",
             starts_at=start.isoformat(),
             ends_at=(start + timedelta(hours=1)).isoformat(),
         )
