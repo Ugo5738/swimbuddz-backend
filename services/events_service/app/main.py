@@ -8,6 +8,7 @@ from services.events_service.routers.experience_links import (
 from libs.common.health import register_health_check
 from services.events_service.routers.admin_tasks import router as admin_tasks_router
 from services.events_service.routers.member import router as events_router
+from services.events_service.routers.swim_plans import router as swim_plans_router
 from services.events_service.routers.planning import router as planning_router
 from services.events_service.routers.internal import router as internal_router
 
@@ -23,6 +24,8 @@ def create_app() -> FastAPI:
     register_health_check(app, "events")
 
     # Include events router
+    # Register fixed /events/swim-plans routes before /events/{event_id}.
+    app.include_router(swim_plans_router)
     app.include_router(events_router)
     app.include_router(experience_links_router)
     app.include_router(planning_router)
