@@ -674,77 +674,20 @@ async def _snapshot_pool_fee(pool_id: uuid.UUID) -> tuple[int, dict]:
     return naira_to_kobo(float(per_swimmer)), pool
 
 
-@router.post("/open-swim", response_model=EventResponse, status_code=201)
-async def create_open_swim(
-    payload: OpenSwimCreate,
-    current_member: MemberRef = Depends(get_current_member),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Create a member-hosted open-swim meet.
+@router.post("/open-swim", status_code=409)
+async def create_open_swim():
+    """Legacy endpoint retired: publishing must not bypass pool verification.
 
-    Adults-only (18+). If ``pool_id`` is set it must be an active-partner
-    per-swimmer pool; the per-swimmer fee is snapshotted and the optional
-    organizer surcharge is added. No pool = a free/informal meet.
+    New requests use /events/swim-plans and may only be published by the
+    administrator after independently verifying the venue reservation.
     """
-    await _require_adult(current_member.id)
-
-    # Anti-spam: cap upcoming member-hosted meets.
-    upcoming = (
-        await db.execute(
-            select(func.count(Event.id)).where(
-                Event.created_by == current_member.id,
-                Event.event_type == OPEN_SWIM_TYPE,
-                Event.start_time >= utc_now(),
-            )
-        )
-    ).scalar() or 0
-    if upcoming >= MAX_UPCOMING_OPEN_SWIMS:
-        raise HTTPException(
-            status_code=429,
-            detail=(
-                f"You already have {MAX_UPCOMING_OPEN_SWIMS} upcoming meets. "
-                "Wrap one up before creating another."
-            ),
-        )
-
-    pool_fee_kobo: Optional[int] = None
-    max_capacity = payload.max_capacity
-    if payload.pool_id is not None:
-        pool_fee_kobo, pool = await _snapshot_pool_fee(payload.pool_id)
-        pool_max = pool.get("max_swimmers_capacity")
-        if pool_max and (max_capacity is None or max_capacity > pool_max):
-            max_capacity = pool_max
-
-    surcharge_kobo = (
-        naira_to_kobo(payload.organizer_surcharge_naira)
-        if payload.organizer_surcharge_naira
-        else 0
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Create your Open Swim through /events/swim-plans. "
+            "Public swims cannot publish before verified pool allocation."
+        ),
     )
-
-    event = Event(
-        title=payload.title,
-        description=payload.description,
-        event_type=OPEN_SWIM_TYPE,
-        location=payload.location,
-        start_time=payload.start_time,
-        end_time=payload.end_time,
-        max_capacity=max_capacity,
-        tier_access=payload.tier_access,
-        pool_id=payload.pool_id,
-        pool_fee_kobo=pool_fee_kobo,
-        organizer_surcharge_kobo=surcharge_kobo,
-        created_by=current_member.id,
-    )
-    db.add(event)
-    await db.commit()
-    await db.refresh(event)
-
-    await ensure_event_channel(
-        event_id=event.id,
-        event_title=event.title,
-        created_by_member_id=current_member.id,
-    )
-    return EventResponse.model_validate(_event_response_dict(event))
 
 
 async def _rsvp_counts(event_id: uuid.UUID, db: AsyncSession) -> dict:
