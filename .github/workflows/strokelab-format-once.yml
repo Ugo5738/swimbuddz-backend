@@ -1,0 +1,25 @@
+name: Temporary StrokeLab test formatter
+on:
+  push:
+    branches: [codex/strokelab-hardening-20261119]
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install ruff==0.4.10
+      - run: |
+          ruff format services/ai_service/services/tests/test_strokelab_credit_safety.py services/ai_service/services/tests/test_strokelab_email_auth.py
+          if ! git diff --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add services/ai_service
+            git commit -m 'style(strokelab): format regression tests'
+            git push
+          fi
