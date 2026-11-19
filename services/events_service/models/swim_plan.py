@@ -78,6 +78,7 @@ class SwimPlan(Base):
     )
     admin_notes: Mapped[Optional[str]] = mapped_column(String(1000))
     verified_by: Mapped[Optional[str]] = mapped_column(String(160))
+    venue_confirmation_reference: Mapped[Optional[str]] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
