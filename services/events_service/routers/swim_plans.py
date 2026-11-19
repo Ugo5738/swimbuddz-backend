@@ -4,6 +4,7 @@ This route MUST NOT create payment intents, reserve pool capacity, or suggest
 an unverified timeslot is available. Admin verification records an external
 partner reservation reference; venue approval is distinct from event approval.
 """
+
 from datetime import timedelta
 from typing import Literal
 from uuid import UUID
@@ -160,7 +161,8 @@ async def create_plan(
         pool = await get_partner_pool(str(request.pool_id), calling_service="events")
         if not pool:
             raise HTTPException(
-                422, "Only active partner pools can be selected. Try another pool or location."
+                422,
+                "Only active partner pools can be selected. Try another pool or location.",
             )
     policy = await _policy(db)
     approval = _initial_approval(request.kind, policy.auto_approve_public)
@@ -196,13 +198,17 @@ async def my_plans(
     db: AsyncSession = Depends(get_async_db),
 ):
     rows = (
-        await db.execute(
-            select(SwimPlan)
-            .where(SwimPlan.member_id == member.id)
-            .order_by(SwimPlan.created_at.desc())
-            .limit(100)
+        (
+            await db.execute(
+                select(SwimPlan)
+                .where(SwimPlan.member_id == member.id)
+                .order_by(SwimPlan.created_at.desc())
+                .limit(100)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [_plan_data(row) for row in rows]
 
 
@@ -226,7 +232,12 @@ async def set_policy(
     policy.auto_approve_public = payload.auto_approve_public
     policy.updated_by = admin.user_id
     await _audit(
-        db, None, admin.user_id, "policy_change", old=before, new=str(payload.auto_approve_public)
+        db,
+        None,
+        admin.user_id,
+        "policy_change",
+        old=before,
+        new=str(payload.auto_approve_public),
     )
     await db.commit()
     return {"auto_approve_public": policy.auto_approve_public}
@@ -238,10 +249,14 @@ async def admin_plans(
     db: AsyncSession = Depends(get_async_db),
 ):
     rows = (
-        await db.execute(
-            select(SwimPlan).order_by(SwimPlan.created_at.desc()).limit(200)
+        (
+            await db.execute(
+                select(SwimPlan).order_by(SwimPlan.created_at.desc()).limit(200)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [_plan_data(row) for row in rows]
 
 
@@ -273,7 +288,9 @@ async def review_plan(
         plan.status = "pending_availability"
     if not payload.approved:
         plan.status = "rejected"
-    await _audit(db, plan, admin.user_id, "review", old=before, new=plan.approval_status)
+    await _audit(
+        db, plan, admin.user_id, "review", old=before, new=plan.approval_status
+    )
     await db.commit()
     return _plan_data(plan)
 
@@ -288,8 +305,14 @@ async def verify_venue(
     plan = await _load_locked(db, plan_id)
     if plan.linked_event_id:
         raise HTTPException(409, "Published plans cannot be changed here")
-    if plan.kind == "open" and payload.confirmed and payload.selling_price_naira is None:
-        raise HTTPException(422, "Set the approved public selling price per swimmer before verification")
+    if (
+        plan.kind == "open"
+        and payload.confirmed
+        and payload.selling_price_naira is None
+    ):
+        raise HTTPException(
+            422, "Set the approved public selling price per swimmer before verification"
+        )
     previous = plan.venue_status
     plan.venue_status = "verified" if payload.confirmed else "rejected"
     plan.venue_confirmation_reference = payload.reference if payload.confirmed else None
@@ -302,7 +325,14 @@ async def verify_venue(
     plan.admin_notes = payload.notes
     if not payload.confirmed:
         plan.status = "pending_availability"
-    await _audit(db, plan, admin.user_id, "venue_verification", old=previous, new=plan.venue_status)
+    await _audit(
+        db,
+        plan,
+        admin.user_id,
+        "venue_verification",
+        old=previous,
+        new=plan.venue_status,
+    )
     await db.commit()
     return _plan_data(plan)
 
@@ -319,9 +349,13 @@ async def publish_open_plan(
     if plan.linked_event_id:
         return _plan_data(plan)
     if plan.approval_status != "approved" or plan.venue_status != "verified":
-        raise HTTPException(409, "Both publication approval and verified pool time are required")
+        raise HTTPException(
+            409, "Both publication approval and verified pool time are required"
+        )
     if not plan.pool_id or not plan.venue_confirmation_reference:
-        raise HTTPException(409, "A partner pool and reservation reference are required")
+        raise HTTPException(
+            409, "A partner pool and reservation reference are required"
+        )
     if plan.selling_price_kobo is None:
         raise HTTPException(409, "A verified public selling price is required")
     if plan.starts_at <= utc_now():

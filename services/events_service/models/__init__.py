@@ -4,7 +4,11 @@ from services.events_service.models.experience_operation import (
     ExperienceBindingOperation,
 )
 
-from services.events_service.models.swim_plan import SwimPlan, SwimPlanAudit, SwimPublicationPolicy
+from services.events_service.models.swim_plan import (
+    SwimPlan,
+    SwimPlanAudit,
+    SwimPublicationPolicy,
+)
 
 from services.events_service.models.core import (
     Event,

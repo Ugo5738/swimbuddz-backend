@@ -4,11 +4,20 @@ A plan is a *request*, never a PoolAccessBooking, SessionBooking, coach
 assignment, paid ticket, or guaranteed facility allocation. Linked Events
 are created only after the plan is approved and the venue is verified.
 """
+
 import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,7 +44,9 @@ class SwimPlan(Base):
 
     __tablename__ = "swim_plans"
     __table_args__ = (
-        CheckConstraint("participants BETWEEN 1 AND 25", name="ck_swim_plans_participants"),
+        CheckConstraint(
+            "participants BETWEEN 1 AND 25", name="ck_swim_plans_participants"
+        ),
         CheckConstraint("ends_at > starts_at", name="ck_swim_plans_time_order"),
         CheckConstraint(
             "kind IN ('solo','friends','open','coached')",
@@ -54,7 +65,9 @@ class SwimPlan(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(String(1000))
@@ -95,7 +108,9 @@ class SwimPlanAudit(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     plan_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("swim_plans.id", ondelete="RESTRICT"), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("swim_plans.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     actor_auth_id: Mapped[str] = mapped_column(String(160), nullable=False)
     action: Mapped[str] = mapped_column(String(40), nullable=False)

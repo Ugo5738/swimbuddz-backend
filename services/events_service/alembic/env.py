@@ -13,7 +13,14 @@ sys.path.append(str(PROJECT_ROOT))
 
 from libs.common.config import get_settings
 from libs.db.base import Base
-from services.events_service.models import Event, EventRSVP, EventTemplate, SwimPlan, SwimPlanAudit, SwimPublicationPolicy  # noqa: F401
+from services.events_service.models import (
+    Event,
+    EventRSVP,
+    EventTemplate,
+    SwimPlan,
+    SwimPlanAudit,
+    SwimPublicationPolicy,
+)  # noqa: F401
 
 settings = get_settings()
 config = context.config

@@ -33,7 +33,14 @@ from libs.common.service_client import (
 )
 from libs.common.session_access import active_paid_tiers
 from libs.db.session import get_async_db
-from services.events_service.models import Event, EventInvite, EventRSVP, MemberRef, SwimPlan, SwimPlanAudit
+from services.events_service.models import (
+    Event,
+    EventInvite,
+    EventRSVP,
+    MemberRef,
+    SwimPlan,
+    SwimPlanAudit,
+)
 from services.events_service.schemas import (
     EventCreate,
     EventInviteCreate,
@@ -732,7 +739,11 @@ async def update_open_swim(
     verified_plan = (
         await db.execute(select(SwimPlan).where(SwimPlan.linked_event_id == event_id))
     ).scalar_one_or_none()
-    if verified_plan and {"start_time", "end_time", "max_capacity", "organizer_surcharge_naira"} & fields.keys():
+    if (
+        verified_plan
+        and {"start_time", "end_time", "max_capacity", "organizer_surcharge_naira"}
+        & fields.keys()
+    ):
         raise HTTPException(
             409,
             "Verified Open Swim time, capacity and price cannot be changed in place. "

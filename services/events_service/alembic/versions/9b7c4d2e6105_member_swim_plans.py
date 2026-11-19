@@ -3,6 +3,7 @@
 Revision ID: 9b7c4d2e6105
 Revises: c7b9d1e3f526
 """
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
 from alembic import op
@@ -17,7 +18,12 @@ def upgrade():
     op.create_table(
         "swim_publication_policies",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("auto_approve_public", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column(
+            "auto_approve_public",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.true(),
+        ),
         sa.Column("updated_by", sa.String(160)),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
@@ -41,17 +47,28 @@ def upgrade():
         sa.Column("approval_status", sa.String(16), nullable=False),
         sa.Column("venue_status", sa.String(20), nullable=False),
         sa.Column("status", sa.String(24), nullable=False),
-        sa.Column("linked_event_id", pg.UUID(as_uuid=True), sa.ForeignKey("events.id", ondelete="SET NULL")),
+        sa.Column(
+            "linked_event_id",
+            pg.UUID(as_uuid=True),
+            sa.ForeignKey("events.id", ondelete="SET NULL"),
+        ),
         sa.Column("admin_notes", sa.String(1000)),
         sa.Column("selling_price_kobo", sa.Integer()),
         sa.Column("verified_by", sa.String(160)),
         sa.Column("venue_confirmation_reference", sa.String(255)),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.CheckConstraint("participants BETWEEN 1 AND 25", name="ck_swim_plans_participants"),
+        sa.CheckConstraint(
+            "participants BETWEEN 1 AND 25", name="ck_swim_plans_participants"
+        ),
         sa.CheckConstraint("ends_at > starts_at", name="ck_swim_plans_time_order"),
-        sa.CheckConstraint("kind IN ('solo','friends','open','coached')", name="ck_swim_plans_kind"),
-        sa.CheckConstraint("approval_status IN ('approved','pending','rejected')", name="ck_swim_plans_approval"),
+        sa.CheckConstraint(
+            "kind IN ('solo','friends','open','coached')", name="ck_swim_plans_kind"
+        ),
+        sa.CheckConstraint(
+            "approval_status IN ('approved','pending','rejected')",
+            name="ck_swim_plans_approval",
+        ),
         sa.CheckConstraint(
             "venue_status IN ('pending','verified','not_required','rejected')",
             name="ck_swim_plans_venue",
@@ -61,7 +78,8 @@ def upgrade():
         "swim_plan_audit",
         sa.Column("id", pg.UUID(as_uuid=True), primary_key=True),
         sa.Column(
-            "plan_id", pg.UUID(as_uuid=True),
+            "plan_id",
+            pg.UUID(as_uuid=True),
             sa.ForeignKey("swim_plans.id", ondelete="RESTRICT"),
             nullable=True,
         ),

@@ -115,14 +115,20 @@ def mocks():
 async def test_legacy_open_swim_post_cannot_publish(client, mocks):
     response = await client.post(
         "/events/open-swim",
-        json={"title": "Paid meet", "start_time": _future(), "pool_id": str(uuid.uuid4())},
+        json={
+            "title": "Paid meet",
+            "start_time": _future(),
+            "pool_id": str(uuid.uuid4()),
+        },
     )
     assert response.status_code == 409
     mocks["pool"].assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_swim_plan_submission_does_not_publish_or_charge(client, mocks, db_session):
+async def test_swim_plan_submission_does_not_publish_or_charge(
+    client, mocks, db_session
+):
     pool_id = str(uuid.uuid4())
     with patch(
         "services.events_service.routers.swim_plans.get_partner_pool",
@@ -150,9 +156,9 @@ async def test_swim_plan_submission_does_not_publish_or_charge(client, mocks, db
     mocks["debit"].assert_not_called()
     from sqlalchemy import select
 
-    assert (await db_session.execute(
-        select(Event).where(Event.event_type == "open_swim")
-    )).scalars().all() == []
+    assert (
+        await db_session.execute(select(Event).where(Event.event_type == "open_swim"))
+    ).scalars().all() == []
 
 
 @pytest.mark.asyncio
@@ -163,9 +169,13 @@ async def test_swim_plan_rejects_minor(client, mocks):
     response = await client.post(
         "/events/swim-plans",
         json={
-            "kind": "solo", "title": "Just me", "location": "Yaba",
+            "kind": "solo",
+            "title": "Just me",
+            "location": "Yaba",
             "starts_at": _future(),
-            "ends_at": (datetime.now(timezone.utc) + timedelta(days=2, hours=1)).isoformat(),
+            "ends_at": (
+                datetime.now(timezone.utc) + timedelta(days=2, hours=1)
+            ).isoformat(),
         },
     )
     assert response.status_code == 403
@@ -176,9 +186,12 @@ async def test_public_plan_requires_partner_pool(client, mocks):
     response = await client.post(
         "/events/swim-plans",
         json={
-            "kind": "open", "title": "Come swim",
+            "kind": "open",
+            "title": "Come swim",
             "starts_at": _future(),
-            "ends_at": (datetime.now(timezone.utc) + timedelta(days=2, hours=1)).isoformat(),
+            "ends_at": (
+                datetime.now(timezone.utc) + timedelta(days=2, hours=1)
+            ).isoformat(),
         },
     )
     assert response.status_code == 422
@@ -203,6 +216,7 @@ async def _create_paid_meet(db_session: AsyncSession) -> str:
     db_session.add(event)
     await db_session.flush()
     return str(event.id)
+
 
 @pytest.mark.asyncio
 async def test_rsvp_paid_requires_waiver(client, mocks, db_session):
