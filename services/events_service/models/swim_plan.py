@@ -77,6 +77,7 @@ class SwimPlan(Base):
         UUID(as_uuid=True), ForeignKey("events.id", ondelete="SET NULL")
     )
     admin_notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    selling_price_kobo: Mapped[Optional[int]] = mapped_column(Integer)
     verified_by: Mapped[Optional[str]] = mapped_column(String(160))
     venue_confirmation_reference: Mapped[Optional[str]] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(
