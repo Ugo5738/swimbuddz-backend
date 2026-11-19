@@ -45,7 +45,7 @@ async def _redis():
 
 
 async def request_email_code(email: str, *, requester: str = "") -> None:
-    """Send a short-lived email code with per-email and per-source limits.
+    """Send a short-lived email code with per-email limits.
 
     Do not reveal whether an email already owns credits.
     """
@@ -53,12 +53,10 @@ async def request_email_code(email: str, *, requester: str = "") -> None:
     digest = _digest(code)
     async with _redis() as redis:
         cooldown = _email_key(email, "cooldown")
-        ip_key = f"strokelab:email-auth:ip:{_digest(requester or 'unknown')}"
-        count = await redis.incr(ip_key)
-        if count == 1:
-            await redis.expire(ip_key, 3600)
-        if count > 12:
-            raise HTTPException(status_code=429, detail="Too many verification requests")
+        # The AI service sits behind a reverse-proxy gateway. request.client.host
+        # is the gateway address, not the user's IP. Limiting that value would
+        # accidentally lock out all customers together. The public gateway must
+        # enforce its own origin-aware anti-abuse policy.
         claimed = await redis.set(cooldown, "1", ex=_EMAIL_COOLDOWN, nx=True)
         if not claimed:
             raise HTTPException(status_code=429, detail="Please wait before requesting another code")
