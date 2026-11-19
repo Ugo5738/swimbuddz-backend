@@ -107,91 +107,81 @@ def mocks():
 
 
 # ---------------------------------------------------------------------------
-# Create
+# Legacy creation is disabled: approval and venue proof are mandatory.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_create_free_meet_no_pool(client, mocks):
-    resp = await client.post(
+async def test_legacy_open_swim_post_cannot_publish(client, mocks):
+    response = await client.post(
         "/events/open-swim",
-        json={"title": "Beach swim", "start_time": _future(), "location": "Tarkwa Bay"},
+        json={"title": "Paid meet", "start_time": _future(), "pool_id": str(uuid.uuid4())},
     )
-    assert resp.status_code == 201, resp.text
-    body = resp.json()
-    assert body["event_type"] == "open_swim"
-    assert body["pool_id"] is None
-    assert body["total_cost_naira"] is None  # free
-    mocks["pool"].assert_not_called()  # no pool lookup for a free meet
+    assert response.status_code == 409
+    mocks["pool"].assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_create_paid_pool_meet_snapshots_fee_and_caps_capacity(client, mocks):
+async def test_swim_plan_submission_does_not_publish_or_charge(client, mocks, db_session):
     pool_id = str(uuid.uuid4())
-    mocks["pool"].return_value["id"] = pool_id
-    resp = await client.post(
-        "/events/open-swim",
-        json={
-            "title": "Saturday laps",
-            "start_time": _future(),
-            "pool_id": pool_id,
-            "organizer_surcharge_naira": 200,
-            "max_capacity": 50,  # exceeds pool max (20) → should cap
-        },
-    )
-    assert resp.status_code == 201, resp.text
-    body = resp.json()
-    assert body["pool_fee_naira"] == 500.0  # snapshotted per-swimmer fee
-    assert body["organizer_surcharge_naira"] == 200.0
-    assert body["total_cost_naira"] == 700.0  # fee + surcharge
-    assert body["max_capacity"] == 20  # capped at pool's physical max
+    with patch(
+        "services.events_service.routers.swim_plans.get_partner_pool",
+        new=AsyncMock(return_value={"id": pool_id, "name": "Test Pool"}),
+    ):
+        response = await client.post(
+            "/events/swim-plans",
+            json={
+                "kind": "open",
+                "title": "Saturday afternoon laps",
+                "pool_id": pool_id,
+                "starts_at": _future(),
+                "ends_at": (
+                    datetime.now(timezone.utc) + timedelta(days=2, hours=1)
+                ).isoformat(),
+                "participants": 8,
+            },
+        )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["approval_status"] == "approved"
+    assert body["venue_status"] == "pending"
+    assert body["status"] == "pending_availability"
+    assert body["linked_event_id"] is None
+    mocks["debit"].assert_not_called()
+    from sqlalchemy import select
+
+    assert (await db_session.execute(
+        select(Event).where(Event.event_type == "open_swim")
+    )).scalars().all() == []
 
 
 @pytest.mark.asyncio
-async def test_create_rejects_minor(client, mocks):
+async def test_swim_plan_rejects_minor(client, mocks):
     mocks["member"].return_value["date_of_birth"] = (
         datetime.now(timezone.utc) - timedelta(days=365 * 12)
     ).isoformat()
-    resp = await client.post(
-        "/events/open-swim", json={"title": "Kid swim", "start_time": _future()}
-    )
-    assert resp.status_code == 403
-    assert "18" in resp.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_create_rejects_flat_fee_pool(client, mocks):
-    mocks["pool"].return_value["flat_session_fee_ngn"] = "10000"
-    resp = await client.post(
-        "/events/open-swim",
+    response = await client.post(
+        "/events/swim-plans",
         json={
-            "title": "Flat pool",
-            "start_time": _future(),
-            "pool_id": str(uuid.uuid4()),
+            "kind": "solo", "title": "Just me", "location": "Yaba",
+            "starts_at": _future(),
+            "ends_at": (datetime.now(timezone.utc) + timedelta(days=2, hours=1)).isoformat(),
         },
     )
-    assert resp.status_code == 400
-    assert "flat" in resp.json()["detail"].lower()
+    assert response.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_create_quota_enforced(client, mocks, db_session: AsyncSession):
-    # Seed 3 upcoming open-swims hosted by this member (the cap).
-    for i in range(3):
-        db_session.add(
-            Event(
-                title=f"Existing {i}",
-                event_type="open_swim",
-                start_time=datetime.now(timezone.utc) + timedelta(days=3 + i),
-                created_by=MOCK_MEMBER_ID,
-            )
-        )
-    await db_session.flush()
-
-    resp = await client.post(
-        "/events/open-swim", json={"title": "One too many", "start_time": _future()}
+async def test_public_plan_requires_partner_pool(client, mocks):
+    response = await client.post(
+        "/events/swim-plans",
+        json={
+            "kind": "open", "title": "Come swim",
+            "starts_at": _future(),
+            "ends_at": (datetime.now(timezone.utc) + timedelta(days=2, hours=1)).isoformat(),
+        },
     )
-    assert resp.status_code == 429
+    assert response.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -199,23 +189,24 @@ async def test_create_quota_enforced(client, mocks, db_session: AsyncSession):
 # ---------------------------------------------------------------------------
 
 
-async def _create_paid_meet(client, mocks) -> str:
-    resp = await client.post(
-        "/events/open-swim",
-        json={
-            "title": "Paid meet",
-            "start_time": _future(),
-            "pool_id": str(uuid.uuid4()),
-            "organizer_surcharge_naira": 0,
-        },
+async def _create_paid_meet(db_session: AsyncSession) -> str:
+    # Fixture represents a previously verified and published Open Swim.
+    event = Event(
+        title="Paid meet",
+        event_type="open_swim",
+        start_time=datetime.now(timezone.utc) + timedelta(days=2),
+        pool_id=uuid.uuid4(),
+        pool_fee_kobo=50000,
+        created_by=MOCK_MEMBER_ID,
+        status="published",
     )
-    assert resp.status_code == 201, resp.text
-    return resp.json()["id"]
-
+    db_session.add(event)
+    await db_session.flush()
+    return str(event.id)
 
 @pytest.mark.asyncio
-async def test_rsvp_paid_requires_waiver(client, mocks):
-    event_id = await _create_paid_meet(client, mocks)
+async def test_rsvp_paid_requires_waiver(client, mocks, db_session):
+    event_id = await _create_paid_meet(db_session)
     resp = await client.post(
         f"/events/{event_id}/rsvp",
         json={"status": "going", "pay_with_bubbles": True, "waiver_accepted": False},
@@ -225,9 +216,9 @@ async def test_rsvp_paid_requires_waiver(client, mocks):
 
 
 @pytest.mark.asyncio
-async def test_rsvp_maybe_then_going_charges(client, mocks):
+async def test_rsvp_maybe_then_going_charges(client, mocks, db_session):
     """Regression: switching maybe → going must charge (was skipped before)."""
-    event_id = await _create_paid_meet(client, mocks)
+    event_id = await _create_paid_meet(db_session)
 
     r1 = await client.post(f"/events/{event_id}/rsvp", json={"status": "maybe"})
     assert r1.status_code == 200
@@ -247,8 +238,8 @@ async def test_rsvp_maybe_then_going_charges(client, mocks):
 
 
 @pytest.mark.asyncio
-async def test_cancel_refunds_paid_attendee(client, mocks):
-    event_id = await _create_paid_meet(client, mocks)
+async def test_cancel_refunds_paid_attendee(client, mocks, db_session):
+    event_id = await _create_paid_meet(db_session)
     # A paid "going" RSVP from our member.
     await client.post(
         f"/events/{event_id}/rsvp",
