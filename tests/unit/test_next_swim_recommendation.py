@@ -4,7 +4,9 @@ These tests do not exercise cross-service access; the route delegates that
 decision to the existing Sessions access service.
 """
 
-from services.sessions_service.routers.next_swim import _ranking_key
+import uuid
+
+from services.sessions_service.routers.next_swim import _is_rebookable, _ranking_key
 
 
 def test_included_home_session_is_preferred_over_paid_visiting_session():
@@ -43,3 +45,24 @@ def test_missing_pricing_does_not_rank_as_included():
         "access": {"access_source": "active_club", "fee_amount_kobo": 0},
     }
     assert sorted([unpriced, included], key=_ranking_key)[0]["id"] == "a"
+
+
+def test_assigned_included_academy_class_cannot_be_rebooked():
+    row = {
+        "id": str(uuid.uuid4()),
+        "session_type": "cohort_class",
+        "cohort_id": str(uuid.uuid4()),
+        "cohort_fee_mode": "included",
+        "access": {"bookable": True, "access_source": "cohort_enrollment"},
+    }
+    assert _is_rebookable(row, set()) is False
+    row["cohort_fee_mode"] = "paid_extra"
+    assert _is_rebookable(row, set()) is True
+
+
+def test_already_confirmed_or_blocked_session_cannot_be_recommended():
+    session_id = uuid.uuid4()
+    row = {"id": str(session_id), "session_type": "club", "access": {"bookable": True}}
+    assert _is_rebookable(row, {session_id}) is False
+    row["access"]["bookable"] = False
+    assert _is_rebookable(row, set()) is False
