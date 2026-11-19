@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import get_current_user
+from libs.auth.dependencies import get_current_user, is_admin_or_service
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.common.service_client import get_member_by_auth_id
@@ -53,6 +53,8 @@ async def get_next_swim(
     The endpoint never creates a booking, sells a seat, or assumes an Academy
     class requires separate payment. Results are advisory until checkout.
     """
+    if is_admin_or_service(user):
+        raise HTTPException(403, "Use a member account to book your next swim")
     try:
         member = await get_member_by_auth_id(user.user_id, calling_service="sessions")
     except httpx.HTTPError as exc:
