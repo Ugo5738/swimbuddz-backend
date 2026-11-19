@@ -89,11 +89,11 @@ async def published_pool_access_availability(
     Sessions can be created. Checkout must atomically recheck capacity under
     the existing offer row lock. Never surface negotiated partner costs.
     """
+    if (starts_from is not None and starts_from.tzinfo is None) or (starts_to is not None and starts_to.tzinfo is None):
+        raise HTTPException(422, "Use timezone-aware date boundaries")
     now = utc_now()
     start = max(starts_from, now) if starts_from else now
     end = starts_to or start + timedelta(days=31)
-    if start.tzinfo is None or end.tzinfo is None:
-        raise HTTPException(422, "Use timezone-aware date boundaries")
     if end <= start or end - start > timedelta(days=31):
         raise HTTPException(422, "Choose a positive availability window up to 31 days")
 
