@@ -469,9 +469,16 @@ async def delete_analysis_job(
 
     uploaded_key = job.video_storage_path or None
     annotated_key = job.annotated_video_storage_path
+    rs = await db.execute(select(AnalysisResult).where(AnalysisResult.job_id == job_id))
+    result_row = rs.scalar_one_or_none()
+    payload = (result_row.coach_result or {}) if result_row is not None else {}
+    evidence_keys = list((payload.get("evidence_keys") or {}).values())
+    evidence_keys.extend((payload.get("share_keys") or {}).values())
 
+    # Keep the DB row if storage cannot be erased; otherwise deletion removes
+    # our only authoritative record of remaining evidence/share assets.
+    cleaned = await delete_job_assets(uploaded_key, annotated_key, evidence_keys)
+    if not cleaned:
+        raise HTTPException(status_code=503, detail="Storage cleanup incomplete; please retry")
     await db.delete(job)
     await db.commit()
-    # Best-effort: storage cleanup happens after the DB row is gone so a
-    # storage error doesn't leave the DB in an inconsistent state.
-    await delete_job_assets(uploaded_key, annotated_key)
