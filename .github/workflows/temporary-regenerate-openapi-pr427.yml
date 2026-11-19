@@ -12,6 +12,9 @@ jobs:
   regenerate:
     if: github.ref == 'refs/heads/feature/member-swim-booking-workspace-20261119'
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test_db
+      DATABASE_SESSION_URL: postgresql+psycopg://test:test@localhost:5432/test_db
     steps:
       - uses: actions/checkout@v4
         with:
