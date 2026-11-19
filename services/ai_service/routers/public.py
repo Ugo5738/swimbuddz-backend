@@ -24,6 +24,7 @@ from typing import Annotated, Optional
 import httpx
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     File,
     Form,
@@ -130,6 +131,10 @@ class EmailCodeRequest(BaseModel):
 class EmailCodeVerify(BaseModel):
     email: str
     code: str
+
+
+class CompleteUploadBody(BaseModel):
+    email_auth_token: Optional[str] = None
 
 
 @router.post("/credits/email-code/request")
@@ -314,7 +319,7 @@ async def create_public_direct_upload(
 )
 async def complete_public_direct_upload(
     job_id: uuid.UUID,
-    email_auth_token: Annotated[Optional[str], Header(alias="X-Email-Auth-Token")] = None,
+    body: Annotated[Optional[CompleteUploadBody], Body()] = None,
     x_guest_token: Annotated[Optional[str], Header(alias="X-Guest-Token")] = None,
     guest_token: Annotated[Optional[str], Query()] = None,
     db: AsyncSession = Depends(get_async_db),
@@ -378,7 +383,7 @@ async def complete_public_direct_upload(
     try:
         bal = await get_balance(db, raw_email=job.guest_email or "")
         if not bal["can_submit_free"]:
-            await require_paid_credit_owner(job.guest_email or "", email_auth_token)
+            await require_paid_credit_owner(job.guest_email or "", body.email_auth_token if body else None)
         reserve_entry = await acquire_for_submit(
             db, raw_email=job.guest_email or "", job_id=job.id,
             paid_authorized=not bal["can_submit_free"],
