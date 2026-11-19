@@ -53898,6 +53898,322 @@
         }
       }
     },
+    "/api/v1/events/swim-plans": {
+      "post": {
+        "tags": [
+          "swim-plans"
+        ],
+        "summary": "Create Plan",
+        "operationId": "create_plan_events_swim_plans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events/swim-plans/me": {
+      "get": {
+        "tags": [
+          "swim-plans"
+        ],
+        "summary": "My Plans",
+        "operationId": "my_plans_events_swim_plans_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events/swim-plans/admin/policy": {
+      "get": {
+        "tags": [
+          "swim-plans"
+        ],
+        "summary": "Get Policy",
+        "operationId": "get_policy_events_swim_plans_admin_policy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "swim-plans"
+        ],
+        "summary": "Set Policy",
+        "operationId": "set_policy_events_swim_plans_admin_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events/swim-plans/admin": {
+      "get": {
+        "tags": [
+          "swim-plans"
+        ],
+        "summary": "Admin Plans",
+        "operationId": "admin_plans_events_swim_plans_admin_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events/swim-plans/admin/{plan_id}/review": {
+      "put": {
+        "tags": [
+          "swim-plans"
+        ],
+        "summary": "Review Plan",
+        "operationId": "review_plan_events_swim_plans_admin__plan_id__review_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanReview"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/swim-plans/admin/{plan_id}/verify-venue": {
+      "put": {
+        "tags": [
+          "swim-plans"
+        ],
+        "summary": "Verify Venue",
+        "operationId": "verify_venue_events_swim_plans_admin__plan_id__verify_venue_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueVerification"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/swim-plans/admin/{plan_id}/publish": {
+      "post": {
+        "tags": [
+          "swim-plans"
+        ],
+        "summary": "Publish Open Plan",
+        "operationId": "publish_open_plan_events_swim_plans_admin__plan_id__publish_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/events/": {
       "get": {
         "tags": [
@@ -54445,45 +54761,18 @@
           "events"
         ],
         "summary": "Create Open Swim",
-        "description": "Create a member-hosted open-swim meet.\n\nAdults-only (18+). If ``pool_id`` is set it must be an active-partner\nper-swimmer pool; the per-swimmer fee is snapshotted and the optional\norganizer surcharge is added. No pool = a free/informal meet.",
+        "description": "Legacy endpoint retired: publishing must not bypass pool verification.\n\nNew requests use /events/swim-plans and may only be published by the\nadministrator after independently verifying the venue reservation.",
         "operationId": "create_open_swim_events_open_swim_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OpenSwimCreate"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
-          "201": {
+          "409": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EventResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
+                "schema": {}
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/events/open-swim/{event_id}": {
@@ -135629,106 +135918,6 @@
         "title": "EventUpdate",
         "description": "Schema for updating an event."
       },
-      "OpenSwimCreate": {
-        "properties": {
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "location": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Location"
-          },
-          "start_time": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Start Time"
-          },
-          "end_time": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "End Time"
-          },
-          "max_capacity": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Capacity"
-          },
-          "tier_access": {
-            "type": "string",
-            "enum": [
-              "public",
-              "community",
-              "club",
-              "academy",
-              "invite_only"
-            ],
-            "title": "Tier Access",
-            "default": "community"
-          },
-          "pool_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pool Id"
-          },
-          "organizer_surcharge_naira": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Organizer Surcharge Naira"
-          }
-        },
-        "type": "object",
-        "required": [
-          "title",
-          "start_time"
-        ],
-        "title": "OpenSwimCreate",
-        "description": "Schema for a member creating their own open-swim meet.\n\n`event_type` is forced to \"open_swim\" server-side. If `pool_id` is set the\nmeet is a paid pool meet (the per-swimmer fee is snapshotted from the pool and\nthe optional surcharge added); if null it is a free/informal meet."
-      },
       "OpenSwimUpdate": {
         "properties": {
           "title": {
@@ -135815,6 +136004,135 @@
         "title": "OpenSwimUpdate",
         "description": "Schema for a member editing their own open-swim meet (all fields optional)."
       },
+      "PlanCreate": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "solo",
+              "friends",
+              "open",
+              "coached"
+            ],
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "starts_at": {
+            "type": "string",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "title": "Ends At"
+          },
+          "participants": {
+            "type": "integer",
+            "maximum": 25.0,
+            "minimum": 1.0,
+            "title": "Participants",
+            "default": 1
+          },
+          "coaching_focus": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 250
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coaching Focus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "title",
+          "starts_at",
+          "ends_at"
+        ],
+        "title": "PlanCreate"
+      },
+      "PlanReview": {
+        "properties": {
+          "approved": {
+            "type": "boolean",
+            "title": "Approved"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approved"
+        ],
+        "title": "PlanReview"
+      },
+      "PolicyUpdate": {
+        "properties": {
+          "auto_approve_public": {
+            "type": "boolean",
+            "title": "Auto Approve Public"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auto_approve_public"
+        ],
+        "title": "PolicyUpdate"
+      },
       "RSVPCreate": {
         "properties": {
           "status": {
@@ -135894,6 +136212,56 @@
         ],
         "title": "RSVPResponse",
         "description": "RSVP response schema."
+      },
+      "VenueVerification": {
+        "properties": {
+          "confirmed": {
+            "type": "boolean",
+            "title": "Confirmed"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "selling_price_naira": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selling Price Naira"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "confirmed"
+        ],
+        "title": "VenueVerification"
       },
       "AdminEvidenceItemResponse": {
         "properties": {
