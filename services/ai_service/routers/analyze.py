@@ -25,6 +25,7 @@ from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
+from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
 from services.ai_service.analysis.storage import (
     delete_job_assets,
@@ -325,7 +326,18 @@ async def create_analysis_job(
     await db.commit()
     await db.refresh(job)
 
-    await _enqueue_analysis(job.id)
+    try:
+        await _enqueue_analysis(job.id, raise_on_error=True)
+    except Exception as exc:
+        # Never tell members a job was accepted when Redis did not queue it.
+        job.status = AnalysisJobStatus.FAILED
+        job.error_message = "temporarily_unavailable"
+        job.completed_at = utc_now()
+        await db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail="Analysis queue unavailable. Please retry when service recovers.",
+        ) from exc
     return _job_to_lifecycle_response(job)
 
 
@@ -467,6 +479,11 @@ async def delete_analysis_job(
     if job.member_auth_id != caller_id:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    if job.status in (AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for analysis to finish before deleting this video.",
+        )
     uploaded_key = job.video_storage_path or None
     annotated_key = job.annotated_video_storage_path
     rs = await db.execute(select(AnalysisResult).where(AnalysisResult.job_id == job_id))
