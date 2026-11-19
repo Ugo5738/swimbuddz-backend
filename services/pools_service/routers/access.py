@@ -89,7 +89,9 @@ async def published_pool_access_availability(
     Sessions can be created. Checkout must atomically recheck capacity under
     the existing offer row lock. Never surface negotiated partner costs.
     """
-    if (starts_from is not None and starts_from.tzinfo is None) or (starts_to is not None and starts_to.tzinfo is None):
+    if (starts_from is not None and starts_from.tzinfo is None) or (
+        starts_to is not None and starts_to.tzinfo is None
+    ):
         raise HTTPException(422, "Use timezone-aware date boundaries")
     now = utc_now()
     start = max(starts_from, now) if starts_from else now
@@ -119,19 +121,23 @@ async def published_pool_access_availability(
     ids = [offer.id for offer, _ in rows]
     used_by_offer: dict[uuid.UUID, int] = {}
     if ids:
-        counts = (await db.execute(
-            select(
-                PoolAccessBooking.offer_id,
-                func.coalesce(func.sum(PoolAccessBooking.headcount), 0),
-            ).where(
-                PoolAccessBooking.offer_id.in_(ids),
-                (PoolAccessBooking.status == "confirmed")
-                | (
-                    (PoolAccessBooking.status == "pending_payment")
-                    & (PoolAccessBooking.hold_expires_at > now)
-                ),
-            ).group_by(PoolAccessBooking.offer_id)
-        )).all()
+        counts = (
+            await db.execute(
+                select(
+                    PoolAccessBooking.offer_id,
+                    func.coalesce(func.sum(PoolAccessBooking.headcount), 0),
+                )
+                .where(
+                    PoolAccessBooking.offer_id.in_(ids),
+                    (PoolAccessBooking.status == "confirmed")
+                    | (
+                        (PoolAccessBooking.status == "pending_payment")
+                        & (PoolAccessBooking.hold_expires_at > now)
+                    ),
+                )
+                .group_by(PoolAccessBooking.offer_id)
+            )
+        ).all()
         used_by_offer = {offer_id: int(count) for offer_id, count in counts}
 
     return {
@@ -146,8 +152,11 @@ async def published_pool_access_availability(
                 "starts_at": offer.starts_at.isoformat(),
                 "ends_at": offer.ends_at.isoformat(),
                 "capacity": offer.capacity,
-                "remaining_capacity": max(0, offer.capacity - used_by_offer.get(offer.id, 0)),
-                "can_book": offer.capacity - used_by_offer.get(offer.id, 0) >= headcount,
+                "remaining_capacity": max(
+                    0, offer.capacity - used_by_offer.get(offer.id, 0)
+                ),
+                "can_book": offer.capacity - used_by_offer.get(offer.id, 0)
+                >= headcount,
                 "selling_price_kobo": offer.selling_price_kobo,
                 "currency": offer.currency,
             }
