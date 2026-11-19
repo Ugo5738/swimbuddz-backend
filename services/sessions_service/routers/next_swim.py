@@ -3,6 +3,7 @@
 The Sessions service is authoritative for session access, not browser rankings.
 Checkout still performs fresh eligibility, capacity, and payment validation.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -40,7 +41,12 @@ def _ranking_key(row: dict) -> tuple:
     price = access.get("fee_amount_kobo")
     preferred = 0 if source in {"plan_included", "active_club", "home_club"} else 1
     included = 0 if price == 0 else 1
-    return (preferred, included, str(row.get("starts_at") or ""), str(row.get("id") or ""))
+    return (
+        preferred,
+        included,
+        str(row.get("starts_at") or ""),
+        str(row.get("id") or ""),
+    )
 
 
 @router.get("/me/next-swim")
@@ -68,30 +74,48 @@ async def get_next_swim(
 
     now = utc_now()
     # Bounded discovery so the endpoint does not scan years of scheduled rows.
-    sessions = (await db.execute(
-        select(Session).where(
-            Session.starts_at > now,
-            Session.starts_at < now + timedelta(days=90),
-            Session.status == SessionStatus.SCHEDULED,
-        ).order_by(Session.starts_at.asc(), Session.id.asc()).limit(100)
-    )).scalars().all()
+    sessions = (
+        (
+            await db.execute(
+                select(Session)
+                .where(
+                    Session.starts_at > now,
+                    Session.starts_at < now + timedelta(days=90),
+                    Session.status == SessionStatus.SCHEDULED,
+                )
+                .order_by(Session.starts_at.asc(), Session.id.asc())
+                .limit(100)
+            )
+        )
+        .scalars()
+        .all()
+    )
     if not sessions:
         return {"primary": None, "alternatives": [], "next_confirmed": None}
 
-    confirmed = set((await db.execute(
-        select(SessionBooking.session_id).where(
-            SessionBooking.member_id == member_id,
-            SessionBooking.status == SessionBookingStatus.CONFIRMED,
-            SessionBooking.session_id.in_([session.id for session in sessions]),
+    confirmed = set(
+        (
+            await db.execute(
+                select(SessionBooking.session_id).where(
+                    SessionBooking.member_id == member_id,
+                    SessionBooking.status == SessionBookingStatus.CONFIRMED,
+                    SessionBooking.session_id.in_([session.id for session in sessions]),
+                )
+            )
         )
-    )).scalars().all())
+        .scalars()
+        .all()
+    )
 
     # Uses the existing batched cross-service membership, Club, cohort, pod
     # and Event access checks; do not recreate entitlement logic here.
     decorated = await _decorate_sessions_for_user(list(sessions), user, db)
-    confirmed_rows = [row for row in decorated if uuid.UUID(str(row["id"])) in confirmed]
+    confirmed_rows = [
+        row for row in decorated if uuid.UUID(str(row["id"])) in confirmed
+    ]
     bookable = [
-        row for row in decorated
+        row
+        for row in decorated
         if uuid.UUID(str(row["id"])) not in confirmed
         and (row.get("access") or {}).get("bookable") is True
     ]
