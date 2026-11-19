@@ -8,6 +8,7 @@ The worker shares its image with the FastAPI service today; v1 may split
 them so the API container doesn't ship the torch/ultralytics binaries.
 """
 
+from arq import cron
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 from services.ai_service.constants import MEMBER_QUEUE_NAME, PUBLIC_QUEUE_NAME
@@ -37,6 +38,18 @@ async def task_inspect_instance(
         attempt,
     )
     return await inspect_instance(job_id, aspect, instance_id, attempt=attempt)
+
+
+async def task_retry_strokelab_notifications(ctx: dict) -> dict:
+    from services.ai_service.tasks.maintenance import retry_unnotified_public_jobs
+
+    return await retry_unnotified_public_jobs()
+
+
+async def task_purge_strokelab_public(ctx: dict) -> dict:
+    from services.ai_service.tasks.maintenance import purge_expired_public_jobs
+
+    return await purge_expired_public_jobs()
 
 
 class WorkerSettings:
@@ -88,5 +101,11 @@ class PublicWorkerSettings:
     max_jobs = WorkerSettings.max_jobs
     max_tries = WorkerSettings.max_tries
     job_timeout = WorkerSettings.job_timeout
-    functions = WorkerSettings.functions
-    cron_jobs = WorkerSettings.cron_jobs
+    functions = WorkerSettings.functions + [
+        task_retry_strokelab_notifications,
+        task_purge_strokelab_public,
+    ]
+    cron_jobs = [
+        cron(task_retry_strokelab_notifications, minute={17}, run_at_startup=False),
+        cron(task_purge_strokelab_public, hour={3}, minute={47}, run_at_startup=False),
+    ]
