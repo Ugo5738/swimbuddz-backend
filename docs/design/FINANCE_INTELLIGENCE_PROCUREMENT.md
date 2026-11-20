@@ -84,6 +84,10 @@ Store order states, verified stock cost coverage, supplier invoices and
 approved credit exposure. Snapshot timestamps and data classification are
 returned. This is *not* the profit/loss statement or a live bank balance.
 
+Ledger's isolated production image runs these existing shared database reads
+as aggregate SQL projections. Startup and report execution require only the
+Ledger and shared library packages.
+
 Payments gross is not bank cash. Prepaid Academy classes are delivery
 obligations, not automatically accounts receivable. Inventory stock with
 unverified cost is reported separately. Club future service costs remain

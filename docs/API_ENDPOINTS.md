@@ -11,6 +11,11 @@ This document defines the **HTTP interface** exposed via the gateway (`https://a
 
 All endpoints assume Bearer authentication with a Supabase access token unless marked as **Public**.
 
+`GET /api/v1/admin/finance/intelligence` requires an active Ledger membership
+with viewer access. Its existing report combines read-only Payments, Academy,
+Club and Store aggregates in the Ledger service. See
+[Finance Intelligence](design/FINANCE_INTELLIGENCE_PROCUREMENT.md#finance-intelligence-endpoint).
+
 ## Service Coverage
 
 The November 17 resource follow-up preserves endpoint contracts. Membership
