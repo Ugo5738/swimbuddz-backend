@@ -24,6 +24,7 @@ from typing import Annotated, Optional
 import httpx
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     File,
     Form,
@@ -87,9 +88,16 @@ from services.ai_service.schemas.analysis import (
     PublicDirectUploadRequest,
     PublicDirectUploadResponse,
 )
+from services.ai_service.services.email_auth import (
+    request_email_code,
+    verify_email_code,
+    require_paid_credit_owner,
+)
+from pydantic import BaseModel
 from services.ai_service.services.credit_ops import (
     PERMALINK_CREDITS,
     NoCreditsError,
+    PaidVerificationRequired,
     acquire_for_submit,
     find_reservation,
     find_sale_grant,
@@ -114,6 +122,38 @@ from services.ai_service.services.gumroad import (
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/public", tags=["stroke-lab-public"])
+
+
+class EmailCodeRequest(BaseModel):
+    email: str
+
+
+class EmailCodeVerify(BaseModel):
+    email: str
+    code: str
+
+
+class CompleteUploadBody(BaseModel):
+    email_auth_token: Optional[str] = None
+
+
+@router.post("/credits/email-code/request")
+async def request_strokelab_email_code(
+    body: EmailCodeRequest, request: Request
+) -> dict:
+    email = _normalize_email(body.email)
+    await request_email_code(
+        email, requester=request.client.host if request.client else ""
+    )
+    return {"sent": True}
+
+
+@router.post("/credits/email-code/verify")
+async def verify_strokelab_email_code(body: EmailCodeVerify) -> dict:
+    email = _normalize_email(body.email)
+    token = await verify_email_code(email, body.code)
+    return {"email_auth_token": token, "expires_in": 86400}
+
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _DIRECT_UPLOAD_TTL_SECONDS = 3600
@@ -219,6 +259,8 @@ async def create_public_direct_upload(
             status_code=402,
             detail={"reason": "no_credits", "buy_url_base": GUMROAD_CHECKOUT_BASE},
         )
+    if not bal["can_submit_free"]:
+        await require_paid_credit_owner(email, req.email_auth_token)
 
     guest_token = secrets.token_urlsafe(32)
     job = AnalysisJob(
@@ -281,6 +323,7 @@ async def create_public_direct_upload(
 )
 async def complete_public_direct_upload(
     job_id: uuid.UUID,
+    body: Annotated[Optional[CompleteUploadBody], Body()] = None,
     x_guest_token: Annotated[Optional[str], Header(alias="X-Guest-Token")] = None,
     guest_token: Annotated[Optional[str], Query()] = None,
     db: AsyncSession = Depends(get_async_db),
@@ -342,8 +385,20 @@ async def complete_public_direct_upload(
         )
 
     try:
+        bal = await get_balance(db, raw_email=job.guest_email or "")
+        if not bal["can_submit_free"]:
+            await require_paid_credit_owner(
+                job.guest_email or "", body.email_auth_token if body else None
+            )
         reserve_entry = await acquire_for_submit(
-            db, raw_email=job.guest_email or "", job_id=job.id
+            db,
+            raw_email=job.guest_email or "",
+            job_id=job.id,
+            paid_authorized=not bal["can_submit_free"],
+        )
+    except PaidVerificationRequired:
+        raise HTTPException(
+            status_code=403, detail={"reason": "email_verification_required"}
         )
     except NoCreditsError:
         await delete_job_assets(job.video_storage_path, None)
@@ -398,6 +453,7 @@ async def complete_public_direct_upload(
 async def create_public_analysis_job(
     video: Annotated[UploadFile, File(description="Freestyle swim video, ≤50 MB")],
     guest_email: Annotated[str, Form()],
+    email_auth_token: Annotated[Optional[str], Form()] = None,
     stroke_type: Annotated[str, Form()] = "freestyle",
     discipline: Annotated[str, Form()] = "general",
     level: Annotated[str | None, Form()] = None,
@@ -413,6 +469,9 @@ async def create_public_analysis_job(
             detail=f"Only freestyle is supported. Got: {stroke_type}",
         )
     email = _normalize_email(guest_email)
+    bal = await get_balance(db, raw_email=email)
+    if not bal["can_submit_free"]:
+        await require_paid_credit_owner(email, email_auth_token)
 
     data = await video.read()
     if len(data) == 0:
@@ -463,7 +522,18 @@ async def create_public_analysis_job(
     # atomically. Reserve only AFTER the upload succeeded, so an upload failure
     # never leaves a dangling reservation (design §4.1).
     try:
-        reserve_entry = await acquire_for_submit(db, raw_email=email, job_id=job.id)
+        reserve_entry = await acquire_for_submit(
+            db,
+            raw_email=email,
+            job_id=job.id,
+            paid_authorized=not bal["can_submit_free"],
+        )
+    except PaidVerificationRequired:
+        await db.rollback()
+        await delete_job_assets(storage_path, None)
+        raise HTTPException(
+            status_code=403, detail={"reason": "email_verification_required"}
+        )
     except NoCreditsError:
         await db.rollback()  # the job row never persists — no orphan job
         await delete_job_assets(storage_path, None)  # best-effort: drop the upload
@@ -697,6 +767,9 @@ async def retry_public_analysis(
     job.error_message = None
     job.started_at = None
     job.completed_at = None
+    # A failed-attempt notice must not suppress the ready notification after
+    # a successful free retry of the same job.
+    job.email_sent_at = None
     await db.commit()
     try:
         await _enqueue_analysis(
@@ -720,16 +793,20 @@ async def retry_public_analysis(
 )
 async def get_public_credits(
     email: str,
+    email_auth_token: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
 ) -> PublicCreditsResponse:
-    """Coarse, non-enumerable balance for the paywall. ``free_used`` is not
-    exposed (it is the 'has this email been used' leak — design §4.3)."""
+    """Never expose a customer's paid balance to an anonymous email lookup."""
     normalized = _normalize_email(email)
     bal = await get_balance(db, raw_email=normalized)
+    remaining = 0
+    if email_auth_token:
+        await require_paid_credit_owner(normalized, email_auth_token)
+        remaining = bal["remaining_credits"]
     return PublicCreditsResponse(
         email=normalized,
         can_submit_free=bal["can_submit_free"],
-        remaining_credits=bal["remaining_credits"],
+        remaining_credits=remaining,
     )
 
 

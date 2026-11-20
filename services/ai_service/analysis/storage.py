@@ -173,11 +173,32 @@ async def download_storage_path(
         storage_path, legacy_prefix, DEFAULT_SIGNED_URL_TTL_SECONDS
     )
     dest = dest_dir / (Path(object_key).name or "upload.bin")
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.get(signed_url)
-        resp.raise_for_status()
-    dest.write_bytes(resp.content)
-    return dest
+    # Stream into the temporary file: httpx.get() buffers the entire response
+    # in RAM and could kill the 2 GiB worker on an accepted large upload.
+    from services.ai_service.constants import PUBLIC_MAX_UPLOAD_BYTES
+
+    downloaded = 0
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream("GET", signed_url) as resp:
+                resp.raise_for_status()
+                content_length = int(resp.headers.get("content-length") or 0)
+                if content_length > PUBLIC_MAX_UPLOAD_BYTES:
+                    raise ValueError("StrokeLab video exceeds worker size limit")
+                with dest.open("wb") as output:
+                    async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
+                        downloaded += len(chunk)
+                        if downloaded > PUBLIC_MAX_UPLOAD_BYTES:
+                            raise ValueError(
+                                "StrokeLab video exceeds worker size limit"
+                            )
+                        output.write(chunk)
+        if not downloaded:
+            raise ValueError("StrokeLab video is empty")
+        return dest
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
 
 
 async def signed_url_for_upload(
@@ -241,22 +262,28 @@ async def delete_job_assets(
     uploaded_key: Optional[str],
     annotated_key: Optional[str],
     evidence_keys: Optional[list[str]] = None,
-) -> None:
+) -> bool:
     """Remove storage objects for a job. Best-effort — DELETE endpoint
     swallows storage failures so the DB row can still be removed. Includes coach
     evidence frames so erasure/retention sweeps don't leave orphaned images."""
+    complete = True
     if uploaded_key:
         try:
             await _delete_storage_path(uploaded_key, LEGACY_UPLOADS_PREFIX)
         except Exception as exc:
+            complete = False
             logger.warning("Could not delete upload %s: %s", uploaded_key, exc)
     if annotated_key:
         try:
             await _delete_storage_path(annotated_key, LEGACY_ANNOTATED_PREFIX)
         except Exception as exc:
+            complete = False
             logger.warning("Could not delete annotated %s: %s", annotated_key, exc)
     for key in evidence_keys or []:
         try:
             await _delete_storage_path(key, LEGACY_ANNOTATED_PREFIX)
         except Exception as exc:
+            complete = False
             logger.warning("Could not delete evidence %s: %s", key, exc)
+
+    return complete
