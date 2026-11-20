@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -57,6 +57,7 @@ class SessionSummary(BaseModel):
 
 
 class AttendanceResponse(AttendanceBase):
+    swim_verified_on: date | None = None
     id: uuid.UUID
     session_id: uuid.UUID
     member_id: Optional[uuid.UUID] = None
@@ -118,6 +119,7 @@ class CoachAttendanceMarkRequest(BaseModel):
     exception, submit status=PRESENT.
     """
 
+    confirm_swimmers: bool = False
     entries: List[CoachAttendanceMarkEntry]
 
 

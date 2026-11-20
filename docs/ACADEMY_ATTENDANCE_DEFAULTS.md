@@ -23,6 +23,13 @@ rather than represented only by the absence of an exception, so upload access,
 attendance history, reporting and coach payout calculations use the same fact.
 This process does not create a payment, booking, refund or reward transaction.
 
+After a swim starts, a coach or admin reviews the roster and selects **Confirm
+Present/Late swimmers for Bubbles**. Attendance counts only the confirmed
+member swimmers. Ordinary saves and the default Present worker can still
+record attendance. Correct an incorrect confirmation by saving the correct
+status in the roster. Wallet accounts for any advance credit when calculating
+the member’s next eligible award. See [ADR-019](DECISIONS.md#adr-019-one-bubble-per-confirmed-swim-day).
+
 Students use **Update my Academy attendance** on their own class card in My
 Swims. `POST /api/v1/attendance/sessions/{session_id}/my-academy-attendance`
 derives the member identity from authentication and requires active enrolment

@@ -27,7 +27,6 @@ from services.attendance_service.schemas import (
     PublicAttendanceCreate,
 )
 
-from ._milestones import _check_attendance_milestones
 from ._shared import (
     get_current_member,
     require_admin_or_coach_for_session,
@@ -160,15 +159,6 @@ async def sign_in_to_session(
 
     await db.commit()
     await db.refresh(attendance)
-
-    # Best-effort: check attendance milestones after new sign-in
-    if is_new and attendance_in.status in (
-        AttendanceStatus.PRESENT,
-        AttendanceStatus.LATE,
-    ):
-        await _check_attendance_milestones(
-            db, current_member.id, current_member.auth_id
-        )
 
     return attendance
 

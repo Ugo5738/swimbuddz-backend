@@ -163,6 +163,8 @@ def evaluate_conditions(trigger_config: Optional[dict], event_data: dict) -> boo
 
 async def get_matching_rules(db: AsyncSession, event_type: str) -> list[RewardRule]:
     """Fetch active rules for an event type, ordered by priority DESC."""
+    if event_type == "attendance.verified_swim_day":
+        return []  # Settled only by the versioned Attendance → Wallet endpoint.
     result = await db.execute(
         select(RewardRule)
         .where(RewardRule.event_type == event_type, RewardRule.is_active.is_(True))

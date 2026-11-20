@@ -216,11 +216,6 @@ async def test_authenticated_signin_links_booking_and_uses_booking_override(
         "validate_session_access",
         validate_access,
     )
-    monkeypatch.setattr(
-        signin_mod,
-        "_check_attendance_milestones",
-        AsyncMock(return_value=None),
-    )
 
     attendance = await signin_mod.sign_in_to_session(
         session_id=session_id,

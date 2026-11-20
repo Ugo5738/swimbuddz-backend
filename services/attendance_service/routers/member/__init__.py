@@ -4,7 +4,6 @@ Original 851-line module was split into per-area submodules (see
 docs/CONVENTIONS.md §12):
 
   - _shared.py        — auth helpers + tier-based access control
-  - _milestones.py    — best-effort milestone/streak emitter (private)
   - sign_in.py        — POST /sessions/{id}/sign-in + public variant
                        (looks up SessionBooking in sessions_service via HTTP
                         to link AttendanceRecord.booking_id, A1 Phase 3.3)
