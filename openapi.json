@@ -40775,6 +40775,92 @@
         }
       }
     },
+    "/api/v1/ai/public/credits/email-code/request": {
+      "post": {
+        "tags": [
+          "stroke-lab-public"
+        ],
+        "summary": "Request Strokelab Email Code",
+        "operationId": "request_strokelab_email_code_ai_public_credits_email_code_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Request Strokelab Email Code Ai Public Credits Email Code Request Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/public/credits/email-code/verify": {
+      "post": {
+        "tags": [
+          "stroke-lab-public"
+        ],
+        "summary": "Verify Strokelab Email Code",
+        "operationId": "verify_strokelab_email_code_ai_public_credits_email_code_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailCodeVerify"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Verify Strokelab Email Code Ai Public Credits Email Code Verify Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/public/analyze/uploads": {
       "post": {
         "tags": [
@@ -40868,6 +40954,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CompleteUploadBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "description": "Successful Response",
@@ -41179,7 +41282,7 @@
           "stroke-lab-public"
         ],
         "summary": "Coarse analyzer credit balance for an email",
-        "description": "Coarse, non-enumerable balance for the paywall. ``free_used`` is not\nexposed (it is the 'has this email been used' leak \u2014 design \u00a74.3).",
+        "description": "Never expose a customer's paid balance to an anonymous email lookup.",
         "operationId": "get_public_credits_ai_public_credits_get",
         "parameters": [
           {
@@ -41189,6 +41292,22 @@
             "schema": {
               "type": "string",
               "title": "Email"
+            }
+          },
+          {
+            "name": "email_auth_token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email Auth Token"
             }
           }
         ],
@@ -115884,6 +116003,17 @@
             "type": "string",
             "title": "Guest Email"
           },
+          "email_auth_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Auth Token"
+          },
           "stroke_type": {
             "type": "string",
             "title": "Stroke Type",
@@ -116253,6 +116383,23 @@
         "title": "CohortComplexityScoringResponse",
         "description": "AI-suggested cohort complexity scores."
       },
+      "CompleteUploadBody": {
+        "properties": {
+          "email_auth_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Auth Token"
+          }
+        },
+        "type": "object",
+        "title": "CompleteUploadBody"
+      },
       "ContentDraftRequest": {
         "properties": {
           "title": {
@@ -116462,6 +116609,37 @@
         ],
         "title": "DrillSuggestion",
         "description": "A drill resolved from the drill bank for an observation."
+      },
+      "EmailCodeRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "EmailCodeRequest"
+      },
+      "EmailCodeVerify": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "code"
+        ],
+        "title": "EmailCodeVerify"
       },
       "FoundingClaimRequest": {
         "properties": {
@@ -117027,6 +117205,17 @@
           "guest_email": {
             "type": "string",
             "title": "Guest Email"
+          },
+          "email_auth_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Auth Token"
           },
           "filename": {
             "type": "string",

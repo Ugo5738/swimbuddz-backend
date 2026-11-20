@@ -76,8 +76,28 @@ log "Logging in to Docker Hub"
 printf '%s' "$DOCKER_PASSWORD" | \
   docker login --username "$DOCKER_USERNAME" --password-stdin
 
+storage_paths=("$DEPLOY_PATH")
+if docker_root="$(docker info --format '{{.DockerRootDir}}')" && [ -n "$docker_root" ]; then
+  storage_paths+=("$docker_root")
+fi
+if [ -d /var/lib/containerd ]; then
+  storage_paths+=(/var/lib/containerd)
+fi
+report_disk_usage() {
+  # Disk diagnostics should still report accessible mounts if a path is missing.
+  df -h "${storage_paths[@]}" || true
+  df -i "${storage_paths[@]}" || true
+}
+
+log "Checking deployment and Docker storage"
+report_disk_usage
+
 log "Pulling production images"
-compose pull
+if ! compose pull; then
+  log "Disk usage after image pull failure"
+  report_disk_usage
+  die "Image pull failed. See docs/operations/PRODUCTION_DATABASE_RECOVERY.md for disk recovery."
+fi
 
 # No migrations or service replacement is allowed unless the archive has
 # actually restored and matched its snapshot counts in an isolated database.

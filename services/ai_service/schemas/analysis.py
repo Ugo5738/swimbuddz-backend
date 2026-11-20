@@ -33,6 +33,7 @@ class PublicDirectUploadRequest(BaseModel):
     """Start a direct browser-to-S3 public analyzer upload."""
 
     guest_email: str
+    email_auth_token: Optional[str] = None
     filename: str = "clip.mp4"
     content_type: str = "video/mp4"
     size_bytes: int = Field(gt=0)
