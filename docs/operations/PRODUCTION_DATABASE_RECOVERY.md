@@ -33,6 +33,31 @@ needed for an incident. Review disk use before manually removing older points.
 Delete only the corresponding `swimbuddz-rollback:<point>-<service>` tags after
 that point is retired. Image pruning does not remove these tagged images.
 
+### Recovering from a full Docker filesystem
+
+1. Check the mount holding the deployment checkout and Docker's data. When
+   Docker uses the containerd image store, check its mount as well.
+
+   ```bash
+   df -h /home/deploy/swimbuddz-backend "$(docker info --format '{{.DockerRootDir}}')"
+   df -h /var/lib/containerd
+   df -i /var/lib/containerd
+   docker system df
+   ```
+
+2. Review any running release job. On the production host, clear unused build
+   cache with `docker builder prune` and untagged, unused images with
+   `docker image prune`. Recheck free space after Docker has finished cleanup.
+3. If more space is needed, expand the filesystem or review older local rollback
+   images for retirement. Keep the latest five verified recovery points and
+   incident pins. Use the selected point's `release.json` to identify its exact
+   tags. Compare image IDs across points first because removing a duplicate tag
+   does not release shared layers. Preserve the database archive and its
+   verification evidence.
+4. Once the host has room for the remaining images and backup verification,
+   retry the production workflow. Check the verified restore, service status,
+   public gateway health and post-deploy disk usage.
+
 The private point includes the prior `.env.prod`, Compose `.env` when present,
 Compose file, shell interpolation values (`compose-shell.env`), running image
 IDs, local rollback tags and Compose image override.

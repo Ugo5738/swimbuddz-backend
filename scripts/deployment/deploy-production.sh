@@ -76,8 +76,22 @@ log "Logging in to Docker Hub"
 printf '%s' "$DOCKER_PASSWORD" | \
   docker login --username "$DOCKER_USERNAME" --password-stdin
 
+log "Checking deployment and Docker storage"
+docker_root="$(docker info --format '{{.DockerRootDir}}')"
+storage_paths=("$DEPLOY_PATH" "$docker_root")
+if [ -d /var/lib/containerd ]; then
+  storage_paths+=(/var/lib/containerd)
+fi
+df -h "${storage_paths[@]}"
+df -i "${storage_paths[@]}"
+
 log "Pulling production images"
-compose pull
+if ! compose pull; then
+  log "Disk usage after image pull failure"
+  df -h "${storage_paths[@]}"
+  df -i "${storage_paths[@]}"
+  die "Image pull failed. See docs/operations/PRODUCTION_DATABASE_RECOVERY.md for disk recovery."
+fi
 
 # No migrations or service replacement is allowed unless the archive has
 # actually restored and matched its snapshot counts in an isolated database.
