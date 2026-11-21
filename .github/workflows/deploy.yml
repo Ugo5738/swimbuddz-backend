@@ -62,6 +62,9 @@ jobs:
           ruff check .
           ruff format --check .
 
+      - name: Enforce isolated Store and Ledger image import boundaries
+        run: pytest -q tests/unit/test_service_runtime_boundaries.py
+
       - name: Check every service has one migration head
         run: pytest -v tests/unit/test_migration_graphs.py
 
