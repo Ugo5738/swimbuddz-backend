@@ -46,6 +46,12 @@ async def task_retry_strokelab_notifications(ctx: dict) -> dict:
     return await retry_unnotified_public_jobs()
 
 
+async def task_settle_strokelab_stale_jobs(ctx: dict) -> dict:
+    from services.ai_service.tasks.maintenance import fail_stale_public_jobs
+
+    return await fail_stale_public_jobs()
+
+
 async def task_purge_strokelab_public(ctx: dict) -> dict:
     from services.ai_service.tasks.maintenance import purge_expired_public_jobs
 
@@ -104,8 +110,10 @@ class PublicWorkerSettings:
     functions = WorkerSettings.functions + [
         task_retry_strokelab_notifications,
         task_purge_strokelab_public,
+        task_settle_strokelab_stale_jobs,
     ]
     cron_jobs = [
         cron(task_retry_strokelab_notifications, minute={17}, run_at_startup=False),
+        cron(task_settle_strokelab_stale_jobs, minute={37}, run_at_startup=False),
         cron(task_purge_strokelab_public, hour={3}, minute={47}, run_at_startup=False),
     ]
