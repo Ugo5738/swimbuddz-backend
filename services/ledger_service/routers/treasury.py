@@ -71,14 +71,26 @@ async def list_banks(request: Request, _actor=Depends(require_ledger_role(Ledger
 @router.post("/banks", response_model=BankOut, status_code=201)
 async def create_bank(payload: BankCreate, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
     org = request.state.org_id
-    existing = await session.scalar(select(TreasuryBankAccount).where(TreasuryBankAccount.org_id == org, TreasuryBankAccount.code == payload.code))
-    if existing:
-        raise HTTPException(409, "This bank already exists. No duplicate account was created.")
+    # Keep the original SwimBuddz bank codes and ledger mappings intact.
+    # All other bank accounts receive a unique, per-account code. A bank may
+    # have multiple accounts at the same institution.
+    if payload.code:
+        existing = await session.scalar(select(TreasuryBankAccount).where(
+            TreasuryBankAccount.org_id == org,
+            TreasuryBankAccount.code == payload.code,
+        ))
+        if existing:
+            raise HTTPException(409, "This legacy account is already registered.")
+        bank_name = {"stanbic": "Stanbic IBTC", "moniepoint": "Moniepoint"}[payload.code]
+        purpose = {"stanbic": "treasury", "moniepoint": "operations"}[payload.code]
+        code = payload.code
+    else:
+        bank_name = payload.bank_name
+        purpose = payload.purpose
+        code = "acct_" + uuid.uuid4().hex
     bank = TreasuryBankAccount(
-        org_id=org, code=payload.code,
-        bank_name={"stanbic": "Stanbic IBTC", "moniepoint": "Moniepoint"}[payload.code],
-        purpose={"stanbic": "treasury", "moniepoint": "operations"}[payload.code],
-        last_four=payload.last_four,
+        org_id=org, code=code, bank_name=bank_name,
+        purpose=purpose, last_four=payload.last_four,
     )
     session.add(bank)
     await session.flush()
@@ -122,9 +134,10 @@ async def link_bank_ledger(bank_id: uuid.UUID, payload: LedgerAccountLink, reque
     ))
     if account is None or account.type != AccountType.ASSET or account.normal_balance != NormalBalance.DEBIT:
         raise HTTPException(422, "Only an active bank asset ledger account can be linked")
-    expected = "bank_operating_ngn" if bank.code == "stanbic" else "bank_moniepoint_ngn"
+    legacy_maps = {"stanbic": "bank_operating_ngn", "moniepoint": "bank_moniepoint_ngn"}
+    expected = legacy_maps.get(bank.code, "bank_account_" + bank.id.hex)
     if not account.account_metadata or account.account_metadata.get("maps_to") != expected:
-        raise HTTPException(422, "Select the designated ledger account for this bank; do not mix bank balances")
+        raise HTTPException(422, "Select the dedicated ledger account for this bank; do not mix bank balances")
     other = await session.scalar(select(TreasuryBankAccount).where(
         TreasuryBankAccount.org_id == org,
         TreasuryBankAccount.id != bank_id,
@@ -134,6 +147,50 @@ async def link_bank_ledger(bank_id: uuid.UUID, payload: LedgerAccountLink, reque
         raise HTTPException(409, "This ledger account is already linked to a different bank")
     bank.ledger_account_id = account.id
     _audit(session, org, actor, "bank_ledger_linked", bank.id, account_code=account.code)
+    await session.commit()
+    await session.refresh(bank)
+    return bank
+
+
+@router.post("/banks/{bank_id}/create-ledger", response_model=BankOut)
+async def create_bank_ledger(bank_id: uuid.UUID, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    """Create and link a distinct NGN asset account for a newly registered bank.
+
+    Never overwrite or remap the existing Stanbic and Moniepoint accounts.
+    No bank connection, balance assertion or journal posting is implied.
+    """
+    org = request.state.org_id
+    bank = await _bank(session, org, bank_id)
+    # Serialize account creation for this bank across concurrent requests.
+    bank = await session.scalar(select(TreasuryBankAccount).where(
+        TreasuryBankAccount.org_id == org, TreasuryBankAccount.id == bank_id,
+    ).with_for_update())
+    if bank.ledger_account_id is not None:
+        return bank
+    if bank.code in ("stanbic", "moniepoint"):
+        raise HTTPException(422, "Use the legacy ledger mapping workflow for this account")
+
+    stable_code = "11-" + bank.id.hex[:16]
+    account = await session.scalar(select(ChartOfAccounts).where(
+        ChartOfAccounts.org_id == org, ChartOfAccounts.code == stable_code,
+    ))
+    if account is None:
+        base = await session.scalar(select(ChartOfAccounts).where(
+            ChartOfAccounts.org_id == org, ChartOfAccounts.code == "1110",
+        ))
+        account = ChartOfAccounts(
+            org_id=org, code=stable_code, name="Bank — " + bank.bank_name + " (NGN)",
+            type=AccountType.ASSET, normal_balance=NormalBalance.DEBIT,
+            parent_id=base.parent_id if base else None,
+            is_active=True, is_system=False,
+            account_metadata={"maps_to": "bank_account_" + bank.id.hex},
+        )
+        session.add(account)
+        await session.flush()
+    elif not account.account_metadata or account.account_metadata.get("maps_to") != "bank_account_" + bank.id.hex:
+        raise HTTPException(409, "Bank ledger account code already belongs to another purpose")
+    bank.ledger_account_id = account.id
+    _audit(session, org, actor, "bank_ledger_created", bank.id, account_code=account.code)
     await session.commit()
     await session.refresh(bank)
     return bank
