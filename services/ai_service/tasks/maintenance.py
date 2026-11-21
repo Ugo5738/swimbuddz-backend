@@ -20,7 +20,7 @@ from services.ai_service.models import (
     AnalysisResult,
 )
 from services.ai_service.services.notify import send_failed_email, send_ready_email
-from services.ai_service.tasks.analyze import _mark_email_sent
+from services.ai_service.tasks.analyze import _mark_email_sent, _mark_failed
 
 logger = get_logger(__name__)
 
@@ -76,7 +76,41 @@ async def retry_unnotified_public_jobs(limit: int = 20) -> dict:
     return {"found": len(snapshots), "sent": sent}
 
 
-async def purge_expired_public_jobs(limit: int = 20) -> dict:
+async def fail_stale_public_jobs(limit: int = 100) -> dict:
+    """Settle jobs abandoned by upload/queue/worker failures after six hours.
+
+    The longest configured AI retry sequence should finish within this window.
+    The existing failure path refunds only the job's live credit reservation.
+    A delayed ARQ delivery cannot restart a failed job (worker terminal guard).
+    """
+    cutoff = utc_now() - timedelta(hours=6)
+    async with AsyncSessionLocal() as session:
+        ids = (
+            await session.execute(
+                select(AnalysisJob.id)
+                .where(
+                    AnalysisJob.source == AnalysisJobSource.PUBLIC,
+                    AnalysisJob.status.in_(
+                        [AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING]
+                    ),
+                    AnalysisJob.created_at <= cutoff,
+                )
+                .order_by(AnalysisJob.created_at)
+                .limit(limit)
+            )
+        ).scalars().all()
+
+    failed = 0
+    for job_id in ids:
+        try:
+            await _mark_failed(job_id, "temporarily_unavailable")
+            failed += 1
+        except Exception:
+            logger.exception("Could not settle abandoned StrokeLab job %s", job_id)
+    return {"found": len(ids), "failed": failed}
+
+
+async def purge_expired_public_jobs(limit: int = 100) -> dict:
     """Erase public analyses 30 days after creation, including generated images.
 
     Failed storage deletion preserves the DB row so the next pass can retry.
@@ -108,11 +142,15 @@ async def purge_expired_public_jobs(limit: int = 20) -> dict:
         try:
             async with AsyncSessionLocal() as session:
                 job = await session.get(AnalysisJob, job_id)
-                if job is None or job.status not in (
-                    AnalysisJobStatus.COMPLETED,
-                    AnalysisJobStatus.FAILED,
-                ):
+                if job is None:
                     continue
+                if job.status in (AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING):
+                    # Reuse the one-job credit refund path before erasing old uploads.
+                    await session.rollback()
+                    await _mark_failed(job_id, "temporarily_unavailable")
+                    job = await session.get(AnalysisJob, job_id)
+                    if job is None:
+                        continue
                 result = (
                     await session.execute(
                         select(AnalysisResult).where(AnalysisResult.job_id == job_id)
