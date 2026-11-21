@@ -828,8 +828,9 @@ async def _mark_coach_retrying(
     queued_at = utc_now()
     queue_name = MEMBER_QUEUE_NAME
     async with AsyncSessionLocal() as session:
-        job = await session.get(AnalysisJob, job_id)
-        if job is None:
+        job = await session.get(AnalysisJob, job_id, with_for_update=True)
+        if job is None or job.status != AnalysisJobStatus.PROCESSING:
+            # Stale-job recovery may already have failed and refunded this job.
             return
         queue_name = _analysis_queue_name(job.source)
 
@@ -893,7 +894,9 @@ async def _write_completed(
             )
             return
         if job.status != AnalysisJobStatus.PROCESSING:
-            logger.info("Discarding late StrokeLab completion for terminal job %s", job_id)
+            logger.info(
+                "Discarding late StrokeLab completion for terminal job %s", job_id
+            )
             return
         job.status = AnalysisJobStatus.COMPLETED
         job.completed_at = utc_now()
