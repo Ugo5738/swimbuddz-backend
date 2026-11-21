@@ -66,6 +66,10 @@ def mock_public_io():
         patch(
             "services.ai_service.routers.public._enqueue_analysis", new=AsyncMock()
         ) as enq,
+        patch(
+            "services.ai_service.routers.public.require_paid_credit_owner",
+            new=AsyncMock(),
+        ),
     ):
         yield enq
 
@@ -82,6 +86,39 @@ async def _submit(ai_client, email: str = ""):
 
 
 # ── submit ───────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_free_public_submit_requires_email_verification(ai_client):
+    """Do not issue even a free credit or accept a video from an unowned email."""
+    resp = await ai_client.post(
+        _SUBMIT,
+        data={"guest_email": _unique_email(), "stroke_type": "freestyle"},
+        files=_files(),
+    )
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"]["reason"] == "email_verification_required"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_free_direct_upload_requires_email_verification(ai_client):
+    resp = await ai_client.post(
+        "/ai/public/analyze/uploads",
+        json={
+            "guest_email": _unique_email(),
+            "filename": "test.mov",
+            "content_type": "video/quicktime",
+            "size_bytes": 1024,
+            "stroke_type": "freestyle",
+            "discipline": "distance",
+        },
+    )
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"]["reason"] == "email_verification_required"
+
+
 
 
 @pytest.mark.asyncio
