@@ -1,6 +1,6 @@
 """Safety regressions for large high-quality S3 StrokeLab uploads."""
+
 import subprocess
-from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -9,10 +9,17 @@ from services.ai_service.analysis import storage
 
 
 @pytest.mark.asyncio
-async def test_large_public_video_uses_remote_window_not_full_download(monkeypatch, tmp_path):
-    monkeypatch.setattr(storage, "_signed_url_for_path", AsyncMock(return_value="https://s3.example.test/clip"))
+async def test_large_public_video_uses_remote_window_not_full_download(
+    monkeypatch, tmp_path
+):
     monkeypatch.setattr(
-        storage, "verify_media_object",
+        storage,
+        "_signed_url_for_path",
+        AsyncMock(return_value="https://s3.example.test/clip"),
+    )
+    monkeypatch.setattr(
+        storage,
+        "verify_media_object",
         AsyncMock(return_value={"size_bytes": 300 * 1024 * 1024}),
     )
     copied = []

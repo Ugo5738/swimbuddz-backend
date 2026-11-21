@@ -119,8 +119,6 @@ async def test_free_direct_upload_requires_email_verification(ai_client):
     assert resp.json()["detail"]["reason"] == "email_verification_required"
 
 
-
-
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_public_submit_creates_guest_job(ai_client, db_session, mock_public_io):

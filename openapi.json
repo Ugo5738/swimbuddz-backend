@@ -117432,6 +117432,32 @@
             "type": "array",
             "title": "Recent Jobs"
           },
+          "model_spend_24h_usd": {
+            "type": "number",
+            "title": "Model Spend 24H Usd",
+            "default": 0.0
+          },
+          "model_spend_7d_usd": {
+            "type": "number",
+            "title": "Model Spend 7D Usd",
+            "default": 0.0
+          },
+          "model_spend_limit_24h_usd": {
+            "type": "number",
+            "title": "Model Spend Limit 24H Usd",
+            "default": 0.0
+          },
+          "model_spend_per_success_7d_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Spend Per Success 7D Usd"
+          },
           "queue_depth_approx": {
             "type": "integer",
             "title": "Queue Depth Approx",

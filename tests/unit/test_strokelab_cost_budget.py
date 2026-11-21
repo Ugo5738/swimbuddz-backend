@@ -1,4 +1,5 @@
 """StrokeLab provider budget regression tests — no external API calls."""
+
 from types import SimpleNamespace
 
 import pytest

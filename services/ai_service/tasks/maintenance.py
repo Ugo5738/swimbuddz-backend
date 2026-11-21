@@ -93,19 +93,23 @@ async def fail_stale_public_jobs(limit: int = 100) -> dict:
     cutoff = utc_now() - timedelta(hours=6)
     async with AsyncSessionLocal() as session:
         ids = (
-            await session.execute(
-                select(AnalysisJob.id)
-                .where(
-                    AnalysisJob.source == AnalysisJobSource.PUBLIC,
-                    AnalysisJob.status.in_(
-                        [AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING]
-                    ),
-                    AnalysisJob.created_at <= cutoff,
+            (
+                await session.execute(
+                    select(AnalysisJob.id)
+                    .where(
+                        AnalysisJob.source == AnalysisJobSource.PUBLIC,
+                        AnalysisJob.status.in_(
+                            [AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING]
+                        ),
+                        AnalysisJob.created_at <= cutoff,
+                    )
+                    .order_by(AnalysisJob.created_at)
+                    .limit(limit)
                 )
-                .order_by(AnalysisJob.created_at)
-                .limit(limit)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     failed = 0
     uploads_cleaned = 0
@@ -117,7 +121,8 @@ async def fail_stale_public_jobs(limit: int = 100) -> dict:
             async with AsyncSessionLocal() as session:
                 job = await session.get(AnalysisJob, job_id)
                 if job is None or job.status not in (
-                    AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING
+                    AnalysisJobStatus.PENDING,
+                    AnalysisJobStatus.PROCESSING,
                 ):
                     continue
                 if job.status == AnalysisJobStatus.PENDING:
@@ -169,7 +174,10 @@ async def purge_expired_public_jobs(limit: int = 100) -> dict:
                 job = await session.get(AnalysisJob, job_id)
                 if job is None:
                     continue
-                if job.status in (AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING):
+                if job.status in (
+                    AnalysisJobStatus.PENDING,
+                    AnalysisJobStatus.PROCESSING,
+                ):
                     # Reuse the one-job credit refund path before erasing old uploads.
                     await session.rollback()
                     await _mark_failed(job_id, "temporarily_unavailable")

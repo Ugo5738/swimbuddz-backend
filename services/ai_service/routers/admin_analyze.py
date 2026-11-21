@@ -175,12 +175,9 @@ async def queue_snapshot(
 
     # These costs include failed attempts and retries, unlike a cost estimate
     # based only on successfully completed reports. Storage/fees are separate.
-    spent_stmt = (
-        select(func.coalesce(func.sum(AIRequest.cost_usd), 0.0))
-        .where(
-            AIRequest.request_type == "strokelab_analysis",
-            AIRequest.status == "success",
-        )
+    spent_stmt = select(func.coalesce(func.sum(AIRequest.cost_usd), 0.0)).where(
+        AIRequest.request_type == "strokelab_analysis",
+        AIRequest.status == "success",
     )
     spend_24h = float(
         (await db.execute(spent_stmt.where(AIRequest.created_at >= cutoff))).scalar()
@@ -188,13 +185,14 @@ async def queue_snapshot(
     )
     week_cutoff = utc_now() - timedelta(days=7)
     spend_7d = float(
-        (await db.execute(spent_stmt.where(AIRequest.created_at >= week_cutoff))).scalar()
+        (
+            await db.execute(spent_stmt.where(AIRequest.created_at >= week_cutoff))
+        ).scalar()
         or 0.0
     )
     week_counts = await _counts_in_window(db, since=week_cutoff)
     cost_per_success = (
-        round(spend_7d / week_counts.completed, 4)
-        if week_counts.completed else None
+        round(spend_7d / week_counts.completed, 4) if week_counts.completed else None
     )
 
     return QueueSnapshot(

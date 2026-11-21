@@ -173,11 +173,32 @@ def _transcode_remote_clip(signed_url: str, dest: Path, max_seconds: int) -> Non
     try:
         subprocess.run(
             [
-                "ffmpeg", "-nostdin", "-y", "-hide_banner", "-loglevel", "error",
-                "-i", signed_url, "-t", str(max_seconds), "-map", "0:v:0",
-                "-an", "-vf", "scale=-2:720",
-                "-c:v", "libx264", "-threads", "1", "-preset", "ultrafast",
-                "-crf", "28", "-movflags", "+faststart", str(dest),
+                "ffmpeg",
+                "-nostdin",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                signed_url,
+                "-t",
+                str(max_seconds),
+                "-map",
+                "0:v:0",
+                "-an",
+                "-vf",
+                "scale=-2:720",
+                "-c:v",
+                "libx264",
+                "-threads",
+                "1",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "28",
+                "-movflags",
+                "+faststart",
+                str(dest),
             ],
             check=True,
             capture_output=True,
@@ -212,15 +233,20 @@ async def download_storage_path(
         # local disk. FFmpeg pulls the first two minutes over HTTPS and writes
         # a bounded 720/1280p working clip.
         meta = await verify_media_object(
-            object_key=object_key, calling_service=_MEDIA_CALLING_SERVICE,
+            object_key=object_key,
+            calling_service=_MEDIA_CALLING_SERVICE,
         )
         if int(meta.get("size_bytes") or 0) > 250 * 1024 * 1024:
             from services.ai_service.constants import PUBLIC_MAX_UPLOAD_BYTES
+
             if int(meta["size_bytes"]) > PUBLIC_MAX_UPLOAD_BYTES:
                 raise ValueError("StrokeLab video exceeds upload limit")
             clip = dest_dir / f"{Path(object_key).stem}_window.mp4"
             await asyncio.to_thread(
-                _transcode_remote_clip, signed_url, clip, public_window_seconds,
+                _transcode_remote_clip,
+                signed_url,
+                clip,
+                public_window_seconds,
             )
             return clip
     # Stream into the temporary file: httpx.get() buffers the entire response

@@ -61,12 +61,14 @@ def _enforce_strokelab_vlm_budget(model: str) -> None:
         attempted >= settings.STROKELAB_MAX_MODEL_CALLS_PER_ATTEMPT
         or spent >= settings.STROKELAB_MAX_MODEL_COST_PER_ATTEMPT_USD
     ):
-        _record_vlm_event({
-            "kind": "budget_exhausted",
-            "model": model,
-            "attempts": attempted,
-            "cost_usd": spent,
-        })
+        _record_vlm_event(
+            {
+                "kind": "budget_exhausted",
+                "model": model,
+                "attempts": attempted,
+                "cost_usd": spent,
+            }
+        )
         raise RuntimeError("StrokeLab AI budget exhausted for this attempt")
     _record_vlm_event({"kind": "attempt", "model": model})
 

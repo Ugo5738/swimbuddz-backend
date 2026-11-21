@@ -159,7 +159,8 @@ async def analyze_swim_video(job_id: str) -> dict:
                     daily_spend,
                 )
                 await _mark_failed(
-                    job_uuid, "temporarily_unavailable",
+                    job_uuid,
+                    "temporarily_unavailable",
                     usage_events=_collect_usage_events(),
                 )
                 return {"status": "failed", "error": "budget_exhausted"}
@@ -168,7 +169,8 @@ async def analyze_swim_video(job_id: str) -> dict:
 
             # Pull the upload into our workdir through media_service.
             uploaded_local = await _download_upload(
-                video_storage_path, workdir_path,
+                video_storage_path,
+                workdir_path,
                 public=source == AnalysisJobSource.PUBLIC,
             )
 
