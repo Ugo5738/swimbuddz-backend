@@ -625,7 +625,7 @@ def create_app() -> FastAPI:
     # Explicit public StrokeLab rate limits: otherwise these write endpoints
     # fall through to the unthrottled /ai/{path:path} proxy.
     @app.api_route("/api/v1/ai/public/analyze/uploads", methods=["POST"])
-    @limiter.limit("5/minute")
+    @limiter.limit("4/hour")
     async def proxy_public_direct_upload(request: Request):
         return await proxy_request(
             clients.ai_client, "/ai/public/analyze/uploads", request
