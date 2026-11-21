@@ -175,7 +175,7 @@ def _transcode_remote_clip(signed_url: str, dest: Path, max_seconds: int) -> Non
             [
                 "ffmpeg", "-nostdin", "-y", "-hide_banner", "-loglevel", "error",
                 "-i", signed_url, "-t", str(max_seconds), "-map", "0:v:0",
-                "-an", "-vf", "scale=w='min(1280,iw)':h=-2",
+                "-an", "-vf", "scale=-2:720",
                 "-c:v", "libx264", "-threads", "1", "-preset", "ultrafast",
                 "-crf", "28", "-movflags", "+faststart", str(dest),
             ],
@@ -189,7 +189,9 @@ def _transcode_remote_clip(signed_url: str, dest: Path, max_seconds: int) -> Non
             raise RuntimeError("Remote analysis window exceeds processing budget")
     except Exception:
         dest.unlink(missing_ok=True)
-        raise
+        # CalledProcessError embeds the full presigned S3 URL in its exception.
+        # Suppress its context so the bearer URL cannot leak into worker logs.
+        raise RuntimeError("Could not prepare remote analysis window") from None
 
 
 async def download_storage_path(
