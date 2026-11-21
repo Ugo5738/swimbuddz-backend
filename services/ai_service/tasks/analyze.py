@@ -886,11 +886,14 @@ async def _write_completed(
 ) -> None:
     ready_email: tuple[str, str, dict | None] | None = None
     async with AsyncSessionLocal() as session:
-        job = await session.get(AnalysisJob, job_id)
+        job = await session.get(AnalysisJob, job_id, with_for_update=True)
         if job is None:
             logger.warning(
                 "Stroke Lab job %s disappeared before completion write", job_id
             )
+            return
+        if job.status != AnalysisJobStatus.PROCESSING:
+            logger.info("Discarding late StrokeLab completion for terminal job %s", job_id)
             return
         job.status = AnalysisJobStatus.COMPLETED
         job.completed_at = utc_now()
@@ -1031,8 +1034,11 @@ async def _mark_failed(
 ) -> None:
     failed_email: tuple[str, str, dict | None] | None = None
     async with AsyncSessionLocal() as session:
-        job = await session.get(AnalysisJob, job_id)
-        if job is None:
+        job = await session.get(AnalysisJob, job_id, with_for_update=True)
+        if job is None or job.status in (
+            AnalysisJobStatus.COMPLETED,
+            AnalysisJobStatus.FAILED,
+        ):
             return
         provider_usage = None
         if usage_events is not None:
