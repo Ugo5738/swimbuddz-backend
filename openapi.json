@@ -66765,6 +66765,65 @@
         ]
       }
     },
+    "/api/v1/admin/finance/treasury/banks/{bank_id}": {
+      "patch": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Update Bank Details",
+        "description": "Complete masked identifying details of an existing registered account.\n\nThis never changes bank ownership, ledger mapping, balances or bank feeds.",
+        "operationId": "update_bank_details_admin_finance_treasury_banks__bank_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Bank Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BankUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/finance/treasury/expense-ledger-options": {
       "get": {
         "tags": [
@@ -66847,6 +66906,55 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/treasury/banks/{bank_id}/create-ledger": {
+      "post": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Create Bank Ledger",
+        "description": "Create and link a distinct NGN asset account for a newly registered bank.\n\nNever overwrite or remap the existing Stanbic and Moniepoint accounts.\nNo bank connection, balance assertion or journal posting is implied.",
+        "operationId": "create_bank_ledger_admin_finance_treasury_banks__bank_id__create_ledger_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bank_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Bank Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -145700,12 +145808,47 @@
       "BankCreate": {
         "properties": {
           "code": {
-            "type": "string",
-            "enum": [
-              "stanbic",
-              "moniepoint"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "stanbic",
+                  "moniepoint"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Code"
+          },
+          "bank_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Name"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "treasury",
+                  "operations"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
           },
           "last_four": {
             "anyOf": [
@@ -145721,10 +145864,8 @@
           }
         },
         "type": "object",
-        "required": [
-          "code"
-        ],
-        "title": "BankCreate"
+        "title": "BankCreate",
+        "description": "Register a bank account, not a live bank-feed connection.\n\nOld clients can still submit the two legacy codes. New accounts receive\ntheir own stable code, so one company may hold multiple accounts at a bank."
       },
       "BankOut": {
         "properties": {
@@ -145895,6 +146036,25 @@
           "status"
         ],
         "title": "BankReconciliationRow"
+      },
+      "BankUpdate": {
+        "properties": {
+          "last_four": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{4}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Four"
+          }
+        },
+        "type": "object",
+        "title": "BankUpdate",
+        "description": "Owner-only update of non-financial account metadata."
       },
       "BubblesLiabilityReport": {
         "properties": {
