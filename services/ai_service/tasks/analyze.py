@@ -428,6 +428,7 @@ def _coach_system_error(coach_payload: dict) -> str | None:
                 "permissiondenied",
                 "permission denied",
                 "forbidden",
+                "strokelab ai budget exhausted",
                 "401",
                 "403",
             )
@@ -979,6 +980,7 @@ def _failure_reason(exc: Exception) -> str:
             "quota",
             "insufficient_quota",
             "billing",
+            "budget exhausted",
         )
     ):
         return "coach_unavailable"  # config/quota — a retry won't help
