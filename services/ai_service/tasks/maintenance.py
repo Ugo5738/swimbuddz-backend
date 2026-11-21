@@ -140,6 +140,50 @@ async def fail_stale_public_jobs(limit: int = 100) -> dict:
     return {"found": len(ids), "failed": failed, "uploads_cleaned": uploads_cleaned}
 
 
+async def fail_stale_member_jobs(limit: int = 100) -> dict:
+    """Expire abandoned member direct uploads and hung member analyses.
+
+    Member work has no paid credit reservation; a failed job remains accessible
+    to its owner for explicit erasure or another upload.
+    """
+    cutoff = utc_now() - timedelta(hours=6)
+    async with AsyncSessionLocal() as session:
+        ids = (
+            await session.execute(
+                select(AnalysisJob.id)
+                .where(
+                    AnalysisJob.source == AnalysisJobSource.MEMBER,
+                    AnalysisJob.status.in_(
+                        [AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING]
+                    ),
+                    AnalysisJob.created_at <= cutoff,
+                )
+                .order_by(AnalysisJob.created_at)
+                .limit(limit)
+            )
+        ).scalars().all()
+
+    failed = 0
+    for job_id in ids:
+        try:
+            async with AsyncSessionLocal() as session:
+                job = await session.get(AnalysisJob, job_id)
+                if job is None or job.status not in (
+                    AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING
+                ):
+                    continue
+                # Never infer an unfinished session is a safe deletion target;
+                # preserve the source video so the member can retry/review.
+                job.status = AnalysisJobStatus.FAILED
+                job.error_message = "temporarily_unavailable"
+                job.completed_at = utc_now()
+                await session.commit()
+                failed += 1
+        except Exception:
+            logger.exception("Could not settle abandoned member StrokeLab job %s", job_id)
+    return {"found": len(ids), "failed": failed}
+
+
 async def purge_expired_public_jobs(limit: int = 100) -> dict:
     """Erase public analyses 30 days after creation, including generated images.
 
