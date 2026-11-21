@@ -50,6 +50,7 @@ async def record_usage_events(
     events: list[dict],
     request_type: str,
     requesting_service: str = "ai_service",
+    job_id: str | None = None,
 ) -> dict[str, Any]:
     """Persist provider events to ai_requests and return a run summary."""
     summary = summarize_events(events)
@@ -65,6 +66,7 @@ async def record_usage_events(
                     "trace_name": event.get("trace_name"),
                     "event_kind": event.get("kind"),
                     "reason": event.get("reason"),
+                    "job_id": job_id,
                 },
                 output_data=event,
                 status="success" if event.get("kind") == "success" else "error",
