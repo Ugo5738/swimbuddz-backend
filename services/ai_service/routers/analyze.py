@@ -285,9 +285,7 @@ async def create_member_direct_upload(
         video_storage_path="",
         status=AnalysisJobStatus.PENDING,
         is_public=req.is_public,
-        **parse_coach_context(
-            req.discipline, req.level, req.focus_area, req.goal_text
-        ),
+        **parse_coach_context(req.discipline, req.level, req.focus_area, req.goal_text),
     )
     db.add(job)
     await db.flush()
@@ -363,7 +361,9 @@ async def complete_member_direct_upload(
         job.error_message = "temporarily_unavailable"
         job.completed_at = utc_now()
         await db.commit()
-        raise HTTPException(status_code=503, detail="Analysis queue unavailable") from exc
+        raise HTTPException(
+            status_code=503, detail="Analysis queue unavailable"
+        ) from exc
     return _job_to_lifecycle_response(job)
 
 
