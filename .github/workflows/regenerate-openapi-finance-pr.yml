@@ -7,6 +7,9 @@ on:
       - '.github/workflows/regenerate-openapi-finance-pr.yml'
 permissions:
   contents: write
+env:
+  DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/test_db
+  DATABASE_SESSION_URL: postgresql+psycopg://postgres:postgres@localhost:5432/test_db
 jobs:
   refresh-api:
     runs-on: ubuntu-latest
