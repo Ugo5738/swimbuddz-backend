@@ -28,7 +28,11 @@ def test_register_new_bank_with_explicit_purpose_and_masked_account_number():
         {"purpose": "treasury"},
         {"bank_name": " " * 4, "purpose": "operations"},
         {"bank_name": "Example Bank", "purpose": "other"},
-        {"bank_name": "Example Bank", "purpose": "operations", "last_four": "1234567890"},
+        {
+            "bank_name": "Example Bank",
+            "purpose": "operations",
+            "last_four": "1234567890",
+        },
         {"code": "stanbic", "bank_name": "Another Bank"},
         {"code": "some-bank"},
     ],
