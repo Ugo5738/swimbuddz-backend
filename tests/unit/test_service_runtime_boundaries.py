@@ -6,6 +6,7 @@ those images at process startup. This is an explicit architectural contract.
 
 Keep the guard in the normal unit-test suite as well as the isolated boot tests.
 """
+
 from __future__ import annotations
 
 import ast
