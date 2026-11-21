@@ -807,6 +807,7 @@ async def _mark_coach_retrying(
                 events=usage_events,
                 request_type="strokelab_analysis",
                 requesting_service="ai_service",
+                job_id=str(job_id),
             )
             coach_payload["provider_usage"] = {
                 "run": run_usage,
@@ -872,6 +873,7 @@ async def _write_completed(
                 events=usage_events,
                 request_type="strokelab_analysis",
                 requesting_service="ai_service",
+                job_id=str(job_id),
             )
             provider_usage = {
                 "run": run_usage,
@@ -1007,6 +1009,7 @@ async def _mark_failed(
                 events=usage_events,
                 request_type="strokelab_analysis",
                 requesting_service="ai_service",
+                job_id=str(job_id),
             )
             provider_usage = {
                 "run": run_usage,
