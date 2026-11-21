@@ -103,6 +103,11 @@ class Settings(BaseSettings):
     # Stroke Lab VLM coach (the new pipeline; provider-agnostic via LiteLLM).
     # Defaults are the eval-locked picks — override per-env without redeploying.
     STROKELAB_ENABLE_COACH: bool = True
+    # Cost circuit breakers for paid + free public analyses. Each model call
+    # is still metered by LiteLLM; never assume refunds recover provider spend.
+    STROKELAB_MAX_MODEL_CALLS_PER_ATTEMPT: int = 24
+    STROKELAB_MAX_MODEL_COST_PER_ATTEMPT_USD: float = 0.50
+    STROKELAB_DAILY_MODEL_COST_BUDGET_USD: float = 25.0
     STROKELAB_COACH_GATE_MODEL: str = "o4-mini"  # view/usability gate (reasoning)
     # Holistic + per-instance coach model. The ONE swap point between providers:
     #   OpenAI (stills):  STROKELAB_COACH_MODEL=gpt-4o                  + STROKELAB_COACH_VIDEO=false

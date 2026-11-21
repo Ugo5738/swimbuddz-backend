@@ -31,6 +31,7 @@ from arq import create_pool
 from sqlalchemy import delete, select
 
 from libs.common.arq_config import get_redis_settings
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.config import AsyncSessionLocal
@@ -61,6 +62,7 @@ from services.ai_service.services.credit_ops import (
 )
 from services.ai_service.services.notify import send_failed_email, send_ready_email
 from services.ai_service.services.provider_usage import (
+    daily_strokelab_model_cost_usd,
     gemini_quota_estimate,
     record_usage_events,
 )
@@ -98,9 +100,15 @@ async def analyze_swim_video(job_id: str) -> dict:
         if job is None:
             logger.warning("Stroke Lab job %s vanished before pickup", job_id)
             return {"status": "missing"}
-        if job.status == AnalysisJobStatus.COMPLETED:
-            logger.info("Stroke Lab job %s already completed; skipping", job_id)
-            return {"status": "already_done"}
+        # A delayed queue delivery must not resurrect a job already failed by
+        # maintenance. An explicit retry/admin reanalysis resets it to PENDING.
+        if job.status in (
+            AnalysisJobStatus.COMPLETED,
+            AnalysisJobStatus.FAILED,
+            AnalysisJobStatus.PROCESSING,
+        ):
+            logger.info("Stroke Lab job %s terminal (%s); skipping", job_id, job.status)
+            return {"status": "already_terminal"}
         job.status = AnalysisJobStatus.PROCESSING
         job.started_at = utc_now()
         job.error_message = None
@@ -146,11 +154,31 @@ async def analyze_swim_video(job_id: str) -> dict:
     try:
         coach_payload: dict | None = None
         frame_labels: list[dict] | None = None
+        if source == AnalysisJobSource.PUBLIC:
+            async with AsyncSessionLocal() as cost_session:
+                daily_spend = await daily_strokelab_model_cost_usd(cost_session)
+            if daily_spend >= get_settings().STROKELAB_DAILY_MODEL_COST_BUDGET_USD:
+                logger.error(
+                    "StrokeLab public daily model spend cap reached: $%.2f",
+                    daily_spend,
+                )
+                await _mark_failed(
+                    job_uuid,
+                    "temporarily_unavailable",
+                    usage_events=_collect_usage_events(),
+                )
+                return {"status": "failed", "error": "budget_exhausted"}
         with tempfile.TemporaryDirectory(prefix="strokelab_") as workdir:
             workdir_path = Path(workdir)
 
             # Pull the upload into our workdir through media_service.
-            uploaded_local = await _download_upload(video_storage_path, workdir_path)
+            uploaded_local = await _download_upload(
+                video_storage_path,
+                workdir_path,
+                # Both member and guest direct S3 uploads can be up to 2 GiB.
+                # Use a short remotely-transcoded clip when the original is huge.
+                public=True,
+            )
 
             # Public cost guard: upload/storage success is separate from the
             # bounded coaching window. Long public clips are stored as-is, but
@@ -426,6 +454,7 @@ def _coach_system_error(coach_payload: dict) -> str | None:
                 "permissiondenied",
                 "permission denied",
                 "forbidden",
+                "strokelab ai budget exhausted",
                 "401",
                 "403",
             )
@@ -439,9 +468,15 @@ def _main_coach_system_error(coach_payload: dict) -> str | None:
     return _coach_system_error(coach_payload)
 
 
-async def _download_upload(storage_path: str, workdir: Path) -> Path:
-    """Pull the user's upload into the worker's temp workdir."""
-    return await download_storage_path(storage_path, workdir)
+async def _download_upload(
+    storage_path: str, workdir: Path, *, public: bool = False
+) -> Path:
+    """Download ordinary clips; remotely normalize huge public originals."""
+    return await download_storage_path(
+        storage_path,
+        workdir,
+        public_window_seconds=PUBLIC_MAX_DURATION_SECONDS if public else None,
+    )
 
 
 def _probe_duration_seconds(path: Path) -> float | None:
@@ -793,8 +828,9 @@ async def _mark_coach_retrying(
     queued_at = utc_now()
     queue_name = MEMBER_QUEUE_NAME
     async with AsyncSessionLocal() as session:
-        job = await session.get(AnalysisJob, job_id)
-        if job is None:
+        job = await session.get(AnalysisJob, job_id, with_for_update=True)
+        if job is None or job.status != AnalysisJobStatus.PROCESSING:
+            # Stale-job recovery may already have failed and refunded this job.
             return
         queue_name = _analysis_queue_name(job.source)
 
@@ -804,6 +840,7 @@ async def _mark_coach_retrying(
                 events=usage_events,
                 request_type="strokelab_analysis",
                 requesting_service="ai_service",
+                job_id=str(job_id),
             )
             coach_payload["provider_usage"] = {
                 "run": run_usage,
@@ -850,10 +887,15 @@ async def _write_completed(
 ) -> None:
     ready_email: tuple[str, str, dict | None] | None = None
     async with AsyncSessionLocal() as session:
-        job = await session.get(AnalysisJob, job_id)
+        job = await session.get(AnalysisJob, job_id, with_for_update=True)
         if job is None:
             logger.warning(
                 "Stroke Lab job %s disappeared before completion write", job_id
+            )
+            return
+        if job.status != AnalysisJobStatus.PROCESSING:
+            logger.info(
+                "Discarding late StrokeLab completion for terminal job %s", job_id
             )
             return
         job.status = AnalysisJobStatus.COMPLETED
@@ -869,6 +911,7 @@ async def _write_completed(
                 events=usage_events,
                 request_type="strokelab_analysis",
                 requesting_service="ai_service",
+                job_id=str(job_id),
             )
             provider_usage = {
                 "run": run_usage,
@@ -977,6 +1020,7 @@ def _failure_reason(exc: Exception) -> str:
             "quota",
             "insufficient_quota",
             "billing",
+            "budget exhausted",
         )
     ):
         return "coach_unavailable"  # config/quota — a retry won't help
@@ -993,8 +1037,11 @@ async def _mark_failed(
 ) -> None:
     failed_email: tuple[str, str, dict | None] | None = None
     async with AsyncSessionLocal() as session:
-        job = await session.get(AnalysisJob, job_id)
-        if job is None:
+        job = await session.get(AnalysisJob, job_id, with_for_update=True)
+        if job is None or job.status in (
+            AnalysisJobStatus.COMPLETED,
+            AnalysisJobStatus.FAILED,
+        ):
             return
         provider_usage = None
         if usage_events is not None:
@@ -1003,6 +1050,7 @@ async def _mark_failed(
                 events=usage_events,
                 request_type="strokelab_analysis",
                 requesting_service="ai_service",
+                job_id=str(job_id),
             )
             provider_usage = {
                 "run": run_usage,

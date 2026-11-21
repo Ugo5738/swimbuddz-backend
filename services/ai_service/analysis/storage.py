@@ -11,6 +11,8 @@ are still resolved as objects under the historical private S3 prefixes
 
 from __future__ import annotations
 
+import asyncio
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -21,6 +23,7 @@ from libs.common.service_client.media import (
     delete_media_object,
     sign_media_object,
     upload_media_object,
+    verify_media_object,
 )
 
 logger = get_logger(__name__)
@@ -161,11 +164,63 @@ async def upload_guest_annotated_video(
     return media_storage_path(str(resp["object_key"]))
 
 
+def _transcode_remote_clip(signed_url: str, dest: Path, max_seconds: int) -> None:
+    """Decode only the initial coaching window directly from signed S3.
+
+    Avoid a 2 GiB download and a second copy on a small worker. The original
+    high-quality iPhone video remains untouched in the private bucket.
+    """
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-nostdin",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                signed_url,
+                "-t",
+                str(max_seconds),
+                "-map",
+                "0:v:0",
+                "-an",
+                "-vf",
+                "scale=-2:720",
+                "-c:v",
+                "libx264",
+                "-threads",
+                "1",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "28",
+                "-movflags",
+                "+faststart",
+                str(dest),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=360,
+        )
+        if not dest.exists() or not dest.stat().st_size:
+            raise RuntimeError("Remote analysis window was empty")
+        if dest.stat().st_size > 200 * 1024 * 1024:
+            raise RuntimeError("Remote analysis window exceeds processing budget")
+    except Exception:
+        dest.unlink(missing_ok=True)
+        # CalledProcessError embeds the full presigned S3 URL in its exception.
+        # Suppress its context so the bearer URL cannot leak into worker logs.
+        raise RuntimeError("Could not prepare remote analysis window") from None
+
+
 async def download_storage_path(
     storage_path: str,
     dest_dir: Path,
     *,
     legacy_prefix: str = LEGACY_UPLOADS_PREFIX,
+    public_window_seconds: int | None = None,
 ) -> Path:
     """Download an AI storage reference into ``dest_dir`` through media_service."""
     object_key = _object_key_for_storage_path(storage_path, legacy_prefix)
@@ -173,6 +228,27 @@ async def download_storage_path(
         storage_path, legacy_prefix, DEFAULT_SIGNED_URL_TTL_SECONDS
     )
     dest = dest_dir / (Path(object_key).name or "upload.bin")
+    if public_window_seconds and is_media_storage_path(storage_path):
+        # For very large original files, never download the entire video to
+        # local disk. FFmpeg pulls the first two minutes over HTTPS and writes
+        # a bounded 720/1280p working clip.
+        meta = await verify_media_object(
+            object_key=object_key,
+            calling_service=_MEDIA_CALLING_SERVICE,
+        )
+        if int(meta.get("size_bytes") or 0) > 250 * 1024 * 1024:
+            from services.ai_service.constants import PUBLIC_MAX_UPLOAD_BYTES
+
+            if int(meta["size_bytes"]) > PUBLIC_MAX_UPLOAD_BYTES:
+                raise ValueError("StrokeLab video exceeds upload limit")
+            clip = dest_dir / f"{Path(object_key).stem}_window.mp4"
+            await asyncio.to_thread(
+                _transcode_remote_clip,
+                signed_url,
+                clip,
+                public_window_seconds,
+            )
+            return clip
     # Stream into the temporary file: httpx.get() buffers the entire response
     # in RAM and could kill the 2 GiB worker on an accepted large upload.
     from services.ai_service.constants import PUBLIC_MAX_UPLOAD_BYTES
