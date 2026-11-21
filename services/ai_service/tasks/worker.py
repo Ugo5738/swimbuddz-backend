@@ -52,6 +52,12 @@ async def task_settle_strokelab_stale_jobs(ctx: dict) -> dict:
     return await fail_stale_public_jobs()
 
 
+async def task_settle_strokelab_stale_members(ctx: dict) -> dict:
+    from services.ai_service.tasks.maintenance import fail_stale_member_jobs
+
+    return await fail_stale_member_jobs()
+
+
 async def task_purge_strokelab_public(ctx: dict) -> dict:
     from services.ai_service.tasks.maintenance import purge_expired_public_jobs
 
@@ -80,8 +86,14 @@ class WorkerSettings:
     # stored clip before any inference starts.
     job_timeout = 600
 
-    functions = [task_analyze_swim_video, task_inspect_instance]
-    cron_jobs = []
+    functions = [
+        task_analyze_swim_video,
+        task_inspect_instance,
+        task_settle_strokelab_stale_members,
+    ]
+    cron_jobs = [
+        cron(task_settle_strokelab_stale_members, minute={47}, run_at_startup=False),
+    ]
 
 
 class PublicWorkerSettings:
