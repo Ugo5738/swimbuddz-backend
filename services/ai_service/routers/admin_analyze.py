@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import require_admin
 from libs.auth.models import AuthUser
 from libs.common.arq_config import get_redis_settings
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.session import get_async_db
@@ -28,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.ai_service.constants import MEMBER_QUEUE_NAME, PUBLIC_QUEUE_NAME
 from services.ai_service.models import (
+    AIRequest,
     AnalysisJob,
     AnalysisJobSource,
     AnalysisJobStatus,
@@ -74,6 +76,10 @@ class QueueSnapshot(BaseModel):
         )
     )
     recent_jobs: list[QueueRecentJob]
+    model_spend_24h_usd: float = 0.0
+    model_spend_7d_usd: float = 0.0
+    model_spend_limit_24h_usd: float = 0.0
+    model_spend_per_success_7d_usd: Optional[float] = None
     queue_depth_approx: int = Field(
         description="Pending + processing — what the worker has to chew through."
     )
@@ -167,7 +173,35 @@ async def queue_snapshot(
         for row in recent_rows
     ]
 
+    # These costs include failed attempts and retries, unlike a cost estimate
+    # based only on successfully completed reports. Storage/fees are separate.
+    spent_stmt = (
+        select(func.coalesce(func.sum(AIRequest.cost_usd), 0.0))
+        .where(
+            AIRequest.request_type == "strokelab_analysis",
+            AIRequest.status == "success",
+        )
+    )
+    spend_24h = float(
+        (await db.execute(spent_stmt.where(AIRequest.created_at >= cutoff))).scalar()
+        or 0.0
+    )
+    week_cutoff = utc_now() - timedelta(days=7)
+    spend_7d = float(
+        (await db.execute(spent_stmt.where(AIRequest.created_at >= week_cutoff))).scalar()
+        or 0.0
+    )
+    week_counts = await _counts_in_window(db, since=week_cutoff)
+    cost_per_success = (
+        round(spend_7d / week_counts.completed, 4)
+        if week_counts.completed else None
+    )
+
     return QueueSnapshot(
+        model_spend_24h_usd=round(spend_24h, 4),
+        model_spend_7d_usd=round(spend_7d, 4),
+        model_spend_limit_24h_usd=get_settings().STROKELAB_DAILY_MODEL_COST_BUDGET_USD,
+        model_spend_per_success_7d_usd=cost_per_success,
         total_jobs=total,
         counts=all_counts,
         counts_last_24h=day_counts,
