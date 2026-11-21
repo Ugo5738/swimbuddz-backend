@@ -250,6 +250,9 @@ async def create_public_direct_upload(
             detail=f"Video exceeds {_format_upload_limit(PUBLIC_MAX_UPLOAD_BYTES)} limit",
         )
 
+    # Authenticate before examining the credit balance. Otherwise a 402 versus
+    # 403 reveals whether a guessed email has used its free entitlement.
+    await require_paid_credit_owner(email, req.email_auth_token)
     # Preflight the credit gate so a user without credits doesn't upload a large
     # file only to be rejected. The complete step still reserves atomically, so a
     # race between two tabs is handled correctly there.
@@ -259,9 +262,6 @@ async def create_public_direct_upload(
             status_code=402,
             detail={"reason": "no_credits", "buy_url_base": GUMROAD_CHECKOUT_BASE},
         )
-    # Verify mailbox ownership even for the first free analysis. Otherwise
-    # attackers can create unlimited temporary S3 uploads by inventing emails.
-    await require_paid_credit_owner(email, req.email_auth_token)
 
     guest_token = secrets.token_urlsafe(32)
     job = AnalysisJob(
@@ -797,15 +797,13 @@ async def get_public_credits(
 ) -> PublicCreditsResponse:
     """Never expose a customer's paid balance to an anonymous email lookup."""
     normalized = _normalize_email(email)
+    # No anonymous free-tier or paid-balance enumeration.
+    await require_paid_credit_owner(normalized, email_auth_token)
     bal = await get_balance(db, raw_email=normalized)
-    remaining = 0
-    if email_auth_token:
-        await require_paid_credit_owner(normalized, email_auth_token)
-        remaining = bal["remaining_credits"]
     return PublicCreditsResponse(
         email=normalized,
         can_submit_free=bal["can_submit_free"],
-        remaining_credits=remaining,
+        remaining_credits=bal["remaining_credits"],
     )
 
 
