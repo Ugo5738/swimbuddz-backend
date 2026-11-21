@@ -19,6 +19,7 @@ from services.ai_service.models import (
     AnalysisJobStatus,
     AnalysisResult,
 )
+from services.ai_service.services.credit_ops import find_reservation
 from services.ai_service.services.notify import send_failed_email, send_ready_email
 from services.ai_service.tasks.analyze import _mark_email_sent, _mark_failed
 
@@ -107,13 +108,31 @@ async def fail_stale_public_jobs(limit: int = 100) -> dict:
         ).scalars().all()
 
     failed = 0
+    uploads_cleaned = 0
     for job_id in ids:
         try:
+            # A direct upload initialized but never completed has no credit
+            # reservation. Delete its S3 object promptly rather than paying to
+            # store it for 30 days; keep submitted/retry footage for free retries.
+            async with AsyncSessionLocal() as session:
+                job = await session.get(AnalysisJob, job_id)
+                if job is None or job.status not in (
+                    AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING
+                ):
+                    continue
+                if job.status == AnalysisJobStatus.PENDING:
+                    reserved = await find_reservation(session, job_id=job_id)
+                    if reserved is None and job.video_storage_path:
+                        cleaned = await delete_job_assets(job.video_storage_path, None)
+                        if cleaned:
+                            job.video_storage_path = ""
+                            await session.commit()
+                            uploads_cleaned += 1
             await _mark_failed(job_id, "temporarily_unavailable")
             failed += 1
         except Exception:
             logger.exception("Could not settle abandoned StrokeLab job %s", job_id)
-    return {"found": len(ids), "failed": failed}
+    return {"found": len(ids), "failed": failed, "uploads_cleaned": uploads_cleaned}
 
 
 async def purge_expired_public_jobs(limit: int = 100) -> dict:
