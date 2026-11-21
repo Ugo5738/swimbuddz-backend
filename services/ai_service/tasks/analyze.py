@@ -31,6 +31,7 @@ from arq import create_pool
 from sqlalchemy import delete, select
 
 from libs.common.arq_config import get_redis_settings
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.db.config import AsyncSessionLocal
@@ -61,6 +62,7 @@ from services.ai_service.services.credit_ops import (
 )
 from services.ai_service.services.notify import send_failed_email, send_ready_email
 from services.ai_service.services.provider_usage import (
+    daily_strokelab_model_cost_usd,
     gemini_quota_estimate,
     record_usage_events,
 )
@@ -148,6 +150,19 @@ async def analyze_swim_video(job_id: str) -> dict:
     try:
         coach_payload: dict | None = None
         frame_labels: list[dict] | None = None
+        if source == AnalysisJobSource.PUBLIC:
+            async with AsyncSessionLocal() as cost_session:
+                daily_spend = await daily_strokelab_model_cost_usd(cost_session)
+            if daily_spend >= get_settings().STROKELAB_DAILY_MODEL_COST_BUDGET_USD:
+                logger.error(
+                    "StrokeLab public daily model spend cap reached: $%.2f",
+                    daily_spend,
+                )
+                await _mark_failed(
+                    job_uuid, "temporarily_unavailable",
+                    usage_events=_collect_usage_events(),
+                )
+                return {"status": "failed", "error": "budget_exhausted"}
         with tempfile.TemporaryDirectory(prefix="strokelab_") as workdir:
             workdir_path = Path(workdir)
 
