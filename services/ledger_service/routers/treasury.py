@@ -21,7 +21,7 @@ from services.ledger_service.models.enums import AccountType, LedgerRole, Normal
 from services.ledger_service.schemas.journal import JournalEntryCreate
 from services.ledger_service.services.posting import post_entry, LedgerError
 from services.ledger_service.schemas.treasury import (
-    BankCreate, BankOut, BudgetCreate, BudgetOut, ConfirmRequest, Decision,
+    BankCreate, BankOut, BankUpdate, BudgetCreate, BudgetOut, ConfirmRequest, Decision,
     SnapshotCreate, ForecastCreate, ForecastOut, CashProjection, BankReconciliationRow,
     PostConfirmedRequest,
     MatchJournal, LedgerAccountLink, RequestCreate, RequestOut, StatementImport,
@@ -97,6 +97,22 @@ async def create_bank(payload: BankCreate, request: Request, actor=Depends(requi
     _audit(session, org, actor, "bank_created", bank.id, code=bank.code)
     await session.commit()
     await session.refresh(bank)
+    return bank
+
+
+@router.patch("/banks/{bank_id}", response_model=BankOut)
+async def update_bank_details(bank_id: uuid.UUID, payload: BankUpdate, request: Request, actor=Depends(require_ledger_role(LedgerRole.OWNER)), session: AsyncSession = Depends(get_ledger_db)):
+    """Complete masked identifying details of an existing registered account.
+
+    This never changes bank ownership, ledger mapping, balances or bank feeds.
+    """
+    org = request.state.org_id
+    bank = await _bank(session, org, bank_id)
+    if bank.last_four != payload.last_four:
+        bank.last_four = payload.last_four
+        _audit(session, org, actor, "bank_details_updated", bank.id, last_four=bank.last_four)
+        await session.commit()
+        await session.refresh(bank)
     return bank
 
 
