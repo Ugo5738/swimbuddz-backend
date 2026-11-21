@@ -1,0 +1,34 @@
+name: Temporary StrokeLab formatter and API generator
+on:
+  push:
+    branches: [codex/strokelab-reliability-20261121]
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/test_db
+      DATABASE_SESSION_URL: postgresql+psycopg://postgres:postgres@localhost:5432/test_db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -e ".[dev]"
+      - run: pip install "fastapi==0.111.1" "pydantic==2.12.5" "pydantic-settings==2.13.1"
+      - name: Format new StrokeLab code and regenerate OpenAPI
+        run: |
+          ruff format libs/common/config.py services/ai_service/constants.py services/ai_service/providers/base.py services/ai_service/tasks/analyze.py services/ai_service/tasks/maintenance.py services/ai_service/tasks/worker.py services/ai_service/routers/public.py services/ai_service/services/provider_usage.py services/gateway_service/app/main.py services/ai_service/analysis/storage.py services/ai_service/routers/admin_analyze.py tests/unit/test_strokelab_cost_budget.py tests/unit/test_strokelab_large_video.py tests/integration/test_ai_public_analyzer.py
+          ruff check --fix libs/common/config.py services/ai_service services/gateway_service/app/main.py tests/unit/test_strokelab_cost_budget.py tests/unit/test_strokelab_large_video.py tests/integration/test_ai_public_analyzer.py
+          python scripts/api/generate-openapi.py > openapi.json
+          python -m json.tool openapi.json >/dev/null
+          git diff --check
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -u
+            git commit -m "style(strokelab): format work and synchronize API contract"
+            git push
+          fi
