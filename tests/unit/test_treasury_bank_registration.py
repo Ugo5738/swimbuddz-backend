@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from services.ledger_service.schemas.treasury import BankCreate
+from services.ledger_service.schemas.treasury import BankCreate, BankUpdate
 
 
 def test_existing_stanbic_and_moniepoint_requests_are_backward_compatible():
@@ -40,3 +40,9 @@ def test_register_new_bank_with_explicit_purpose_and_masked_account_number():
 def test_reject_missing_invalid_or_spoofed_registration_fields(payload):
     with pytest.raises(ValidationError):
         BankCreate(**payload)
+
+
+def test_bank_details_update_stores_only_masked_account_digits():
+    assert BankUpdate(last_four="4512").last_four == "4512"
+    with pytest.raises(ValidationError):
+        BankUpdate(last_four="1234567890")
