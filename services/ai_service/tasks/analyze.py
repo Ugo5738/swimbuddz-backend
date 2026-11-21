@@ -102,7 +102,11 @@ async def analyze_swim_video(job_id: str) -> dict:
             return {"status": "missing"}
         # A delayed queue delivery must not resurrect a job already failed by
         # maintenance. An explicit retry/admin reanalysis resets it to PENDING.
-        if job.status in (AnalysisJobStatus.COMPLETED, AnalysisJobStatus.FAILED):
+        if job.status in (
+            AnalysisJobStatus.COMPLETED,
+            AnalysisJobStatus.FAILED,
+            AnalysisJobStatus.PROCESSING,
+        ):
             logger.info("Stroke Lab job %s terminal (%s); skipping", job_id, job.status)
             return {"status": "already_terminal"}
         job.status = AnalysisJobStatus.PROCESSING
