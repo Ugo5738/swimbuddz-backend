@@ -40,8 +40,14 @@ async def retry_unnotified_public_jobs(limit: int = 20) -> dict:
                     .where(
                         AnalysisJob.source == AnalysisJobSource.PUBLIC,
                         AnalysisJob.email_sent_at.is_(None),
+                        # Also expire abandoned direct uploads and hung jobs.
                         AnalysisJob.status.in_(
-                            [AnalysisJobStatus.COMPLETED, AnalysisJobStatus.FAILED]
+                            [
+                                AnalysisJobStatus.COMPLETED,
+                                AnalysisJobStatus.FAILED,
+                                AnalysisJobStatus.PENDING,
+                                AnalysisJobStatus.PROCESSING,
+                            ]
                         ),
                         AnalysisJob.completed_at <= cutoff,
                     )
