@@ -8,8 +8,26 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class BankCreate(BaseModel):
-    code: Literal["stanbic", "moniepoint"]
+    """Register a bank account, not a live bank-feed connection.
+
+    Old clients can still submit the two legacy codes. New accounts receive
+    their own stable code, so one company may hold multiple accounts at a bank.
+    """
+
+    code: Optional[Literal["stanbic", "moniepoint"]] = None
+    bank_name: Optional[str] = Field(None, min_length=2, max_length=120)
+    purpose: Optional[Literal["treasury", "operations"]] = None
     last_four: Optional[str] = Field(None, pattern=r"^[0-9]{4}$")
+
+    @model_validator(mode="after")
+    def validate_registration(self):
+        if self.code is None:
+            if not self.bank_name or not self.bank_name.strip() or self.purpose is None:
+                raise ValueError("New bank accounts require a bank name and purpose")
+            self.bank_name = self.bank_name.strip()
+        elif self.bank_name is not None or self.purpose is not None:
+            raise ValueError("Legacy bank registration cannot override institution or purpose")
+        return self
 
 
 class BankOut(BaseModel):
