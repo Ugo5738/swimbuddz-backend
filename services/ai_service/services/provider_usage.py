@@ -83,6 +83,23 @@ async def record_usage_events(
     return summary
 
 
+async def daily_strokelab_model_cost_usd(session: AsyncSession) -> float:
+    """Actual tracked model-provider charges from the last rolling 24 hours.
+
+    Excludes storage, bandwidth, and payment processor fees, which should
+    be tracked separately in full product unit economics.
+    """
+    since = utc_now() - timedelta(days=1)
+    result = await session.execute(
+        select(func.coalesce(func.sum(AIRequest.cost_usd), 0.0)).where(
+            AIRequest.request_type == "strokelab_analysis",
+            AIRequest.status == "success",
+            AIRequest.created_at >= since,
+        )
+    )
+    return float(result.scalar() or 0.0)
+
+
 async def gemini_quota_estimate(session: AsyncSession) -> dict[str, Any]:
     """Estimate remaining Gemini quota from the local ai_requests ledger."""
     settings = get_settings()
