@@ -622,6 +622,29 @@ def create_app() -> FastAPI:
         """Proxy the guest analyzer submit to AI service (IP rate-limited)."""
         return await proxy_request(clients.ai_client, "/ai/public/analyze", request)
 
+    # Explicit public StrokeLab rate limits: otherwise these write endpoints
+    # fall through to the unthrottled /ai/{path:path} proxy.
+    @app.api_route("/api/v1/ai/public/analyze/uploads", methods=["POST"])
+    @limiter.limit("5/minute")
+    async def proxy_public_direct_upload(request: Request):
+        return await proxy_request(
+            clients.ai_client, "/ai/public/analyze/uploads", request
+        )
+
+    @app.api_route("/api/v1/ai/public/credits/email-code/request", methods=["POST"])
+    @limiter.limit("3/minute")
+    async def proxy_strokelab_email_code_request(request: Request):
+        return await proxy_request(
+            clients.ai_client, "/ai/public/credits/email-code/request", request
+        )
+
+    @app.api_route("/api/v1/ai/public/credits/email-code/verify", methods=["POST"])
+    @limiter.limit("10/minute")
+    async def proxy_strokelab_email_code_verify(request: Request):
+        return await proxy_request(
+            clients.ai_client, "/ai/public/credits/email-code/verify", request
+        )
+
     @app.api_route("/api/v1/ai/public/gumroad/webhook", methods=["POST"])
     @limiter.limit("30/minute")
     async def proxy_public_gumroad_webhook(request: Request):
