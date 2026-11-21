@@ -167,7 +167,10 @@ async def analyze_swim_video(job_id: str) -> dict:
             workdir_path = Path(workdir)
 
             # Pull the upload into our workdir through media_service.
-            uploaded_local = await _download_upload(video_storage_path, workdir_path)
+            uploaded_local = await _download_upload(
+                video_storage_path, workdir_path,
+                public=source == AnalysisJobSource.PUBLIC,
+            )
 
             # Public cost guard: upload/storage success is separate from the
             # bounded coaching window. Long public clips are stored as-is, but
@@ -457,9 +460,15 @@ def _main_coach_system_error(coach_payload: dict) -> str | None:
     return _coach_system_error(coach_payload)
 
 
-async def _download_upload(storage_path: str, workdir: Path) -> Path:
-    """Pull the user's upload into the worker's temp workdir."""
-    return await download_storage_path(storage_path, workdir)
+async def _download_upload(
+    storage_path: str, workdir: Path, *, public: bool = False
+) -> Path:
+    """Download ordinary clips; remotely normalize huge public originals."""
+    return await download_storage_path(
+        storage_path,
+        workdir,
+        public_window_seconds=PUBLIC_MAX_DURATION_SECONDS if public else None,
+    )
 
 
 def _probe_duration_seconds(path: Path) -> float | None:
