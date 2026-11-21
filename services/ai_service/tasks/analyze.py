@@ -98,9 +98,11 @@ async def analyze_swim_video(job_id: str) -> dict:
         if job is None:
             logger.warning("Stroke Lab job %s vanished before pickup", job_id)
             return {"status": "missing"}
-        if job.status == AnalysisJobStatus.COMPLETED:
-            logger.info("Stroke Lab job %s already completed; skipping", job_id)
-            return {"status": "already_done"}
+        # A delayed queue delivery must not resurrect a job already failed by
+        # maintenance. An explicit retry/admin reanalysis resets it to PENDING.
+        if job.status in (AnalysisJobStatus.COMPLETED, AnalysisJobStatus.FAILED):
+            logger.info("Stroke Lab job %s terminal (%s); skipping", job_id, job.status)
+            return {"status": "already_terminal"}
         job.status = AnalysisJobStatus.PROCESSING
         job.started_at = utc_now()
         job.error_message = None
