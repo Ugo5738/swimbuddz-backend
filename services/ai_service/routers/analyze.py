@@ -26,14 +26,24 @@ from libs.auth.models import AuthUser
 from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 from libs.common.datetime_utils import utc_now
+from libs.common.service_client.media import (
+    create_media_direct_upload,
+    verify_media_object,
+)
 from libs.db.session import get_async_db
 from services.ai_service.analysis.storage import (
     delete_job_assets,
+    is_media_storage_path,
+    media_object_key,
+    media_storage_path,
     signed_url_for_annotated,
     signed_url_for_upload,
     upload_user_video,
 )
-from services.ai_service.constants import MEMBER_QUEUE_NAME
+from services.ai_service.constants import (
+    MEMBER_QUEUE_NAME,
+    PUBLIC_MAX_UPLOAD_BYTES,
+)
 from services.ai_service.models import AnalysisJob, AnalysisJobStatus, AnalysisResult
 from services.ai_service.routers._common import (
     build_result_payload,
@@ -45,6 +55,8 @@ from services.ai_service.schemas.analysis import (
     AnalysisJobDetailResponse,
     AnalysisJobResponse,
     InspectRequest,
+    MemberDirectUploadRequest,
+    MemberDirectUploadResponse,
 )
 from services.ai_service.services.drilldown import (
     ensure_drilldown_unlocked,
@@ -243,6 +255,116 @@ async def _start_inspect_job(
         "inspect_status": payload,
         "queue_depth": estimated_depth,
     }
+
+
+# ── Authenticated member direct-to-S3 uploads (≤2 GiB) ─────────
+
+
+@router.post(
+    "/uploads",
+    response_model=MemberDirectUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_member_direct_upload(
+    req: MemberDirectUploadRequest,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> MemberDirectUploadResponse:
+    if req.stroke_type not in SUPPORTED_STROKES:
+        raise HTTPException(status_code=400, detail="Only freestyle is supported")
+    if req.size_bytes > PUBLIC_MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Video exceeds 2 GiB limit")
+    try:
+        member_id = uuid.UUID(current_user.user_id)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=401, detail="Invalid member user id") from exc
+
+    job = AnalysisJob(
+        member_auth_id=member_id,
+        stroke_type=req.stroke_type,
+        video_storage_path="",
+        status=AnalysisJobStatus.PENDING,
+        is_public=req.is_public,
+        **parse_coach_context(
+            req.discipline, req.level, req.focus_area, req.goal_text
+        ),
+    )
+    db.add(job)
+    await db.flush()
+    try:
+        upload = await create_media_direct_upload(
+            purpose="strokelab_original",
+            filename=req.filename,
+            content_type=req.content_type,
+            size_bytes=req.size_bytes,
+            linked_id=f"member/{member_id}/{job.id}",
+            calling_service="ai_service",
+            expires_in=3600,
+        )
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=503, detail="Direct video storage is unavailable"
+        ) from exc
+    job.video_storage_path = media_storage_path(str(upload["object_key"]))
+    await db.commit()
+    return MemberDirectUploadResponse(
+        job_id=job.id,
+        upload_url=str(upload["upload_url"]),
+        headers=dict(upload.get("headers") or {}),
+        expires_in=int(upload.get("expires_in") or 3600),
+    )
+
+
+@router.post(
+    "/{job_id}/complete-upload",
+    response_model=AnalysisJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def complete_member_direct_upload(
+    job_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+) -> AnalysisJobResponse:
+    try:
+        member_id = uuid.UUID(current_user.user_id)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=401, detail="Invalid member user id") from exc
+    job = await db.get(AnalysisJob, job_id)
+    if job is None or job.member_auth_id != member_id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status in (AnalysisJobStatus.COMPLETED, AnalysisJobStatus.PROCESSING):
+        return _job_to_lifecycle_response(job)
+    if job.status != AnalysisJobStatus.PENDING or not is_media_storage_path(
+        job.video_storage_path
+    ):
+        raise HTTPException(status_code=409, detail="Upload is not active")
+    try:
+        meta = await verify_media_object(
+            object_key=media_object_key(job.video_storage_path),
+            calling_service="ai_service",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail="Upload not complete") from exc
+    size = int(meta.get("size_bytes") or 0)
+    if size <= 0 or size > PUBLIC_MAX_UPLOAD_BYTES:
+        await delete_job_assets(job.video_storage_path, None)
+        await db.delete(job)
+        await db.commit()
+        raise HTTPException(status_code=413, detail="Invalid video size")
+
+    # Commit the verified job first. A queue outage is surfaced as a 503
+    # instead of a silently stuck PENDING analysis.
+    await db.commit()
+    try:
+        await _enqueue_analysis(job.id, raise_on_error=True)
+    except Exception as exc:
+        job.status = AnalysisJobStatus.FAILED
+        job.error_message = "temporarily_unavailable"
+        job.completed_at = utc_now()
+        await db.commit()
+        raise HTTPException(status_code=503, detail="Analysis queue unavailable") from exc
+    return _job_to_lifecycle_response(job)
 
 
 # ── POST /ai/analyze ─────────────────────────────────────────────
