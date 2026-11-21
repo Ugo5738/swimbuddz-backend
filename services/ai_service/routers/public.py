@@ -259,8 +259,9 @@ async def create_public_direct_upload(
             status_code=402,
             detail={"reason": "no_credits", "buy_url_base": GUMROAD_CHECKOUT_BASE},
         )
-    if not bal["can_submit_free"]:
-        await require_paid_credit_owner(email, req.email_auth_token)
+    # Verify mailbox ownership even for the first free analysis. Otherwise
+    # attackers can create unlimited temporary S3 uploads by inventing emails.
+    await require_paid_credit_owner(email, req.email_auth_token)
 
     guest_token = secrets.token_urlsafe(32)
     job = AnalysisJob(
@@ -386,10 +387,9 @@ async def complete_public_direct_upload(
 
     try:
         bal = await get_balance(db, raw_email=job.guest_email or "")
-        if not bal["can_submit_free"]:
-            await require_paid_credit_owner(
-                job.guest_email or "", body.email_auth_token if body else None
-            )
+        await require_paid_credit_owner(
+            job.guest_email or "", body.email_auth_token if body else None
+        )
         reserve_entry = await acquire_for_submit(
             db,
             raw_email=job.guest_email or "",
@@ -470,8 +470,7 @@ async def create_public_analysis_job(
         )
     email = _normalize_email(guest_email)
     bal = await get_balance(db, raw_email=email)
-    if not bal["can_submit_free"]:
-        await require_paid_credit_owner(email, email_auth_token)
+    await require_paid_credit_owner(email, email_auth_token)
 
     data = await video.read()
     if len(data) == 0:
