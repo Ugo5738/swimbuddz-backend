@@ -149,19 +149,23 @@ async def fail_stale_member_jobs(limit: int = 100) -> dict:
     cutoff = utc_now() - timedelta(hours=6)
     async with AsyncSessionLocal() as session:
         ids = (
-            await session.execute(
-                select(AnalysisJob.id)
-                .where(
-                    AnalysisJob.source == AnalysisJobSource.MEMBER,
-                    AnalysisJob.status.in_(
-                        [AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING]
-                    ),
-                    AnalysisJob.created_at <= cutoff,
+            (
+                await session.execute(
+                    select(AnalysisJob.id)
+                    .where(
+                        AnalysisJob.source == AnalysisJobSource.MEMBER,
+                        AnalysisJob.status.in_(
+                            [AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING]
+                        ),
+                        AnalysisJob.created_at <= cutoff,
+                    )
+                    .order_by(AnalysisJob.created_at)
+                    .limit(limit)
                 )
-                .order_by(AnalysisJob.created_at)
-                .limit(limit)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     failed = 0
     for job_id in ids:
@@ -169,7 +173,8 @@ async def fail_stale_member_jobs(limit: int = 100) -> dict:
             async with AsyncSessionLocal() as session:
                 job = await session.get(AnalysisJob, job_id)
                 if job is None or job.status not in (
-                    AnalysisJobStatus.PENDING, AnalysisJobStatus.PROCESSING
+                    AnalysisJobStatus.PENDING,
+                    AnalysisJobStatus.PROCESSING,
                 ):
                     continue
                 # Never infer an unfinished session is a safe deletion target;
@@ -180,7 +185,9 @@ async def fail_stale_member_jobs(limit: int = 100) -> dict:
                 await session.commit()
                 failed += 1
         except Exception:
-            logger.exception("Could not settle abandoned member StrokeLab job %s", job_id)
+            logger.exception(
+                "Could not settle abandoned member StrokeLab job %s", job_id
+            )
     return {"found": len(ids), "failed": failed}
 
 
