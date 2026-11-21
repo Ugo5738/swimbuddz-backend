@@ -22,9 +22,11 @@ GUMROAD_CHECKOUT_BASE = os.environ.get(
 # whole worker job_timeout. Generous so legitimate clips are never rejected.
 PUBLIC_MAX_DURATION_SECONDS = int(os.environ.get("PUBLIC_MAX_DURATION_SECONDS", "120"))
 
-# Public analyzer direct-to-storage upload cap (250 MiB by default). This applies to the browser
-# presigned-URL path only; legacy multipart uploads still use the smaller API
-# memory-safe cap in routers/analyze.py.
+# Direct-to-private-S3 uploads can retain high-quality iPhone footage.
+# The API never buffers this video in memory; workers stream it to disk and
+# analyze no more than PUBLIC_MAX_DURATION_SECONDS. The legacy multipart
+# endpoint still has the much smaller 50 MiB in-memory limit.
+# A single S3 PUT supports up to 5 GiB; allow 2 GiB as our product ceiling.
 PUBLIC_MAX_UPLOAD_BYTES = int(
-    os.environ.get("STROKELAB_PUBLIC_MAX_UPLOAD_BYTES", str(250 * 1024 * 1024))
+    os.environ.get("STROKELAB_PUBLIC_MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024))
 )
