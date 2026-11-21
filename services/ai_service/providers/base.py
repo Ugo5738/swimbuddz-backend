@@ -39,6 +39,38 @@ def _record_vlm_event(event: dict) -> None:
         bucket.append(event)
 
 
+def _enforce_strokelab_vlm_budget(model: str) -> None:
+    """Bound the number of model calls and spend inside one StrokeLab attempt.
+
+    The events list is shared by concurrent gate votes. The check and append
+    happen synchronously before the first await so every model call reserves
+    its slot. Cost is checked against actual successful provider charges;
+    a single final call can exceed the ceiling by its own cost.
+    """
+    events = _VLM_EVENTS.get()
+    if events is None:
+        return  # Other AI-service workloads are not subject to StrokeLab caps.
+    settings = get_settings()
+    attempted = sum(1 for event in events if event.get("kind") == "attempt")
+    spent = sum(
+        float(event.get("cost_usd") or 0)
+        for event in events
+        if event.get("kind") == "success"
+    )
+    if (
+        attempted >= settings.STROKELAB_MAX_MODEL_CALLS_PER_ATTEMPT
+        or spent >= settings.STROKELAB_MAX_MODEL_COST_PER_ATTEMPT_USD
+    ):
+        _record_vlm_event({
+            "kind": "budget_exhausted",
+            "model": model,
+            "attempts": attempted,
+            "cost_usd": spent,
+        })
+        raise RuntimeError("StrokeLab AI budget exhausted for this attempt")
+    _record_vlm_event({"kind": "attempt", "model": model})
+
+
 class AIProviderResponse:
     """Standardized response from any AI provider."""
 
@@ -325,6 +357,7 @@ async def call_vlm(
             settings, "AI_DEFAULT_MODEL", "gpt-4o-mini"
         )
     provider = _provider_from_model(model)
+    _enforce_strokelab_vlm_budget(model)
 
     content: list[dict] = [{"type": "text", "text": user_prompt}]
     for img in images:
