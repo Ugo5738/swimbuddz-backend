@@ -175,7 +175,9 @@ async def analyze_swim_video(job_id: str) -> dict:
             uploaded_local = await _download_upload(
                 video_storage_path,
                 workdir_path,
-                public=source == AnalysisJobSource.PUBLIC,
+                # Both member and guest direct S3 uploads can be up to 2 GiB.
+                # Use a short remotely-transcoded clip when the original is huge.
+                public=True,
             )
 
             # Public cost guard: upload/storage success is separate from the
