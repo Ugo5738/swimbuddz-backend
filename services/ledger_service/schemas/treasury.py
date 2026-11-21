@@ -30,6 +30,12 @@ class BankCreate(BaseModel):
         return self
 
 
+class BankUpdate(BaseModel):
+    """Owner-only update of non-financial account metadata."""
+
+    last_four: Optional[str] = Field(None, pattern=r"^[0-9]{4}$")
+
+
 class BankOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
