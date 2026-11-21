@@ -29,6 +29,28 @@ class InspectRequest(BaseModel):
     instance_id: int = Field(ge=0, description="which instance of that aspect/phase")
 
 
+class MemberDirectUploadRequest(BaseModel):
+    """Issue a direct-to-private-S3 upload for an authenticated member."""
+
+    filename: str = "clip.mp4"
+    content_type: str = "video/mp4"
+    size_bytes: int = Field(gt=0)
+    stroke_type: str = "freestyle"
+    is_public: bool = False
+    discipline: str = "general"
+    level: Optional[str] = None
+    focus_area: Optional[str] = None
+    goal_text: Optional[str] = None
+
+
+class MemberDirectUploadResponse(BaseModel):
+    job_id: uuid.UUID
+    upload_url: str
+    method: str = "PUT"
+    headers: dict[str, str] = Field(default_factory=dict)
+    expires_in: int
+
+
 class PublicDirectUploadRequest(BaseModel):
     """Start a direct browser-to-S3 public analyzer upload."""
 

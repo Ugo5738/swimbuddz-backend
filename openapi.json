@@ -40416,6 +40416,100 @@
         ]
       }
     },
+    "/api/v1/ai/analyze/uploads": {
+      "post": {
+        "tags": [
+          "stroke-lab"
+        ],
+        "summary": "Create Member Direct Upload",
+        "operationId": "create_member_direct_upload_ai_analyze_uploads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberDirectUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDirectUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/analyze/{job_id}/complete-upload": {
+      "post": {
+        "tags": [
+          "stroke-lab"
+        ],
+        "summary": "Complete Member Direct Upload",
+        "operationId": "complete_member_direct_upload_ai_analyze__job_id__complete_upload_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/analyze": {
       "post": {
         "tags": [
@@ -116998,6 +117092,115 @@
         "title": "InspectRequest",
         "description": "Per-instance drilldown request (\u00a712.5) \u2014 coach one stored instance of an\naspect on demand. Gated (409) until segmentation count accuracy clears the bar."
       },
+      "MemberDirectUploadRequest": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "default": "clip.mp4"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type",
+            "default": "video/mp4"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Size Bytes"
+          },
+          "stroke_type": {
+            "type": "string",
+            "title": "Stroke Type",
+            "default": "freestyle"
+          },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public",
+            "default": false
+          },
+          "discipline": {
+            "type": "string",
+            "title": "Discipline",
+            "default": "general"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "focus_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus Area"
+          },
+          "goal_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "size_bytes"
+        ],
+        "title": "MemberDirectUploadRequest",
+        "description": "Issue a direct-to-private-S3 upload for an authenticated member."
+      },
+      "MemberDirectUploadResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "upload_url": {
+            "type": "string",
+            "title": "Upload Url"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method",
+            "default": "PUT"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Headers"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "upload_url",
+          "expires_in"
+        ],
+        "title": "MemberDirectUploadResponse"
+      },
       "Observation": {
         "properties": {
           "key": {
@@ -117539,6 +117742,32 @@
             },
             "type": "array",
             "title": "Recent Jobs"
+          },
+          "model_spend_24h_usd": {
+            "type": "number",
+            "title": "Model Spend 24H Usd",
+            "default": 0.0
+          },
+          "model_spend_7d_usd": {
+            "type": "number",
+            "title": "Model Spend 7D Usd",
+            "default": 0.0
+          },
+          "model_spend_limit_24h_usd": {
+            "type": "number",
+            "title": "Model Spend Limit 24H Usd",
+            "default": 0.0
+          },
+          "model_spend_per_success_7d_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Spend Per Success 7D Usd"
           },
           "queue_depth_approx": {
             "type": "integer",

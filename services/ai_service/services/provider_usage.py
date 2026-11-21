@@ -50,6 +50,7 @@ async def record_usage_events(
     events: list[dict],
     request_type: str,
     requesting_service: str = "ai_service",
+    job_id: str | None = None,
 ) -> dict[str, Any]:
     """Persist provider events to ai_requests and return a run summary."""
     summary = summarize_events(events)
@@ -65,6 +66,7 @@ async def record_usage_events(
                     "trace_name": event.get("trace_name"),
                     "event_kind": event.get("kind"),
                     "reason": event.get("reason"),
+                    "job_id": job_id,
                 },
                 output_data=event,
                 status="success" if event.get("kind") == "success" else "error",
@@ -79,6 +81,23 @@ async def record_usage_events(
             )
         )
     return summary
+
+
+async def daily_strokelab_model_cost_usd(session: AsyncSession) -> float:
+    """Actual tracked model-provider charges from the last rolling 24 hours.
+
+    Excludes storage, bandwidth, and payment processor fees, which should
+    be tracked separately in full product unit economics.
+    """
+    since = utc_now() - timedelta(days=1)
+    result = await session.execute(
+        select(func.coalesce(func.sum(AIRequest.cost_usd), 0.0)).where(
+            AIRequest.request_type == "strokelab_analysis",
+            AIRequest.status == "success",
+            AIRequest.created_at >= since,
+        )
+    )
+    return float(result.scalar() or 0.0)
 
 
 async def gemini_quota_estimate(session: AsyncSession) -> dict[str, Any]:
