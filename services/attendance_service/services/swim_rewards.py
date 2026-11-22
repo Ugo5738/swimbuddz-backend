@@ -92,7 +92,17 @@ async def sync_due_swims():
         )
         async with AsyncSessionLocal() as db:
             try:
-                session = sessions.get(str(row.session_id), {})
+                session = sessions.get(str(row.session_id))
+                if session is None:
+                    # Missing cross-service data is not proof of cancellation.
+                    # Retry instead of reversing an already credited swim.
+                    await db.execute(
+                        update(records)
+                        .where(*predicate)
+                        .values(swim_sync_at=now + timedelta(minutes=5))
+                    )
+                    await db.commit()
+                    continue
                 key = str(row.session_id)
                 if key not in checked:
                     checked[key] = await eligible_swim_date(session)
