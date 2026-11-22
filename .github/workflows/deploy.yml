@@ -101,6 +101,11 @@ jobs:
         run: |
           pytest tests/unit/ -v
 
+      - name: Verify automatic swim credits, reversals and attended exceptions
+        run: |
+          pytest -v tests/integration/test_verified_swim_attendance.py
+          pytest -v tests/integration/test_verified_swim_settlement.py
+
       - name: Verify migration backup restore with synthetic data
         run: |
           umask 077

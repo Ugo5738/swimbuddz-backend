@@ -42,8 +42,12 @@ async def test_duplicate_days_correction_and_wallet_history(db_session, monkeypa
     assert (summary.total_swims, summary.bubbles_earned, summary.bubbles_credited) == (
         2,
         1,
-        2,
+        1,
     )
+    wallet_after_reversal = (
+        await db_session.scalars(select(Wallet).where(Wallet.member_auth_id == auth_id))
+    ).one()
+    assert wallet_after_reversal.balance == 1
     await deliver(7)
     await deliver(8)
     await deliver(9)
@@ -71,9 +75,9 @@ async def test_duplicate_days_correction_and_wallet_history(db_session, monkeypa
             .select_from(MemberRewardHistory)
             .where(MemberRewardHistory.member_auth_id == auth_id)
         )
-        == 4
+        == 5
     )
-    assert journal.await_count == 4
+    assert journal.await_count == 6
     assert (
         journal.await_args.kwargs["lines"][1]["account_ref"]
         == "bubbles_liability_promo"
@@ -115,3 +119,59 @@ async def test_concurrent_verifications_respect_wallet_cap(test_engine, monkeypa
         summary.bubbles_credited,
         balance,
     ) == (6, 3, 3, 3)
+
+
+@pytest.mark.asyncio
+async def test_spent_swim_bubbles_offset_future_rewards_without_negative_balance(
+    db_session, monkeypatch
+):
+    from services.wallet_service.models import TransactionType
+    from services.wallet_service.services import ledger_emit
+    from services.wallet_service.services.wallet_ops import debit_wallet
+
+    monkeypatch.setattr(swim_rewards, "post_journal_entry", AsyncMock())
+    monkeypatch.setattr(ledger_emit, "post_journal_entry", AsyncMock())
+    member_id = uuid.uuid4()
+    auth_id = str(uuid.uuid4())
+
+    async def deliver(day, session_id=None, revision=1):
+        sid = session_id or uuid.uuid4()
+        await swim_rewards.reconcile_swim(
+            db_session,
+            swim_rewards.SwimVerification(
+                member_id=member_id,
+                member_auth_id=auth_id,
+                session_id=sid,
+                revision=revision,
+                swim_date=date(2026, 11, day) if day else None,
+            ),
+        )
+        return sid
+
+    first = await deliver(16)
+    await debit_wallet(
+        db_session,
+        member_auth_id=auth_id,
+        amount=1,
+        idempotency_key=f"spent-swim-{auth_id}",
+        transaction_type=TransactionType.PURCHASE,
+        description="Spend earned Bubble",
+        service_source="sessions",
+        reference_type="session_booking",
+        reference_id=str(first),
+    )
+    await deliver(None, first, revision=2)
+    wallet = (
+        await db_session.scalars(select(Wallet).where(Wallet.member_auth_id == auth_id))
+    ).one()
+    assert wallet.balance == 0
+    progress = await swim_rewards.member_progress(db_session, auth_id)
+    assert (progress.bubbles_earned, progress.bubbles_credited) == (0, 1)
+
+    await deliver(17)  # First subsequent earned Bubble pays down the offset
+    assert wallet.balance == 0
+    await deliver(18)  # Only the next qualifying day is newly credited
+    await db_session.refresh(wallet)
+    assert wallet.balance == 1
+    progress = await swim_rewards.member_progress(db_session, auth_id)
+    assert (progress.bubbles_earned, progress.bubbles_credited) == (2, 2)

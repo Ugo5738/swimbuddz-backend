@@ -8,38 +8,36 @@ from services.attendance_service.models import AttendanceRecord, AttendanceStatu
 
 
 @pytest.mark.asyncio
-async def test_default_attendance_needs_confirmation_and_corrections_revoke_it(
-    db_session,
-):
+async def test_default_attendance_queues_reward_and_exception_retracts_it(db_session):
     record = AttendanceRecord(
         session_id=uuid.uuid4(), member_id=uuid.uuid4(), status=AttendanceStatus.PRESENT
     )
     db_session.add(record)
     await db_session.flush()
     await db_session.refresh(record)
-    assert record.swim_sync_at is None
-    assert record.swim_revision == 0
-
-    record.swim_verified_by = str(uuid.uuid4())
-    record.swim_verified_on = date(2026, 10, 5)
-    await db_session.flush()
-    await db_session.refresh(record)
+    assert record.swim_verified_on is None  # Pre-session booking never pays early
     assert record.swim_revision == 1
     assert record.swim_sync_at is not None
 
-    # System-written status corrections use bulk SQL in some attendance flows.
+    # Worker sets reward date once eligible session has ended.
+    record.swim_verified_on = date(2026, 11, 22)
+    record.swim_verified_by = "automatic_attendance"
+    await db_session.flush()
+    await db_session.refresh(record)
+    assert record.swim_revision == 2
+
     await db_session.execute(
         update(AttendanceRecord)
         .where(AttendanceRecord.id == record.id)
         .values(status=AttendanceStatus.ABSENT)
     )
     await db_session.refresh(record)
-    assert record.swim_verified_by is None
     assert record.swim_verified_on is None
-    assert record.swim_revision == 2
+    assert record.swim_verified_by is None
+    assert record.swim_revision == 3
 
     record.status = AttendanceStatus.PRESENT
     await db_session.flush()
     await db_session.refresh(record)
     assert record.swim_verified_on is None
-    assert record.swim_revision == 2
+    assert record.swim_revision == 4

@@ -20,6 +20,9 @@ from sqlalchemy.orm import noload
 from services.wallet_service.models import (
     GrantType,
     MemberRewardHistory,
+    TransactionDirection,
+    TransactionStatus,
+    WalletTransaction,
     PromotionalBubbleGrant,
     TransactionType,
     Wallet,
@@ -28,6 +31,7 @@ from services.wallet_service.models import (
 from services.wallet_service.models.swim import VerifiedSwim
 from services.wallet_service.services.ledger_emit import build_wallet_post_kwargs
 from services.wallet_service.services.wallet_ops import stage_credit
+from services.wallet_service.services.hold_ops import active_held_amount
 
 logger = get_logger(__name__)
 RULE_ID = uuid.UUID("6a7d9ae3-1c10-48ce-8f7a-149782b5089c")
@@ -123,7 +127,111 @@ async def reconcile_swim(db: AsyncSession, body: SwimVerification):
     await db.flush()
     stats = await member_progress(db, body.member_auth_id)
     amount = stats.bubbles_earned - stats.bubbles_credited
-    if amount <= 0:
+    if amount < 0:
+        # Revoke only unspent swim-reward grants, not purchased Bubbles or
+        # unrelated promotional awards. Active checkout holds stay protected.
+        outstanding = -amount
+        grants = (
+            await db.scalars(
+                select(PromotionalBubbleGrant)
+                .where(
+                    PromotionalBubbleGrant.wallet_id == wallet.id,
+                    PromotionalBubbleGrant.campaign_code == "verified_swim",
+                    PromotionalBubbleGrant.bubbles_remaining > 0,
+                    (
+                        PromotionalBubbleGrant.expires_at.is_(None)
+                        | (PromotionalBubbleGrant.expires_at > utc_now())
+                    ),
+                )
+                .order_by(PromotionalBubbleGrant.created_at.desc())
+            )
+        ).all()
+        available = max(wallet.balance - await active_held_amount(db, wallet.id), 0)
+        reversal = min(
+            outstanding, available, sum(grant.bubbles_remaining for grant in grants)
+        )
+        if reversal:
+            remaining = reversal
+            for grant in grants:
+                take = min(grant.bubbles_remaining, remaining)
+                if take:
+                    grant.bubbles_remaining -= take
+                    remaining -= take
+                if not remaining:
+                    break
+            balance_before = wallet.balance
+            wallet.balance -= reversal
+            # Match the original source of the credit. The append-only wallet
+            # transaction keeps the correction independently auditable.
+            txn = WalletTransaction(
+                wallet_id=wallet.id,
+                idempotency_key=f"swim-reverse-{wallet.id}-{body.session_id}-{body.revision}",
+                transaction_type=TransactionType.ADMIN_ADJUSTMENT,
+                direction=TransactionDirection.DEBIT,
+                amount=reversal,
+                balance_before=balance_before,
+                balance_after=wallet.balance,
+                status=TransactionStatus.COMPLETED,
+                description=f"Swim reward reversal · {body.session_id}",
+                service_source="attendance",
+                initiated_by="attendance",
+                reference_type="swim_reward_reversal",
+                reference_id=str(body.session_id),
+                txn_metadata={
+                    "session_id": str(body.session_id),
+                    "revision": body.revision,
+                    "promo_bubbles": reversal,
+                    "purchased_bubbles": 0,
+                },
+            )
+            db.add(txn)
+            # Previously issued credits can span sessions and weekly caps.
+            # Track the reversal against issued amounts without deleting
+            # historical grants or tampering with purchased balances.
+            remaining = reversal
+            issued_facts = (
+                await db.scalars(
+                    select(VerifiedSwim)
+                    .where(
+                        VerifiedSwim.wallet_id == wallet.id,
+                        VerifiedSwim.issued > 0,
+                    )
+                    .order_by(VerifiedSwim.swim_date.desc().nulls_last())
+                )
+            ).all()
+            for issued_fact in issued_facts:
+                take = min(issued_fact.issued, remaining)
+                issued_fact.issued -= take
+                remaining -= take
+                if not remaining:
+                    break
+            await db.flush()
+            journal = build_wallet_post_kwargs(txn, body.member_auth_id)
+            if journal is None:
+                raise RuntimeError("Swim reversal must produce a ledger journal")
+            delivery = WalletLedgerPostFailure(
+                idempotency_key=f"wallet:swim-reversal:{txn.id}",
+                source_reference=str(txn.id),
+                payload=jsonable_encoder(journal),
+                attempts=0,
+                status="pending",
+            )
+            db.add(delivery)
+            await db.commit()
+            try:
+                await post_journal_entry(calling_service="wallet", **journal)
+                delivery.status = "replayed"
+            except Exception as exc:
+                logger.warning("Swim reversal journal %s queued: %s", txn.id, exc)
+                delivery.last_error = str(exc)
+            delivery.attempts += 1
+            await db.commit()
+            return
+        # An already spent reward becomes a debt against future swim rewards.
+        # Never debit purchased money or break current checkout holds.
+        await db.commit()
+        return
+    if amount == 0:
         await db.commit()
         return
 

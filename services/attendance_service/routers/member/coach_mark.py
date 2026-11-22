@@ -17,7 +17,6 @@ from libs.common.service_client import (
 )
 from libs.db.session import get_async_db
 from services.attendance_service.models import AttendanceRecord, AttendanceStatus
-from services.attendance_service.services.swim_rewards import eligible_swim_date
 from services.attendance_service.schemas import (
     AttendanceResponse,
     CoachAttendanceMarkRequest,
@@ -76,17 +75,6 @@ async def coach_mark_session_attendance(
     )
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
-    swim_date = None
-    if payload.confirm_swimmers:
-        if current_user.role == "service_role":
-            raise HTTPException(
-                403, "A coach or administrator must confirm the swimmers."
-            )
-        swim_date = await eligible_swim_date(session_data)
-        if swim_date is None:
-            raise HTTPException(
-                422, "This swim must have started and be an eligible swim session."
-            )
     if session_data.get("session_type") == "cohort_class" and (
         session_data.get("cohort_attendance_mode") == "individual"
         or session_data.get("cohort_fee_mode") == "paid_extra"
@@ -154,12 +142,6 @@ async def coach_mark_session_attendance(
         existing.status = entry.status
         if entry.notes is not None:
             existing.notes = entry.notes
-        if swim_date and entry.status in (
-            AttendanceStatus.PRESENT,
-            AttendanceStatus.LATE,
-        ):
-            existing.swim_verified_on = swim_date
-            existing.swim_verified_by = current_user.user_id
         upserted += 1
 
     await db.commit()
