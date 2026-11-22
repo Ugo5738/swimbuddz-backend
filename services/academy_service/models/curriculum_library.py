@@ -267,7 +267,8 @@ class AcademyModuleMilestone(Base):
     __tablename__ = "academy_module_milestones"
     __table_args__ = (
         UniqueConstraint(
-            "module_version_id", "milestone_version_id",
+            "module_version_id",
+            "milestone_version_id",
             name="uq_amm_module_milestone",
         ),
     )
@@ -324,7 +325,9 @@ class AcademyModuleQuiz(Base):
 class AcademyProgramModule(Base):
     __tablename__ = "academy_program_modules"
     __table_args__ = (
-        UniqueConstraint("program_id", "module_version_id", name="uq_apm_program_module"),
+        UniqueConstraint(
+            "program_id", "module_version_id", name="uq_apm_program_module"
+        ),
         UniqueConstraint("program_id", "order_index", name="uq_apm_program_order"),
     )
 

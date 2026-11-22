@@ -5,7 +5,6 @@ learner outcomes, tuition or certificates. Publication freezes a version.
 """
 
 import uuid
-from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -31,7 +30,9 @@ from services.academy_service.models import (
     AcademyModuleVersion,
 )
 
-router = APIRouter(prefix="/admin/curriculum-library", tags=["academy-curriculum-library"])
+router = APIRouter(
+    prefix="/admin/curriculum-library", tags=["academy-curriculum-library"]
+)
 
 CatalogKind = Literal["milestone", "drill", "lesson", "quiz", "module"]
 
@@ -44,8 +45,20 @@ CATALOG_MODELS = {
 }
 
 VERSION_FIELDS = {
-    "milestone": {"rubric_json", "evidence_policy", "assessment_context_json", "safety_gate", "demo_media_id"},
-    "drill": {"steps_json", "safety_json", "primary_focal_cue", "requires_supervision", "demo_media_id"},
+    "milestone": {
+        "rubric_json",
+        "evidence_policy",
+        "assessment_context_json",
+        "safety_gate",
+        "demo_media_id",
+    },
+    "drill": {
+        "steps_json",
+        "safety_json",
+        "primary_focal_cue",
+        "requires_supervision",
+        "demo_media_id",
+    },
     "lesson": {"duration_minutes", "blocks_json", "safety_json"},
     "quiz": {"questions_json", "passing_percent"},
     "module": {"outcomes_json", "completion_policy_json"},
@@ -109,44 +122,73 @@ def _content(kind: str, data: dict[str, Any]) -> dict[str, Any]:
     result = dict(data)
     if kind == "milestone":
         if not isinstance(result["rubric_json"], dict) or not result["rubric_json"]:
-            raise HTTPException(status_code=422, detail="A milestone needs a nonempty rubric")
-        if result.get("evidence_policy", "video") not in {"video", "time_trial", "observation"}:
+            raise HTTPException(
+                status_code=422, detail="A milestone needs a nonempty rubric"
+            )
+        if result.get("evidence_policy", "video") not in {
+            "video",
+            "time_trial",
+            "observation",
+        }:
             raise HTTPException(status_code=422, detail="Invalid evidence policy")
         if "assessment_context_json" in result and not isinstance(
             result["assessment_context_json"], dict
         ):
-            raise HTTPException(status_code=422, detail="Assessment context must be an object")
+            raise HTTPException(
+                status_code=422, detail="Assessment context must be an object"
+            )
     elif kind == "drill":
         if not isinstance(result["steps_json"], list) or not result["steps_json"]:
-            raise HTTPException(status_code=422, detail="Drills need at least one instruction")
-        if not isinstance(result["primary_focal_cue"], str) or not result["primary_focal_cue"].strip():
+            raise HTTPException(
+                status_code=422, detail="Drills need at least one instruction"
+            )
+        if (
+            not isinstance(result["primary_focal_cue"], str)
+            or not result["primary_focal_cue"].strip()
+        ):
             raise HTTPException(status_code=422, detail="Drills need a focal cue")
     elif kind == "lesson":
-        if (isinstance(result["duration_minutes"], bool) or not isinstance(result["duration_minutes"], int)) or result["duration_minutes"] <= 0:
-            raise HTTPException(status_code=422, detail="Lesson duration must be positive")
+        if (
+            isinstance(result["duration_minutes"], bool)
+            or not isinstance(result["duration_minutes"], int)
+        ) or result["duration_minutes"] <= 0:
+            raise HTTPException(
+                status_code=422, detail="Lesson duration must be positive"
+            )
         if not isinstance(result["blocks_json"], list) or not result["blocks_json"]:
             raise HTTPException(status_code=422, detail="Lessons need teaching blocks")
     elif kind == "quiz":
-        if not isinstance(result["questions_json"], list) or not result["questions_json"]:
+        if (
+            not isinstance(result["questions_json"], list)
+            or not result["questions_json"]
+        ):
             raise HTTPException(status_code=422, detail="Quiz needs questions")
         percent = result.get("passing_percent", 90)
-        if (isinstance(percent, bool) or not isinstance(percent, int)) or not 1 <= percent <= 100:
+        if (
+            isinstance(percent, bool) or not isinstance(percent, int)
+        ) or not 1 <= percent <= 100:
             raise HTTPException(status_code=422, detail="Invalid passing percentage")
     elif kind == "module":
         if not isinstance(result["outcomes_json"], list) or not result["outcomes_json"]:
-            raise HTTPException(status_code=422, detail="Module needs learning outcomes")
+            raise HTTPException(
+                status_code=422, detail="Module needs learning outcomes"
+            )
 
     for field in ("safety_json", "completion_policy_json"):
         if field in result and not isinstance(result[field], dict):
             raise HTTPException(status_code=422, detail=f"{field} must be an object")
     for field in ("safety_gate", "requires_supervision"):
         if field in result and not isinstance(result[field], bool):
-            raise HTTPException(status_code=422, detail=f"{field} must be true or false")
+            raise HTTPException(
+                status_code=422, detail=f"{field} must be true or false"
+            )
     if result.get("demo_media_id"):
         try:
             result["demo_media_id"] = uuid.UUID(str(result["demo_media_id"]))
         except (ValueError, AttributeError) as exc:
-            raise HTTPException(status_code=422, detail="Invalid demo media ID") from exc
+            raise HTTPException(
+                status_code=422, detail="Invalid demo media ID"
+            ) from exc
     return result
 
 
@@ -158,8 +200,10 @@ async def list_definitions(
 ):
     model, _, _ = CATALOG_MODELS[kind]
     rows = (
-        await db.execute(select(model).order_by(model.code).limit(500))
-    ).scalars().all()
+        (await db.execute(select(model).order_by(model.code).limit(500)))
+        .scalars()
+        .all()
+    )
     return [_definition_data(row) for row in rows]
 
 
@@ -177,7 +221,9 @@ async def create_definition(
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Catalog code already exists") from exc
+        raise HTTPException(
+            status_code=409, detail="Catalog code already exists"
+        ) from exc
     await db.refresh(row)
     return _definition_data(row)
 
@@ -221,7 +267,9 @@ async def create_version(
     if definition is None:
         raise HTTPException(status_code=404, detail="Definition not found")
     if definition.is_retired:
-        raise HTTPException(status_code=409, detail="Retired definitions cannot gain versions")
+        raise HTTPException(
+            status_code=409, detail="Retired definitions cannot gain versions"
+        )
 
     last = (
         await db.execute(
@@ -256,7 +304,9 @@ async def publish_version(
     if definition is None:
         raise HTTPException(status_code=404, detail="Definition not found")
     if definition.is_retired:
-        raise HTTPException(status_code=409, detail="Retired definitions cannot publish")
+        raise HTTPException(
+            status_code=409, detail="Retired definitions cannot publish"
+        )
     version = (
         await db.execute(
             select(version_model)

@@ -17,15 +17,25 @@ from services.academy_service.models import (
     ("kind", "content"),
     [
         ("milestone", {"rubric_json": {"distance_m": 25}, "evidence_policy": "video"}),
-        ("drill", {"steps_json": ["Hold the wall and exhale"], "primary_focal_cue": "Slow exhale"}),
-        ("lesson", {"duration_minutes": 60, "blocks_json": [{"minutes": 10, "name": "Warmup"}]}),
+        (
+            "drill",
+            {
+                "steps_json": ["Hold the wall and exhale"],
+                "primary_focal_cue": "Slow exhale",
+            },
+        ),
+        (
+            "lesson",
+            {
+                "duration_minutes": 60,
+                "blocks_json": [{"minutes": 10, "name": "Warmup"}],
+            },
+        ),
         ("quiz", {"questions_json": [{"id": "q1", "prompt": "Pool rules?"}]}),
         ("module", {"outcomes_json": ["Safe water entry"]}),
     ],
 )
-async def test_admin_can_create_version_and_publish(
-    academy_client, kind, content
-):
+async def test_admin_can_create_version_and_publish(academy_client, kind, content):
     code = "LIB_" + uuid.uuid4().hex[:14].upper()
     created = await academy_client.post(
         f"/academy/admin/curriculum-library/{kind}",
@@ -96,12 +106,16 @@ async def test_milestone_requires_usable_rubric_and_valid_evidence_policy(
     record = await db_session.get(AcademyMilestoneDefinition, uuid.UUID(definition_id))
     assert record.code == code
     versions = (
-        await db_session.execute(
-            select(AcademyMilestoneVersion).where(
-                AcademyMilestoneVersion.definition_id == record.id
+        (
+            await db_session.execute(
+                select(AcademyMilestoneVersion).where(
+                    AcademyMilestoneVersion.definition_id == record.id
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert versions == []
 
 
@@ -110,7 +124,11 @@ async def test_milestone_requires_usable_rubric_and_valid_evidence_policy(
 async def test_duplicate_catalog_code_is_rejected(academy_client):
     code = "LIB_" + uuid.uuid4().hex[:14].upper()
     payload = {"code": code, "title": "Reusable content"}
-    first = await academy_client.post("/academy/admin/curriculum-library/drill", json=payload)
+    first = await academy_client.post(
+        "/academy/admin/curriculum-library/drill", json=payload
+    )
     assert first.status_code == 201, first.text
-    second = await academy_client.post("/academy/admin/curriculum-library/drill", json=payload)
+    second = await academy_client.post(
+        "/academy/admin/curriculum-library/drill", json=payload
+    )
     assert second.status_code == 409
