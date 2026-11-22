@@ -41,7 +41,11 @@ async def test_local_day_and_event_eligibility(monkeypatch):
         )
     assert (
         await attendance.eligible_swim_date(
-            {**session, "starts_at": "2099-11-20T10:00:00Z", "ends_at": "2099-11-20T11:00:00Z"}
+            {
+                **session,
+                "starts_at": "2099-11-20T10:00:00Z",
+                "ends_at": "2099-11-20T11:00:00Z",
+            }
         )
         is None
     )
