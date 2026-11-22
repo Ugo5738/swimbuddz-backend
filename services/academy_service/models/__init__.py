@@ -1,6 +1,8 @@
 """Academy Service models package."""
 
-from services.academy_service.models.requirements import AcademyCohortRequirementsSnapshot
+from services.academy_service.models.requirements import (
+    AcademyCohortRequirementsSnapshot,
+)
 
 from services.academy_service.models.curriculum_library import (
     AcademyMilestoneDefinition,
