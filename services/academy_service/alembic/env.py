@@ -18,6 +18,7 @@ sys.path.append(str(PROJECT_ROOT))
 from libs.common.config import get_settings
 from libs.db.base import Base
 from services.academy_service.models import (  # noqa: F401
+    AcademyCohortRequirementsSnapshot,
     AcademyMilestoneDefinition,
     AcademyMilestoneVersion,
     AcademyDrill,
@@ -70,6 +71,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 # Only migrate tables owned by this service
 SERVICE_TABLES = {
+    "academy_cohort_requirements_snapshots",
     "academy_milestone_definitions",
     "academy_milestone_versions",
     "academy_drills",
