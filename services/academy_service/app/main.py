@@ -24,6 +24,7 @@ from services.academy_service.routers.progress import router as progress_router
 from services.academy_service.routers.public_stats import router as public_stats_router
 from services.academy_service.routers.reports import router as reports_router
 from services.academy_service.routers.quizzes import router as quizzes_router
+from services.academy_service.routers.requirements import router as requirements_router
 from services.academy_service.routers.scoring import router as scoring_router
 
 
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     # Shared routers (curriculum and coach assignments)
     app.include_router(curriculum_router, prefix="/academy")
     app.include_router(curriculum_library_router, prefix="/academy")
+    app.include_router(requirements_router, prefix="/academy")
     app.include_router(assignment_router, prefix="/academy")
 
     return app

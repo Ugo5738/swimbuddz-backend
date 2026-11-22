@@ -25217,6 +25217,368 @@
         }
       }
     },
+    "/api/v1/academy/admin/modules/{module_version_id}/curriculum/milestones": {
+      "post": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "Assign Module Milestone",
+        "operationId": "assign_module_milestone_academy_admin_modules__module_version_id__curriculum_milestones_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "module_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Module Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleMilestoneInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/programs/{program_id}/curriculum/modules": {
+      "post": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "Assign Program Module",
+        "operationId": "assign_program_module_academy_admin_programs__program_id__curriculum_modules_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramModuleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/programs/{program_id}/curriculum/milestones": {
+      "post": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "Assign Program Milestone",
+        "operationId": "assign_program_milestone_academy_admin_programs__program_id__curriculum_milestones_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramMilestoneInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/cohorts/{cohort_id}/curriculum/milestones": {
+      "post": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "Assign Cohort Milestone",
+        "operationId": "assign_cohort_milestone_academy_admin_cohorts__cohort_id__curriculum_milestones_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CohortMilestoneInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/cohorts/{cohort_id}/curriculum/requirements/preview": {
+      "get": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "Preview Cohort Requirements",
+        "operationId": "preview_cohort_requirements_academy_admin_cohorts__cohort_id__curriculum_requirements_preview_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/cohorts/{cohort_id}/curriculum/requirements/frozen": {
+      "get": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "Get Frozen Cohort Requirements",
+        "operationId": "get_frozen_cohort_requirements_academy_admin_cohorts__cohort_id__curriculum_requirements_frozen_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/cohorts/{cohort_id}/curriculum/requirements/freeze": {
+      "post": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "Freeze Cohort Requirements",
+        "operationId": "freeze_cohort_requirements_academy_admin_cohorts__cohort_id__curriculum_requirements_freeze_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/coach-assignments/": {
       "post": {
         "tags": [
@@ -95456,6 +95818,39 @@
         "title": "CohortExtensionRequestReview",
         "description": "Admin action on an extension request."
       },
+      "CohortMilestoneInput": {
+        "properties": {
+          "milestone_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Version Id"
+          },
+          "target_week": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Week"
+          },
+          "override_reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 10,
+            "title": "Override Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "milestone_version_id",
+          "override_reason"
+        ],
+        "title": "CohortMilestoneInput"
+      },
       "CohortPricingLine": {
         "properties": {
           "label": {
@@ -98714,6 +99109,31 @@
         ],
         "title": "MilestoneType"
       },
+      "ModuleMilestoneInput": {
+        "properties": {
+          "milestone_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Version Id"
+          },
+          "required_for_completion": {
+            "type": "boolean",
+            "title": "Required For Completion",
+            "default": true
+          },
+          "order_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Order Index",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "milestone_version_id"
+        ],
+        "title": "ModuleMilestoneInput"
+      },
       "NextSessionInfo": {
         "properties": {
           "date": {
@@ -99253,6 +99673,57 @@
           "specialty"
         ],
         "title": "ProgramLevel"
+      },
+      "ProgramMilestoneInput": {
+        "properties": {
+          "milestone_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Version Id"
+          },
+          "required_for_completion": {
+            "type": "boolean",
+            "title": "Required For Completion",
+            "default": true
+          },
+          "target_week": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Week"
+          }
+        },
+        "type": "object",
+        "required": [
+          "milestone_version_id"
+        ],
+        "title": "ProgramMilestoneInput"
+      },
+      "ProgramModuleInput": {
+        "properties": {
+          "module_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Module Version Id"
+          },
+          "order_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Order Index"
+          }
+        },
+        "type": "object",
+        "required": [
+          "module_version_id",
+          "order_index"
+        ],
+        "title": "ProgramModuleInput"
       },
       "ProgramResponse": {
         "properties": {
