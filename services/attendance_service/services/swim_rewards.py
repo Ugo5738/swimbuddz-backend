@@ -1,4 +1,4 @@
-"""Deliver operator-confirmed swims to Wallet. A failed delivery remains due."""
+"""Automatically reconcile default attendance into swim rewards after class ends."""
 
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
