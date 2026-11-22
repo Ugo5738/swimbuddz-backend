@@ -12,6 +12,9 @@ from services.academy_service.routers.coach_dashboard import (
 )
 from services.academy_service.routers.cohorts import router as cohorts_router
 from services.academy_service.routers.curriculum import router as curriculum_router
+from services.academy_service.routers.curriculum_library import (
+    router as curriculum_library_router,
+)
 from services.academy_service.routers.enrollments import router as enrollments_router
 from services.academy_service.routers.evidence import router as evidence_router
 from services.academy_service.routers.extensions import router as extensions_router
@@ -56,6 +59,7 @@ def create_app() -> FastAPI:
 
     # Shared routers (curriculum and coach assignments)
     app.include_router(curriculum_router, prefix="/academy")
+    app.include_router(curriculum_library_router, prefix="/academy")
     app.include_router(assignment_router, prefix="/academy")
 
     return app
