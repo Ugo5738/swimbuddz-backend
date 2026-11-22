@@ -42,8 +42,12 @@ async def test_duplicate_days_correction_and_wallet_history(db_session, monkeypa
     assert (summary.total_swims, summary.bubbles_earned, summary.bubbles_credited) == (
         2,
         1,
-        2,
+        1,
     )
+    wallet_after_reversal = (
+        await db_session.scalars(select(Wallet).where(Wallet.member_auth_id == auth_id))
+    ).one()
+    assert wallet_after_reversal.balance == 1
     await deliver(7)
     await deliver(8)
     await deliver(9)
