@@ -1,5 +1,7 @@
 """Academy Service models package."""
 
+from services.academy_service.models.requirements import AcademyCohortRequirementsSnapshot
+
 from services.academy_service.models.curriculum_library import (
     AcademyMilestoneDefinition,
     AcademyMilestoneVersion,
@@ -93,6 +95,7 @@ from services.academy_service.models.progress import (
 )
 
 __all__ = [
+    "AcademyCohortRequirementsSnapshot",
     "AcademyMilestoneDefinition",
     "AcademyMilestoneVersion",
     "AcademyDrill",
