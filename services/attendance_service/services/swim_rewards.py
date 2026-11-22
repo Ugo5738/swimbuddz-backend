@@ -11,17 +11,23 @@ from libs.common.service_client.events import get_event_session_contract
 from libs.db.config import AsyncSessionLocal
 from sqlalchemy import select, update
 
-from services.attendance_service.models import AttendanceRecord, MemberRef
+from services.attendance_service.models import AttendanceRecord, AttendanceStatus, MemberRef
 from services.attendance_service.services.academy_defaults import parse_datetime
 
 logger = get_logger(__name__)
+# Automatic rewards start now; never backfill financial awards for old
+# default-Present attendance. Existing operator-verified awards are preserved.
+AUTO_START = date(2026, 11, 22)
+PRESENT = (AttendanceStatus.PRESENT, AttendanceStatus.LATE)
 
 
 async def eligible_swim_date(session: dict) -> date | None:
     starts = parse_datetime(session.get("starts_at"))
+    ends = parse_datetime(session.get("ends_at"))
     if (
         not starts
-        or starts > utc_now()
+        or not ends
+        or ends > utc_now()
         or session.get("status") not in {"scheduled", "in_progress", "completed"}
     ):
         return None
@@ -41,38 +47,33 @@ async def eligible_swim_date(session: dict) -> date | None:
 
 
 async def sync_due_swims():
+    """Reward default Present/Late after the swim ends, reversing corrections."""
     now = utc_now()
     records = AttendanceRecord
     async with AsyncSessionLocal() as db:
         rows = (
             await db.execute(
                 select(
-                    records.id,
-                    records.session_id,
-                    records.member_id,
-                    MemberRef.auth_id,
-                    records.swim_revision,
-                    records.swim_delivered_revision,
-                    records.swim_verified_on,
+                    records.id, records.session_id, records.member_id,
+                    MemberRef.auth_id, records.status, records.swim_revision,
+                    records.swim_delivered_revision, records.swim_verified_on,
                     records.swim_sync_at,
                 )
                 .join(MemberRef, MemberRef.id == records.member_id)
                 .where(records.swim_sync_at <= now)
-                .order_by(
-                    (records.swim_delivered_revision < records.swim_revision).desc(),
-                    records.swim_sync_at,
-                )
+                .order_by(records.swim_sync_at)
                 .limit(200)
             )
         ).all()
-    session_ids = list({str(row.session_id) for row in rows if row.swim_verified_on})
+    if not rows:
+        return {"delivered": 0}
     sessions = {
-        session["id"]: session
-        for session in await get_sessions_by_ids(
-            session_ids, calling_service="attendance"
+        str(item["id"]): item
+        for item in await get_sessions_by_ids(
+            list({str(r.session_id) for r in rows}), calling_service="attendance"
         )
     }
-    checked_sessions = {}
+    checked: dict[str, date | None] = {}
     delivered = 0
     for row in rows:
         predicate = (
@@ -82,21 +83,43 @@ async def sync_due_swims():
         )
         async with AsyncSessionLocal() as db:
             try:
-                if row.swim_verified_on:
-                    if row.session_id not in checked_sessions:
-                        checked_sessions[row.session_id] = await eligible_swim_date(
-                            sessions.get(str(row.session_id), {})
+                session = sessions.get(str(row.session_id), {})
+                key = str(row.session_id)
+                if key not in checked:
+                    checked[key] = await eligible_swim_date(session)
+                eligible = checked[key]
+                expected = (
+                    eligible
+                    if row.status in PRESENT
+                    and (
+                        (eligible is not None and eligible >= AUTO_START)
+                        or (
+                            row.swim_verified_on is not None
+                            and row.swim_verified_on == eligible
                         )
-                    if checked_sessions[row.session_id] != row.swim_verified_on:
-                        # A cancelled or moved swim needs fresh operator confirmation.
-                        await db.execute(
-                            update(records)
-                            .where(*predicate)
-                            .values(swim_verified_on=None, swim_verified_by=None)
+                    )
+                    else None
+                )
+                if expected != row.swim_verified_on:
+                    # DB trigger increments the revision and queues delivery.
+                    await db.execute(
+                        update(records).where(*predicate).values(
+                            swim_verified_on=expected,
+                            swim_verified_by="automatic_attendance" if expected else None,
                         )
-                        await db.commit()
-                        continue
-                if row.swim_delivered_revision < row.swim_revision:
+                    )
+                    await db.commit()
+                    continue
+                ends = parse_datetime(session.get("ends_at"))
+                if row.status in PRESENT and not eligible and ends and ends > now:
+                    next_check = ends + timedelta(minutes=1)
+                else:
+                    next_check = now + timedelta(days=1) if expected else None
+
+                if row.swim_delivered_revision < row.swim_revision and (
+                    row.swim_verified_on is not None
+                    or row.swim_delivered_revision > 0
+                ):
                     response = await internal_post(
                         service_url=get_settings().WALLET_SERVICE_URL,
                         path="/internal/wallet/verified-swims",
@@ -107,28 +130,27 @@ async def sync_due_swims():
                             "session_id": str(row.session_id),
                             "revision": row.swim_revision,
                             "swim_date": row.swim_verified_on.isoformat()
-                            if row.swim_verified_on
-                            else None,
+                            if row.swim_verified_on else None,
                         },
                     )
                     response.raise_for_status()
                     delivered += 1
-                # Recheck session moves/cancellations even after delivery.
-                next_check = now + timedelta(days=1) if row.swim_verified_on else None
-                delivered_revision = row.swim_revision
+                await db.execute(
+                    update(records).where(*predicate).values(
+                        swim_sync_at=next_check,
+                        swim_delivered_revision=row.swim_revision,
+                    )
+                )
+                await db.commit()
             except Exception:
                 await db.rollback()
                 logger.exception(
                     "Swim reward reconciliation deferred for attendance %s", row.id
                 )
-                next_check = now + timedelta(minutes=5)
-                delivered_revision = row.swim_delivered_revision
-            await db.execute(
-                update(records)
-                .where(*predicate)
-                .values(
-                    swim_sync_at=next_check, swim_delivered_revision=delivered_revision
+                await db.execute(
+                    update(records).where(*predicate).values(
+                        swim_sync_at=now + timedelta(minutes=5)
+                    )
                 )
-            )
-            await db.commit()
+                await db.commit()
     return {"delivered": delivered}
