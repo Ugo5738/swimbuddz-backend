@@ -146,9 +146,7 @@ async def reconcile_swim(db: AsyncSession, body: SwimVerification):
                 .order_by(PromotionalBubbleGrant.created_at.desc())
             )
         ).all()
-        available = max(
-            wallet.balance - await active_held_amount(db, wallet.id), 0
-        )
+        available = max(wallet.balance - await active_held_amount(db, wallet.id), 0)
         reversal = min(
             outstanding, available, sum(grant.bubbles_remaining for grant in grants)
         )
