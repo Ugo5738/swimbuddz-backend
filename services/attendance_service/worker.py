@@ -36,6 +36,12 @@ async def task_notify_stale_attendance(ctx: dict):
     await notify_stale_attendance()
 
 
+async def task_sync_swim_rewards(ctx: dict):
+    from services.attendance_service.services.swim_rewards import sync_due_swims
+
+    return await sync_due_swims()
+
+
 class WorkerSettings:
     redis_settings = get_redis_settings()
     queue_name = "arq:attendance"
@@ -47,6 +53,7 @@ class WorkerSettings:
     ]
 
     cron_jobs = [
+        cron(task_sync_swim_rewards, minute=set(range(60)), run_at_startup=True),
         cron(
             task_reconcile_academy_defaults,
             minute=set(range(0, 60, 5)),

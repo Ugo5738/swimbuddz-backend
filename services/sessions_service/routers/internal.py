@@ -98,6 +98,7 @@ logger = get_logger(__name__)
 
 class SessionBasic(BaseModel):
     id: str
+    event_id: str | None = None
     title: str
     description: Optional[str] = None
     notes: Optional[str] = None
@@ -177,6 +178,7 @@ class SessionSummaryBatchRequest(BaseModel):
 
 
 class SessionListSummary(BaseModel):
+    event_id: str | None = None
     ends_at: Optional[str] = None
     status: Optional[str] = None
     id: str
@@ -986,6 +988,7 @@ async def get_session_summaries_batch(
     return [
         SessionListSummary(
             id=str(session.id),
+            event_id=str(session.event_id) if session.event_id else None,
             title=session.title,
             session_type=session.session_type.value,
             starts_at=session.starts_at.isoformat(),
@@ -1471,6 +1474,7 @@ async def get_session_by_id(
 
     return SessionBasic(
         id=str(session.id),
+        event_id=str(session.event_id) if session.event_id else None,
         title=session.title,
         description=session.description,
         notes=session.notes,

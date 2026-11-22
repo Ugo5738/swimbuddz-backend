@@ -376,6 +376,12 @@ quarter/member filters while avoiding unrelated automatic relationship reads.
 - `upserted`: number of rows created or updated.
 - `deleted`: number of exception rows removed (cohort `present` revert path).
 
+### Confirmed swims and Bubbles
+
+- `POST /api/v1/attendance/sessions/{session_id}/coach-mark` accepts optional `confirm_swimmers` (default `false`). An assigned Academy coach or admin can set it when submitting a reviewed roster after an eligible swim starts. Eligible Present and Late member swimmers receive `swim_verified_on` in the response. A change to Absent, Excused or Cancelled withdraws confirmation.
+- `GET /api/v1/wallet/rewards/swims` returns the signed-in member’s confirmed swim count, active weeks, current streak, qualifying days this week, weekly limit, whether today counted, eligible Bubbles, issued Bubbles, reward value in naira and the next Lagos week’s start date. Members without any confirmations receive zero totals.
+- The Attendance worker delivers versioned confirmations every minute through the Attendance-only `POST /internal/wallet/verified-swims` endpoint. Wallet serialises issuance per member, records promotional credits and retries ledger delivery through the existing ledger replay workflow.
+
 ### Background Cron (attendance-worker)
 
 The attendance service ships an ARQ worker (`services.attendance_service.worker.WorkerSettings`) running two daily crons. Requires the `attendance-worker` container in `docker-compose.yml`.

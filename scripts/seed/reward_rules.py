@@ -101,6 +101,7 @@ def build_default_rules() -> list[RewardRule]:
         RewardRule(
             id=uuid.UUID("00000000-0000-0000-0000-100000000005"),
             rule_name="monthly_attendance_4",
+            is_active=False,
             display_name="Monthly Swim Streak (4 sessions)",
             event_type="attendance.monthly_milestone",
             trigger_config={"min_sessions": 4, "max_sessions": 7},
@@ -114,6 +115,7 @@ def build_default_rules() -> list[RewardRule]:
         RewardRule(
             id=uuid.UUID("00000000-0000-0000-0000-100000000006"),
             rule_name="monthly_attendance_8",
+            is_active=False,
             display_name="Monthly Swim Streak (8+ sessions)",
             event_type="attendance.monthly_milestone",
             trigger_config={"min_sessions": 8},
@@ -129,6 +131,7 @@ def build_default_rules() -> list[RewardRule]:
         RewardRule(
             id=uuid.UUID("00000000-0000-0000-0000-100000000007"),
             rule_name="attendance_streak_4_weeks",
+            is_active=False,
             display_name="4-Week Attendance Streak",
             event_type="attendance.streak",
             trigger_config={"min_consecutive_weeks": 4},

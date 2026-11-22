@@ -17,6 +17,7 @@ from libs.common.service_client import (
 )
 from libs.db.session import get_async_db
 from services.attendance_service.models import AttendanceRecord, AttendanceStatus
+from services.attendance_service.services.swim_rewards import eligible_swim_date
 from services.attendance_service.schemas import (
     AttendanceResponse,
     CoachAttendanceMarkRequest,
@@ -75,6 +76,17 @@ async def coach_mark_session_attendance(
     )
     if not session_data:
         raise HTTPException(status_code=404, detail="Session not found")
+    swim_date = None
+    if payload.confirm_swimmers:
+        if current_user.role == "service_role":
+            raise HTTPException(
+                403, "A coach or administrator must confirm the swimmers."
+            )
+        swim_date = await eligible_swim_date(session_data)
+        if swim_date is None:
+            raise HTTPException(
+                422, "This swim must have started and be an eligible swim session."
+            )
     if session_data.get("session_type") == "cohort_class" and (
         session_data.get("cohort_attendance_mode") == "individual"
         or session_data.get("cohort_fee_mode") == "paid_extra"
@@ -112,10 +124,12 @@ async def coach_mark_session_attendance(
     existing_rows = (
         (
             await db.execute(
-                select(AttendanceRecord).where(
+                select(AttendanceRecord)
+                .where(
                     AttendanceRecord.session_id == session_id,
                     AttendanceRecord.member_id.in_(member_ids),
                 )
+                .with_for_update()
             )
         )
         .scalars()
@@ -131,38 +145,21 @@ async def coach_mark_session_attendance(
     for entry in payload.entries:
         existing = existing_by_member.get(entry.member_id)
 
-        # Keep a durable row for every decision. Deleting a restored Present
-        # would make explicit-record consumers lose the student's attendance.
-        if entry.status == AttendanceStatus.PRESENT:
-            if existing is None:
-                db.add(
-                    AttendanceRecord(
-                        session_id=session_id,
-                        member_id=entry.member_id,
-                        status=AttendanceStatus.PRESENT,
-                        notes=entry.notes,
-                    )
-                )
-            else:
-                existing.status = AttendanceStatus.PRESENT
-                if entry.notes is not None:
-                    existing.notes = entry.notes
-            upserted += 1
-            continue
-
         if existing is None:
-            db.add(
-                AttendanceRecord(
-                    session_id=session_id,
-                    member_id=entry.member_id,
-                    status=entry.status,
-                    notes=entry.notes,
-                )
+            existing = AttendanceRecord(
+                session_id=session_id, member_id=entry.member_id
             )
-        else:
-            existing.status = entry.status
-            if entry.notes is not None:
-                existing.notes = entry.notes
+            db.add(existing)
+            existing_by_member[entry.member_id] = existing
+        existing.status = entry.status
+        if entry.notes is not None:
+            existing.notes = entry.notes
+        if swim_date and entry.status in (
+            AttendanceStatus.PRESENT,
+            AttendanceStatus.LATE,
+        ):
+            existing.swim_verified_on = swim_date
+            existing.swim_verified_by = current_user.user_id
         upserted += 1
 
     await db.commit()

@@ -170,6 +170,10 @@ async def update_reward_rule(
     if not rule:
         raise HTTPException(status_code=404, detail="Reward rule not found")
 
+    if rule.rule_name == "verified_swim_day":
+        raise HTTPException(
+            409, "Verified swim terms are managed by the swim rewards policy."
+        )
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(rule, field, value)

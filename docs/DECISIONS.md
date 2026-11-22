@@ -339,6 +339,15 @@
 
 ---
 
+## ADR-019: One Bubble per confirmed swim day
+
+- **Owner decision, 19 November 2026.** Credit one spendable Bubble for a confirmed Club, Academy or organised community swim day. A member can earn on three different days per Monday–Sunday week in Africa/Lagos. Use the session date for both caps. This offer replaces the old four/eight-session and four-week attendance incentives. Earlier credits and separate Academy, volunteering and referral rewards retain their history.
+- A human operator reviews the roster and explicitly confirms Present/Late swimmers after the session starts. Booking, automatic Academy attendance, guest participation, self-reports and repeat submissions alone cannot earn credits. Verification begins with explicitly confirmed swims. Historical defaults are never backfilled into financial awards.
+- Count each verified physical session toward activity, including additional same-day swims and swims beyond the weekly cap. Recognise the first, tenth, fiftieth and hundredth confirmed swims. Streaks use consecutive local weeks. The wallet records swim credits as promotional liability at ₦100 per Bubble. Corrected attendance reduces earned entitlement. Previously issued credits above the corrected entitlement count toward the member’s next swim earnings, protecting existing spending and checkout holds.
+- The member dashboard shows this week’s progress and links to the full My Swims view. My Swims shows confirmed activity, swim-specific Bubbles, wallet value, streaks and achievements. Both surfaces use the same Wallet summary. This makes a repeat visit understandable even for prepaid learners whose classes do not involve a checkout.
+
+---
+
 ## Template for Adding New Decisions
 
 Whenever a new product, pricing, accounting, curriculum, or architectural decision is made during a conversation, append a new `ADR-XXX` entry using this structure:

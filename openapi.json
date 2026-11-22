@@ -36641,6 +36641,32 @@
         }
       }
     },
+    "/api/v1/wallet/rewards/swims": {
+      "get": {
+        "tags": [
+          "rewards-member"
+        ],
+        "summary": "Get Swim Progress",
+        "operationId": "get_swim_progress_wallet_rewards_swims_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwimProgress"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/wallet/rewards/history": {
       "get": {
         "tags": [
@@ -38556,6 +38582,45 @@
                 "schema": {}
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/wallet/verified-swims": {
+      "post": {
+        "tags": [
+          "internal-rewards"
+        ],
+        "summary": "Sync Verified Swim",
+        "operationId": "sync_verified_swim_internal_wallet_verified_swims_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwimVerification"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -87892,6 +87957,17 @@
             "type": "string",
             "title": "Id"
           },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -89019,6 +89095,17 @@
       },
       "SessionListSummary": {
         "properties": {
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
           "ends_at": {
             "anyOf": [
               {
@@ -92245,6 +92332,18 @@
             ],
             "title": "Pickup Location"
           },
+          "swim_verified_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swim Verified On"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -92408,6 +92507,11 @@
       },
       "CoachAttendanceMarkRequest": {
         "properties": {
+          "confirm_swimmers": {
+            "type": "boolean",
+            "title": "Confirm Swimmers",
+            "default": false
+          },
           "entries": {
             "items": {
               "$ref": "#/components/schemas/CoachAttendanceMarkEntry"
@@ -113348,6 +113452,110 @@
           "total_bubbles_distributed"
         ],
         "title": "RewardStatsResponse"
+      },
+      "SwimProgress": {
+        "properties": {
+          "total_swims": {
+            "type": "integer",
+            "title": "Total Swims"
+          },
+          "active_weeks": {
+            "type": "integer",
+            "title": "Active Weeks"
+          },
+          "streak_weeks": {
+            "type": "integer",
+            "title": "Streak Weeks"
+          },
+          "week_days": {
+            "type": "integer",
+            "title": "Week Days"
+          },
+          "weekly_limit": {
+            "type": "integer",
+            "title": "Weekly Limit"
+          },
+          "today_counted": {
+            "type": "boolean",
+            "title": "Today Counted"
+          },
+          "bubbles_earned": {
+            "type": "integer",
+            "title": "Bubbles Earned"
+          },
+          "bubbles_credited": {
+            "type": "integer",
+            "title": "Bubbles Credited"
+          },
+          "reward_value_naira": {
+            "type": "integer",
+            "title": "Reward Value Naira"
+          },
+          "next_week": {
+            "type": "string",
+            "format": "date",
+            "title": "Next Week"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_swims",
+          "active_weeks",
+          "streak_weeks",
+          "week_days",
+          "weekly_limit",
+          "today_counted",
+          "bubbles_earned",
+          "bubbles_credited",
+          "reward_value_naira",
+          "next_week"
+        ],
+        "title": "SwimProgress"
+      },
+      "SwimVerification": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Revision"
+          },
+          "swim_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swim Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "member_auth_id",
+          "session_id",
+          "revision",
+          "swim_date"
+        ],
+        "title": "SwimVerification"
       },
       "TopRuleUsage": {
         "properties": {
