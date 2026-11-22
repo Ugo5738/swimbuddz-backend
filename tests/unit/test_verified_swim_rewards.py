@@ -32,6 +32,7 @@ async def test_local_day_and_event_eligibility(monkeypatch):
         "session_type": "club",
         "status": "completed",
         "starts_at": "2026-10-04T23:30:00Z",
+        "ends_at": "2026-10-05T01:30:00Z",
     }
     assert await attendance.eligible_swim_date(session) == date(2026, 10, 5)
     for status in ["draft", "cancelled"]:
@@ -40,7 +41,7 @@ async def test_local_day_and_event_eligibility(monkeypatch):
         )
     assert (
         await attendance.eligible_swim_date(
-            {**session, "starts_at": "2099-11-20T10:00:00Z"}
+            {**session, "starts_at": "2099-11-20T10:00:00Z", "ends_at": "2099-11-20T11:00:00Z"}
         )
         is None
     )
