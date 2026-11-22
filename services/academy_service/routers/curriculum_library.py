@@ -122,7 +122,7 @@ def _content(kind: str, data: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(result["primary_focal_cue"], str) or not result["primary_focal_cue"].strip():
             raise HTTPException(status_code=422, detail="Drills need a focal cue")
     elif kind == "lesson":
-        if (not isinstance(result["duration_minutes"], bool) and isinstance(result["duration_minutes"], int)) is False or result["duration_minutes"] <= 0:
+        if (isinstance(result["duration_minutes"], bool) or not isinstance(result["duration_minutes"], int)) or result["duration_minutes"] <= 0:
             raise HTTPException(status_code=422, detail="Lesson duration must be positive")
         if not isinstance(result["blocks_json"], list) or not result["blocks_json"]:
             raise HTTPException(status_code=422, detail="Lessons need teaching blocks")
@@ -130,7 +130,7 @@ def _content(kind: str, data: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(result["questions_json"], list) or not result["questions_json"]:
             raise HTTPException(status_code=422, detail="Quiz needs questions")
         percent = result.get("passing_percent", 90)
-        if (not isinstance(percent, bool) and isinstance(percent, int)) is False or not 1 <= percent <= 100:
+        if (isinstance(percent, bool) or not isinstance(percent, int)) or not 1 <= percent <= 100:
             raise HTTPException(status_code=422, detail="Invalid passing percentage")
     elif kind == "module":
         if not isinstance(result["outcomes_json"], list) or not result["outcomes_json"]:
