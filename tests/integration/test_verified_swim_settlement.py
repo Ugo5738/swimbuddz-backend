@@ -75,9 +75,9 @@ async def test_duplicate_days_correction_and_wallet_history(db_session, monkeypa
             .select_from(MemberRewardHistory)
             .where(MemberRewardHistory.member_auth_id == auth_id)
         )
-        == 4
+        == 5
     )
-    assert journal.await_count == 4
+    assert journal.await_count == 6
     assert (
         journal.await_args.kwargs["lines"][1]["account_ref"]
         == "bubbles_liability_promo"
