@@ -12,7 +12,7 @@ from libs.common.datetime_utils import utc_now
 from libs.common.ledger_client import post_journal_entry
 from libs.common.logging import get_logger
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
@@ -183,9 +183,6 @@ async def reconcile_swim(db: AsyncSession, body: SwimVerification):
                 },
             )
             db.add(txn)
-            wallet.lifetime_bubbles_received = max(
-                wallet.lifetime_bubbles_received - reversal, 0
-            )
             # Previously issued credits can span sessions and weekly caps.
             # Track the reversal against issued amounts without deleting
             # historical grants or tampering with purchased balances.
