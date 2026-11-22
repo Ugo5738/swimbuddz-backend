@@ -17,9 +17,7 @@ from libs.db.base import Base
 
 class AcademyCohortRequirementsSnapshot(Base):
     __tablename__ = "academy_cohort_requirements_snapshots"
-    __table_args__ = (
-        UniqueConstraint("cohort_id", name="uq_acrs_cohort"),
-    )
+    __table_args__ = (UniqueConstraint("cohort_id", name="uq_acrs_cohort"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

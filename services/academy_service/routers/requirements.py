@@ -33,7 +33,9 @@ from services.academy_service.services.requirements_resolver import (
 )
 
 router = APIRouter(
-    prefix="/admin", tags=["academy-requirements"], dependencies=[Depends(require_admin)]
+    prefix="/admin",
+    tags=["academy-requirements"],
+    dependencies=[Depends(require_admin)],
 )
 
 
@@ -194,9 +196,7 @@ async def assign_cohort_milestone(
 
     await _program_for_update(db, cohort.program_id)
     cohort = (
-        await db.execute(
-            select(Cohort).where(Cohort.id == cohort_id).with_for_update()
-        )
+        await db.execute(select(Cohort).where(Cohort.id == cohort_id).with_for_update())
     ).scalar_one()
     await _assert_not_frozen(db, cohort.id)
 
@@ -265,9 +265,7 @@ async def freeze_cohort_requirements(
     # Synchronize with program-level assignments and cohort-level overrides.
     await _program_for_update(db, cohort.program_id)
     locked_cohort = (
-        await db.execute(
-            select(Cohort).where(Cohort.id == cohort_id).with_for_update()
-        )
+        await db.execute(select(Cohort).where(Cohort.id == cohort_id).with_for_update())
     ).scalar_one()
 
     existing = await db.scalar(

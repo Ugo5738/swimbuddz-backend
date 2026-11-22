@@ -27,9 +27,13 @@ from services.academy_service.models import (
 
 def _validate_version(version: AcademyMilestoneVersion | None) -> None:
     if version is None or version.state != "published" or version.published_at is None:
-        raise HTTPException(status_code=409, detail="Assigned milestone version is not published")
+        raise HTTPException(
+            status_code=409, detail="Assigned milestone version is not published"
+        )
     if version.evidence_policy not in {"video", "time_trial", "observation"}:
-        raise HTTPException(status_code=409, detail="Assigned milestone evidence policy is invalid")
+        raise HTTPException(
+            status_code=409, detail="Assigned milestone evidence policy is invalid"
+        )
     if not isinstance(version.rubric_json, dict) or not version.rubric_json:
         raise HTTPException(status_code=409, detail="Assigned milestone lacks a rubric")
 
@@ -61,7 +65,9 @@ async def build_cohort_requirements(
     module_versions = (
         (
             await db.execute(
-                select(AcademyModuleVersion).where(AcademyModuleVersion.id.in_(module_ids))
+                select(AcademyModuleVersion).where(
+                    AcademyModuleVersion.id.in_(module_ids)
+                )
             )
         )
         .scalars()
@@ -76,7 +82,9 @@ async def build_cohort_requirements(
         or module_by_id[module_id].published_at is None
         for module_id in module_ids
     ):
-        raise HTTPException(status_code=409, detail="A program module version is not published")
+        raise HTTPException(
+            status_code=409, detail="A program module version is not published"
+        )
 
     module_milestones = (
         (
@@ -152,7 +160,9 @@ async def build_cohort_requirements(
     )
     definition_by_id = {item.id: item for item in definitions}
     if len(definition_by_id) != len({version.definition_id for version in versions}):
-        raise HTTPException(status_code=409, detail="Missing canonical milestone definition")
+        raise HTTPException(
+            status_code=409, detail="Missing canonical milestone definition"
+        )
 
     resolved: dict[uuid.UUID, dict[str, Any]] = {}
 
@@ -166,7 +176,9 @@ async def build_cohort_requirements(
         version = version_by_id[version_id]
         definition = definition_by_id[version.definition_id]
         if target_week is not None and target_week < 1:
-            raise HTTPException(status_code=409, detail="Milestone target week must be positive")
+            raise HTTPException(
+                status_code=409, detail="Milestone target week must be positive"
+            )
         previous = resolved.get(definition.id)
         if previous is not None and previous["version_id"] != str(version.id):
             raise HTTPException(
@@ -200,7 +212,11 @@ async def build_cohort_requirements(
 
     for link in sorted(module_links, key=lambda x: (x.order_index, str(x.id))):
         requirements = sorted(
-            (r for r in module_milestones if r.module_version_id == link.module_version_id),
+            (
+                r
+                for r in module_milestones
+                if r.module_version_id == link.module_version_id
+            ),
             key=lambda r: (r.order_index, str(r.milestone_version_id)),
         )
         for req in requirements:
@@ -211,7 +227,9 @@ async def build_cohort_requirements(
                 target_week=None,
             )
 
-    for assignment in sorted(program_milestones, key=lambda x: str(x.milestone_version_id)):
+    for assignment in sorted(
+        program_milestones, key=lambda x: str(x.milestone_version_id)
+    ):
         add(
             assignment.milestone_version_id,
             source="program",
@@ -219,9 +237,13 @@ async def build_cohort_requirements(
             target_week=assignment.target_week,
         )
 
-    for assignment in sorted(cohort_milestones, key=lambda x: str(x.milestone_version_id)):
+    for assignment in sorted(
+        cohort_milestones, key=lambda x: str(x.milestone_version_id)
+    ):
         if not assignment.override_reason.strip():
-            raise HTTPException(status_code=409, detail="Cohort milestone needs an override reason")
+            raise HTTPException(
+                status_code=409, detail="Cohort milestone needs an override reason"
+            )
         add(
             assignment.milestone_version_id,
             source="cohort",
