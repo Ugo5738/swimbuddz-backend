@@ -148,7 +148,7 @@ async def test_spent_swim_bubbles_offset_future_rewards_without_negative_balance
         )
         return sid
 
-    first = await deliver(22)
+    first = await deliver(16)
     await debit_wallet(
         db_session,
         member_auth_id=auth_id,
@@ -168,9 +168,9 @@ async def test_spent_swim_bubbles_offset_future_rewards_without_negative_balance
     progress = await swim_rewards.member_progress(db_session, auth_id)
     assert (progress.bubbles_earned, progress.bubbles_credited) == (0, 1)
 
-    await deliver(23)  # First subsequent earned Bubble pays down the offset
+    await deliver(17)  # First subsequent earned Bubble pays down the offset
     assert wallet.balance == 0
-    await deliver(24)  # Only the next qualifying day is newly credited
+    await deliver(18)  # Only the next qualifying day is newly credited
     await db_session.refresh(wallet)
     assert wallet.balance == 1
     progress = await swim_rewards.member_progress(db_session, auth_id)
