@@ -138,6 +138,10 @@ async def reconcile_swim(db: AsyncSession, body: SwimVerification):
                     PromotionalBubbleGrant.wallet_id == wallet.id,
                     PromotionalBubbleGrant.campaign_code == "verified_swim",
                     PromotionalBubbleGrant.bubbles_remaining > 0,
+                    (
+                        PromotionalBubbleGrant.expires_at.is_(None)
+                        | (PromotionalBubbleGrant.expires_at > utc_now())
+                    ),
                 )
                 .order_by(PromotionalBubbleGrant.created_at.desc())
             )
