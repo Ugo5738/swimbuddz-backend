@@ -11,7 +11,11 @@ from libs.common.service_client.events import get_event_session_contract
 from libs.db.config import AsyncSessionLocal
 from sqlalchemy import select, update
 
-from services.attendance_service.models import AttendanceRecord, AttendanceStatus, MemberRef
+from services.attendance_service.models import (
+    AttendanceRecord,
+    AttendanceStatus,
+    MemberRef,
+)
 from services.attendance_service.services.academy_defaults import parse_datetime
 
 logger = get_logger(__name__)
@@ -54,9 +58,14 @@ async def sync_due_swims():
         rows = (
             await db.execute(
                 select(
-                    records.id, records.session_id, records.member_id,
-                    MemberRef.auth_id, records.status, records.swim_revision,
-                    records.swim_delivered_revision, records.swim_verified_on,
+                    records.id,
+                    records.session_id,
+                    records.member_id,
+                    MemberRef.auth_id,
+                    records.status,
+                    records.swim_revision,
+                    records.swim_delivered_revision,
+                    records.swim_verified_on,
                     records.swim_sync_at,
                 )
                 .join(MemberRef, MemberRef.id == records.member_id)
@@ -103,9 +112,13 @@ async def sync_due_swims():
                 if expected != row.swim_verified_on:
                     # DB trigger increments the revision and queues delivery.
                     await db.execute(
-                        update(records).where(*predicate).values(
+                        update(records)
+                        .where(*predicate)
+                        .values(
                             swim_verified_on=expected,
-                            swim_verified_by="automatic_attendance" if expected else None,
+                            swim_verified_by="automatic_attendance"
+                            if expected
+                            else None,
                         )
                     )
                     await db.commit()
@@ -117,8 +130,7 @@ async def sync_due_swims():
                     next_check = now + timedelta(days=1) if expected else None
 
                 if row.swim_delivered_revision < row.swim_revision and (
-                    row.swim_verified_on is not None
-                    or row.swim_delivered_revision > 0
+                    row.swim_verified_on is not None or row.swim_delivered_revision > 0
                 ):
                     response = await internal_post(
                         service_url=get_settings().WALLET_SERVICE_URL,
@@ -130,13 +142,16 @@ async def sync_due_swims():
                             "session_id": str(row.session_id),
                             "revision": row.swim_revision,
                             "swim_date": row.swim_verified_on.isoformat()
-                            if row.swim_verified_on else None,
+                            if row.swim_verified_on
+                            else None,
                         },
                     )
                     response.raise_for_status()
                     delivered += 1
                 await db.execute(
-                    update(records).where(*predicate).values(
+                    update(records)
+                    .where(*predicate)
+                    .values(
                         swim_sync_at=next_check,
                         swim_delivered_revision=row.swim_revision,
                     )
@@ -148,9 +163,9 @@ async def sync_due_swims():
                     "Swim reward reconciliation deferred for attendance %s", row.id
                 )
                 await db.execute(
-                    update(records).where(*predicate).values(
-                        swim_sync_at=now + timedelta(minutes=5)
-                    )
+                    update(records)
+                    .where(*predicate)
+                    .values(swim_sync_at=now + timedelta(minutes=5))
                 )
                 await db.commit()
     return {"delivered": delivered}
