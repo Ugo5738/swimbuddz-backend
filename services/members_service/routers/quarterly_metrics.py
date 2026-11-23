@@ -46,29 +46,6 @@ async def get_reporting_summary(
                 available=False, notes=["Member profile is unavailable."]
             )
 
-    clubs = (
-        (
-            await db.execute(
-                select(Club).options(raiseload("*")).where(Club.created_at < end)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    pods = (
-        (
-            await db.execute(
-                select(Pod)
-                .options(raiseload("*"))
-                .where(
-                    Pod.created_at < end,
-                    or_(Pod.dissolved_at.is_(None), Pod.dissolved_at >= end),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
     assignment_query = (
         select(PodAssignment)
         .options(raiseload("*"))
@@ -91,6 +68,85 @@ async def get_reporting_summary(
         enrollment_query = enrollment_query.where(ClubEnrollment.member_id == member_id)
     assignments = (await db.execute(assignment_query)).scalars().all()
     enrollments = (await db.execute(enrollment_query)).scalars().all()
+
+    if member_id and not assignments and not enrollments:
+        clubs = []
+        pods = []
+    elif member_id:
+        assigned_pod_ids = {a.pod_id for a in assignments}
+        relevant_club_ids = {e.club_id for e in enrollments}
+        if assigned_pod_ids:
+            assigned_club_ids = (
+                (
+                    await db.execute(
+                        select(Pod.club_id).where(
+                            Pod.id.in_(assigned_pod_ids),
+                            Pod.created_at < end,
+                            or_(Pod.dissolved_at.is_(None), Pod.dissolved_at >= end),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            relevant_club_ids.update(assigned_club_ids)
+        if relevant_club_ids:
+            clubs = (
+                (
+                    await db.execute(
+                        select(Club)
+                        .options(raiseload("*"))
+                        .where(
+                            Club.id.in_(relevant_club_ids),
+                            Club.created_at < end,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            pods = (
+                (
+                    await db.execute(
+                        select(Pod)
+                        .options(raiseload("*"))
+                        .where(
+                            Pod.club_id.in_(relevant_club_ids),
+                            Pod.created_at < end,
+                            or_(Pod.dissolved_at.is_(None), Pod.dissolved_at >= end),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        else:
+            clubs = []
+            pods = []
+    else:
+        clubs = (
+            (
+                await db.execute(
+                    select(Club).options(raiseload("*")).where(Club.created_at < end)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        pods = (
+            (
+                await db.execute(
+                    select(Pod)
+                    .options(raiseload("*"))
+                    .where(
+                        Pod.created_at < end,
+                        or_(Pod.dissolved_at.is_(None), Pod.dissolved_at >= end),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
     pod_ids_at_end = {p.id for p in pods}
     end_assignments = [
         a

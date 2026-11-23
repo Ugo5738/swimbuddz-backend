@@ -75,22 +75,22 @@ class WorkerSettings:
     cron_jobs = [
         cron(
             task_reconcile_pending_payments,
-            minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
+            minute={0, 15, 30, 45},
             run_at_startup=True,
         ),
         cron(
             task_retry_payment_fulfillment,
-            minute={1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56},
+            minute={3, 18, 33, 48},
             run_at_startup=True,
         ),
         cron(
             task_reconcile_membership_payment_state,
-            minute={2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57},
+            minute={6, 36},
             run_at_startup=True,
         ),
         cron(
             task_send_pending_admin_payment_emails,
-            minute={3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53, 58},
+            minute={9, 19, 29, 39, 49, 59},
             run_at_startup=True,
         ),
         # Recurring coach payouts: daily at 02:15 UTC (~03:15 WAT). Picks up

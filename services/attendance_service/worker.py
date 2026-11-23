@@ -1,7 +1,8 @@
 """ARQ attendance reconciliation.
 
-Included Academy classes default enrolled students to Present at startup and
-every five minutes after a class starts. Saved coach/admin exceptions win.
+Included Academy classes default enrolled students to Present via a bounded
+48-hour lookback every 15 minutes, plus a full active-cohort history repair
+at startup and once daily. Saved coach/admin exceptions always win.
 The evening reminder and nightly legacy booking sweep remain in place for
 other session kinds; the sweep never invents an Academy absence.
 """
@@ -12,6 +13,17 @@ from libs.common.arq_config import get_redis_settings
 from libs.common.logging import get_logger
 
 logger = get_logger(__name__)
+RECENT_ACADEMY_DEFAULTS_LOOKBACK_HOURS = 48
+
+
+async def task_reconcile_recent_academy_defaults(ctx: dict):
+    from services.attendance_service.services.academy_defaults import (
+        reconcile_academy_defaults,
+    )
+
+    return await reconcile_academy_defaults(
+        lookback_hours=RECENT_ACADEMY_DEFAULTS_LOOKBACK_HOURS
+    )
 
 
 async def task_reconcile_academy_defaults(ctx: dict):
@@ -49,14 +61,31 @@ class WorkerSettings:
     functions = [
         task_sweep_no_show_bookings,
         task_notify_stale_attendance,
+        task_reconcile_recent_academy_defaults,
         task_reconcile_academy_defaults,
+        task_sync_swim_rewards,
     ]
 
     cron_jobs = [
-        cron(task_sync_swim_rewards, minute=set(range(60)), run_at_startup=True),
+        # Reconcile post-session swim Bubbles every 10 minutes (and on startup)
+        # instead of every minute on NullPool.
+        cron(
+            task_sync_swim_rewards,
+            minute={2, 12, 22, 32, 42, 52},
+            run_at_startup=True,
+        ),
+        # Recent-window default Present reconciliation for newly started classes.
+        cron(
+            task_reconcile_recent_academy_defaults,
+            minute={0, 15, 30, 45},
+            run_at_startup=False,
+        ),
+        # Full active-cohort historical safety repair once daily (03:15 WAT)
+        # and on worker startup.
         cron(
             task_reconcile_academy_defaults,
-            minute=set(range(0, 60, 5)),
+            hour={2},
+            minute={15},
             run_at_startup=True,
         ),
         # Stale-attendance nudge first (evening of the day after session)

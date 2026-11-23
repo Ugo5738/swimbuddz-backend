@@ -38,10 +38,11 @@ class WorkerSettings:
 
     cron_jobs = [
         # Chat reconciliation safety net (CHAT_SERVICE_DESIGN.md §4.2).
-        # Hourly at :10, plus once at worker startup so a fresh deploy
+        # Every 6 hours at :10, plus once at worker startup so a fresh deploy
         # heals any drift accumulated while the worker was down.
         cron(
             task_reconcile_chat_memberships,
+            hour={0, 6, 12, 18},
             minute=10,
             run_at_startup=True,
         ),

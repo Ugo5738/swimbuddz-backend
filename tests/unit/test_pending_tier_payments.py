@@ -106,5 +106,61 @@ async def test_reconciliation_projects_latest_active_and_marks_terminal_clears(
 
     set_pending.assert_awaited_once_with(newest)
     clear_pending.assert_awaited_once_with(terminal)
-    assert len(write_session.executed) == 1
+    assert len(write_session.executed) == 2
     assert write_session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_skips_already_projected_active_payment(monkeypatch):
+    newest = _payment(PaymentPurpose.CLUB)
+    newest.id = uuid.uuid4()
+    newest.payment_metadata = {
+        "pending_tier_projection_set_at": "2026-11-23T12:00:00+00:00"
+    }
+    older = _payment(PaymentPurpose.CLUB)
+    older.id = uuid.uuid4()
+    older.reference = "PAY-OLDER"
+    older.payment_metadata = {}
+
+    class Result:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return self.rows
+
+    class Session:
+        def __init__(self, results):
+            self.results = list(results)
+            self.executed = []
+            self.committed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def execute(self, statement):
+            self.executed.append(statement)
+            return self.results.pop(0) if self.results else None
+
+        async def commit(self):
+            self.committed = True
+
+    read_session = Session([Result([newest, older]), Result([])])
+    sessions = [read_session]
+    monkeypatch.setattr(tasks, "AsyncSessionLocal", lambda: sessions.pop(0))
+    set_pending = AsyncMock(return_value=True)
+    clear_pending = AsyncMock(return_value=True)
+    monkeypatch.setattr(tasks, "_set_pending_tier_payment_for_payment", set_pending)
+    monkeypatch.setattr(tasks, "_clear_pending_tier_payment_for_payment", clear_pending)
+
+    await tasks.reconcile_pending_membership_payment_state()
+
+    set_pending.assert_not_awaited()
+    clear_pending.assert_not_awaited()
+    assert sessions == []
