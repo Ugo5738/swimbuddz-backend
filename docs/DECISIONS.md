@@ -362,6 +362,34 @@
   - `swimbuddz-frontend/src/components/swims/SwimRewards.tsx`
   - `swimbuddz-frontend/src/lib/my-swims.ts`
 
+---
+
+## ADR-020: Member Dashboard Redesign, Simplified Navigation & Unified Rewards Hub
+- **Status:** Settled & Enforced (23 November 2026)
+- **Context & Why:**
+  - Feature accretion stacked 10+ full-width banners on `/account`, duplicated the member's greeting across the top bar and `GreetingHero`, buried Quick Actions below passive analytics, and exposed five overlapping top-level swim links (`Book My Next Swim`, `Find a Swim`, `My Swims`, `SwimBuddz Calendar`, `Explore Pools`).
+  - Meanwhile, the full `SwimRewards` panel on `/account/bookings` pushed actual upcoming swims off-screen, derived swim counts and `"First swim"` badges solely from post–22 Nov `wallet_verified_swims` rows (contradicting existing members' recorded `Year to Date` attendance), left `/account/wallet/rewards` disconnected with a 10-row sum bug and a stale `requires_admin_confirmation = true` flag on `verified_swim_day`, and formatted swim reward reversals with raw session UUIDs outside Reward History.
+- **Decision & Non-Negotiable Invariants:**
+  - **All-Time Swimming Milestones vs. Post-22 Nov Swim Bubbles:** Swimming milestone counts (`all_time_swims`, `all_time_active_weeks`, `all_time_best_streak`, `all_time_current_streak`) and swim badges (`First swim`, `10 swims`, `50 swims`, `100 swims`) count **all-time attended swimmer sessions** (`PRESENT`/`LATE` on started/completed non-cancelled sessions from `attendance_service`), matching Dashboard attendance totals. Financial **Swim Bubbles** (`week_days`, `weekly_limit`, `bubbles_earned`, `bubbles_credited`, `reward_value_naira`) remain strictly scoped to the `ADR-019` programme starting **22 November 2026** (no financial backfill). The lock-holding `reconcile_swim` settlement path must never perform cross-service HTTP calls; all-time milestone enrichment runs strictly on the read-only `GET /api/v1/wallet/rewards/swims` path with graceful fallback.
+  - **Rewards Placement Across Surfaces:**
+    - **Dashboard (`/account`):** Compact weekly reward progress (`0 of 3 days`) is unified with live wallet balance inside one **Wallet & Rewards** hero card, paired with an inline `+1 🫧` cue on the Next Swim card when eligible.
+    - **My Swims (`/account/bookings`):** Renders a slim, collapsible 1-row swim rewards strip so **Upcoming / Calendar / History** remain immediately visible above the fold.
+    - **Wallet → Rewards (`/account/wallet/rewards`):** Serves as the single full rewards hub displaying All-Time Swimming Milestones, Weekly Swim Bubbles Programme, accurate server-computed lifetime `total_bubbles_awarded` (across full history, net of swim reversals), automatic rule metadata (`verified_swim_day.requires_admin_confirmation = false`), and plain-English Reward History including swim reward reversals (never exposing raw session UUIDs).
+  - **Simplified Sidebar & Action-First Dashboard IA:**
+    - Fold `Book My Next Swim` out of the top-level sidebar into the Dashboard and My Swims primary booking CTA (preserving `/account/book-next-swim` for deep links). Keep top-level swim links focused on **Dashboard**, **My Swims**, **Find a Swim**, and **Explore Pools**, keep **SwimBuddz Calendar** accessible without competing as a 5th top-level swim link, and surface **Rewards** directly under **Wallet & Payments**.
+    - Replace duplicate top-bar + `GreetingHero` greetings with a single clean header showing independent programme pills (`ADR-001`) and live Wallet balance.
+    - Use an action-first 2-column desktop bento layout (Next Swim + Wallet & Rewards hero → Quick Actions → Updates & Community + compact 2026 Swim Summary without the ambiguous YTD `"Bubbles"` tile and linking `Sessions` to `/account/bookings?view=history`).
+- **Canonical Docs & Code:**
+  - `swimbuddz-backend/services/attendance_service/routers/internal.py`
+  - `swimbuddz-backend/services/attendance_service/services/swim_rewards.py`
+  - `swimbuddz-backend/services/wallet_service/services/swim_rewards.py`
+  - `swimbuddz-backend/services/wallet_service/routers/rewards_member.py`
+  - `swimbuddz-frontend/src/components/layout/MemberLayout.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/page.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/bookings/page.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/wallet/rewards/page.tsx`
+  - `swimbuddz-frontend/src/components/swims/SwimRewards.tsx`
+
 
 ---
 
