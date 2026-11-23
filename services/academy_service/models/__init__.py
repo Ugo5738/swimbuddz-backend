@@ -1,5 +1,10 @@
 """Academy Service models package."""
 
+from services.academy_service.models.competency import (
+    AcademyCompetencyRevocation,
+    AcademyCompetencyVerification,
+)
+
 from services.academy_service.models.requirements import (
     AcademyCohortRequirementsSnapshot,
 )
@@ -97,6 +102,8 @@ from services.academy_service.models.progress import (
 )
 
 __all__ = [
+    "AcademyCompetencyRevocation",
+    "AcademyCompetencyVerification",
     "AcademyCohortRequirementsSnapshot",
     "AcademyMilestoneDefinition",
     "AcademyMilestoneVersion",
