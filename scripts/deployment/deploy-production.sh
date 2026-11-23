@@ -15,6 +15,8 @@ API_HOST="${API_HOST:-api.swimbuddz.com}"
 START_WORKERS="${START_WORKERS:-true}"
 DOCKER_API_VERSION="${DOCKER_API_VERSION:-1.52}"
 COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
+ROLLBACK_IMAGE_RETENTION_COUNT="${ROLLBACK_IMAGE_RETENTION_COUNT:-2}"
+MIN_DEPLOY_FREE_GIB="${MIN_DEPLOY_FREE_GIB:-15}"
 
 export DOCKER_USERNAME LE_EMAIL API_HOST DOCKER_API_VERSION COMPOSE_PARALLEL_LIMIT
 
@@ -92,6 +94,24 @@ report_disk_usage() {
 log "Checking deployment and Docker storage"
 report_disk_usage
 
+check_path_args=()
+for storage_path in "${storage_paths[@]}"; do
+  check_path_args+=(--check-path "$storage_path")
+done
+
+log "Enforcing local rollback image retention and checking disk headroom"
+if ! python3 "$SCRIPT_DIR/prune_rollback_images.py" \
+  --recovery-root "$RECOVERY_ROOT" \
+  --keep-verified-sets "$ROLLBACK_IMAGE_RETENTION_COUNT" \
+  --current-point "$recovery_path" \
+  --min-free-gib "$MIN_DEPLOY_FREE_GIB" \
+  "${check_path_args[@]}" \
+  --apply; then
+  log "Disk usage after retention check failure"
+  report_disk_usage
+  die "Insufficient free disk space before image pull. See docs/operations/PRODUCTION_DATABASE_RECOVERY.md."
+fi
+
 log "Pulling production images"
 if ! compose pull; then
   log "Disk usage after image pull failure"
@@ -122,8 +142,14 @@ fi
 log "Running local deployment verification"
 WORKERS_EXPECTED="$START_WORKERS" "$SCRIPT_DIR/verify-production.sh"
 
-log "Removing unused Docker images"
-docker image prune -f
+log "Enforcing post-deploy rollback image retention and removing unused Docker images"
+python3 "$SCRIPT_DIR/prune_rollback_images.py" \
+  --recovery-root "$RECOVERY_ROOT" \
+  --keep-verified-sets "$ROLLBACK_IMAGE_RETENTION_COUNT" \
+  --apply
+
+log "Post-deploy disk usage"
+report_disk_usage
 
 log "Deployment completed successfully"
 printf '\nAPI host: %s\nWorkers started: %s\n' "$API_HOST" "$START_WORKERS"

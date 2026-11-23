@@ -1,24 +1,36 @@
-# ---- Stage 1: Build ----
-FROM python:3.11-slim AS builder
+ARG BASE_IMAGE=deps-base
+
+# ---- Fallback Stage 1: Build dependencies locally (skipped when BASE_IMAGE is set) ----
+FROM python:3.11-slim AS deps-builder
 
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libjpeg-dev \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md ./
-COPY libs/ libs/
-COPY services/media_service/ services/media_service/
+COPY pyproject.toml constraints.txt ./
 
-RUN pip install --no-cache-dir --prefix=/install .
+RUN python -c "import tomllib; deps = tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']; open('requirements.txt', 'w').write('\n'.join(deps) + '\n')" \
+    && pip install --no-cache-dir --prefix=/install -c constraints.txt -r requirements.txt \
+    && rm -f requirements.txt
 
-# ---- Stage 2: Runtime ----
-FROM python:3.11-slim
+# ---- Fallback Stage 2: Shared runtime dependencies (skipped when BASE_IMAGE is set) ----
+FROM python:3.11-slim AS deps-base
 
 WORKDIR /app
+ENV PYTHONPATH=/app
+
+COPY --from=deps-builder /install /usr/local
+RUN printf '/app\n' > /usr/local/lib/python3.11/site-packages/swimbuddz.pth
+
+# ---- Runtime ----
+FROM ${BASE_IMAGE} AS runtime
+
+WORKDIR /app
+ENV PYTHONPATH=/app
 
 # Pillow needs libjpeg/zlib at runtime; ffmpeg for video transcoding
 RUN apt-get update && apt-get install -y \
@@ -27,8 +39,6 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /install /usr/local
 
 COPY libs/ libs/
 COPY services/media_service/ services/media_service/

@@ -1,0 +1,34 @@
+# Shared Python 3.11 dependency base for all non-AI SwimBuddz backend services.
+#
+# Built once per dependency change (content-addressed by Dockerfile.python-base,
+# pyproject.toml, and constraints.txt) in CI so all 18 deployed service images
+# share the exact same ~540 MB Python dependency layer with each other and across
+# releases. Service Dockerfiles copy only application code (libs/, services/) on
+# top of this base and import from /app via swimbuddz.pth + PYTHONPATH.
+
+# ---- Stage 1: Build third-party Python dependencies ----
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    libjpeg-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml constraints.txt ./
+
+RUN python -c "import tomllib; deps = tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']; open('requirements.txt', 'w').write('\n'.join(deps) + '\n')" \
+    && pip install --no-cache-dir --prefix=/install -c constraints.txt -r requirements.txt \
+    && rm -f requirements.txt
+
+# ---- Stage 2: Shared slim runtime base ----
+FROM python:3.11-slim
+
+WORKDIR /app
+ENV PYTHONPATH=/app
+
+COPY --from=builder /install /usr/local
+RUN printf '/app\n' > /usr/local/lib/python3.11/site-packages/swimbuddz.pth
