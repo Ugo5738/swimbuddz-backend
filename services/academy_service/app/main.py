@@ -11,6 +11,7 @@ from services.academy_service.routers.coach_dashboard import (
     router as coach_dashboard_router,
 )
 from services.academy_service.routers.cohorts import router as cohorts_router
+from services.academy_service.routers.competencies import router as competencies_router
 from services.academy_service.routers.curriculum import router as curriculum_router
 from services.academy_service.routers.curriculum_library import (
     router as curriculum_library_router,
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(enrollments_router, prefix="/academy")
     app.include_router(progress_router, prefix="/academy")
     app.include_router(evidence_router, prefix="/academy")
+    app.include_router(competencies_router, prefix="/academy")
     app.include_router(coach_dashboard_router, prefix="/academy")
     app.include_router(scoring_router, prefix="/academy")
     app.include_router(reports_router, prefix="/academy")

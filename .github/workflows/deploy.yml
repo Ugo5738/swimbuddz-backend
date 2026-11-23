@@ -195,6 +195,7 @@ jobs:
 
           pytest -v tests/integration/test_academy_access_integrity.py
           pytest -v tests/integration/test_academy_curriculum_library.py
+          pytest -v tests/integration/test_academy_competency_passport.py
           pytest -v tests/integration/test_academy_requirements_resolver.py
           pytest -v tests/integration/test_academy_default_attendance.py
           pytest -v tests/integration/test_academy_individual_review.py
