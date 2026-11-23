@@ -180,7 +180,9 @@ async def verify_legacy_competency(
             status_code=403, detail="Human administrator approval is required"
         )
     if len(payload.equivalence_reason.strip()) < 30:
-        raise HTTPException(status_code=422, detail="A meaningful equivalence explanation is required")
+        raise HTTPException(
+            status_code=422, detail="A meaningful equivalence explanation is required"
+        )
     progress = (
         await db.execute(
             select(StudentProgress)
@@ -357,7 +359,9 @@ async def revoke_verification(
     if current_user.role == "service_role":
         raise HTTPException(status_code=403, detail="Human administrator required")
     if len(payload.reason.strip()) < 20:
-        raise HTTPException(status_code=422, detail="A meaningful revocation reason is required")
+        raise HTTPException(
+            status_code=422, detail="A meaningful revocation reason is required"
+        )
     record = (
         await db.execute(
             select(AcademyCompetencyVerification)
