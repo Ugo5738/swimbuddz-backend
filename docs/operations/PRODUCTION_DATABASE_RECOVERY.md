@@ -27,11 +27,29 @@ sensitive information. Connection credentials are passed through a temporary
 Recovery points live outside Git at
 `/home/deploy/operational-backups/releases/<UTC timestamp>-<PID>/` (override the
 parent with deployment-shell `RECOVERY_ROOT`). Directories are 0700 and files
-0600. Each successful deployment creates a new point; the script never deletes
-older points. Retain at least the latest five verified points and any point
-needed for an incident. Review disk use before manually removing older points.
-Delete only the corresponding `swimbuddz-rollback:<point>-<service>` tags after
-that point is retired. Image pruning does not remove these tagged images.
+0600. Each deployment creates a new point, and `deploy-production.sh` separates
+**database/manifest retention** from **local Docker rollback image retention**:
+
+- **Database backups & release manifests (~6 MB each):** Never deleted
+  automatically. Keep at least 5+ verified points (`database/database.dump`,
+  `database/verified.json`, `.env.prod`, `compose-shell.env`, `release.json`)
+  on disk.
+- **Local Docker rollback images (`prune_rollback_images.py`):** Automatically
+  retains all currently running container images, active canary/incident pins
+  under `/home/deploy/operational-backups/canaries/*/image-pin.json` (plus any
+  release directory containing a `.keep-images` marker), required infrastructure
+  images (`postgres:17-alpine`, `redis:7-alpine`, `traefik:v3`), the in-flight
+  release's newly captured point, and the latest **2 distinct verified**
+  rollback image sets (`ROLLBACK_IMAGE_RETENTION_COUNT=2`, configurable).
+  Older `swimbuddz-rollback:*` tags, superseded failed-attempt tags, and
+  orphaned non-running `ugodaniels/swimbuddz-*:latest` leftovers are untagged
+  and pruned automatically before `compose pull` and after successful
+  deployment, recording a `retired-images.json` receipt in each retired
+  verified point directory.
+- **Pre-pull disk headroom gate:** Before `compose pull`, deployment verifies at
+  least `MIN_DEPLOY_FREE_GIB` (default `15` GiB) free on Docker's storage mount
+  after pruning so a release fails fast instead of filling the root disk
+  mid-pull.
 
 ### Recovering from a full Docker filesystem
 
@@ -45,18 +63,17 @@ that point is retired. Image pruning does not remove these tagged images.
    docker system df
    ```
 
-2. Review any running release job. On the production host, clear unused build
-   cache with `docker builder prune` and untagged, unused images with
-   `docker image prune`. Recheck free space after Docker has finished cleanup.
-3. If more space is needed, expand the filesystem or review older local rollback
-   images for retirement. Keep the latest five verified recovery points and
-   incident pins. Use the selected point's `release.json` to identify its exact
-   tags. Compare image IDs across points first because removing a duplicate tag
-   does not release shared layers. Preserve the database archive and its
-   verification evidence.
-4. Once the host has room for the remaining images and backup verification,
-   retry the production workflow. Check the verified restore, service status,
-   public gateway health and post-deploy disk usage.
+2. Run `python3 scripts/deployment/prune_rollback_images.py --dry-run` (and then
+   `--apply`) to retire any local rollback tags beyond the retained window,
+   orphaned failed-pull `:latest` images, dangling images, and unused build
+   cache while preserving all running images, canary/incident pins, the latest
+   retained verified image sets, and every database backup. To pin an extra
+   incident release indefinitely, touch `.keep-images` inside that release
+   directory before pruning.
+3. Once the host has at least `MIN_DEPLOY_FREE_GIB` free for the release and
+   backup verification, retry the failed deploy job. Check the verified
+   restore, service status, public gateway health, canary pool flags, and
+   post-deploy disk usage.
 
 The private point includes the prior `.env.prod`, Compose `.env` when present,
 Compose file, shell interpolation values (`compose-shell.env`), running image
