@@ -301,7 +301,9 @@ async def verify_legacy_competency(
             status_code=409, detail="Source review changed during verification"
         )
 
-    now = utc_now()
+    # Validity starts when the swimmer passed the source assessment, not
+    # when an administrator later imports that evidence into the passport.
+    assessed_at = review.created_at
     record = AcademyCompetencyVerification(
         member_id=enrollment.member_id,
         member_auth_id=str(enrollment.member_auth_id),
@@ -322,8 +324,8 @@ async def verify_legacy_competency(
         evidence_owner_auth_id=uploader,
         verified_by_auth_id=str(current_user.user_id),
         review_notes=payload.equivalence_reason.strip(),
-        verified_at=now,
-        expires_at=now + timedelta(days=valid_days) if valid_days else None,
+        verified_at=assessed_at,
+        expires_at=assessed_at + timedelta(days=valid_days) if valid_days else None,
     )
     db.add(record)
     try:
