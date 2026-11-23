@@ -97,12 +97,15 @@ async def _source_review(db: AsyncSession, progress: StudentProgress):
     if progress.status != ProgressStatus.ACHIEVED:
         raise HTTPException(status_code=409, detail="Source milestone is not achieved")
     if progress.reviewed_at is None:
-        raise HTTPException(status_code=409, detail="Source milestone has not been reviewed")
+        raise HTTPException(
+            status_code=409, detail="Source milestone has not been reviewed"
+        )
     review = await _latest_decision(db, progress.id)
     if (
         review is None
         or review.new_status != ProgressStatus.ACHIEVED
-        or review.event_type not in (MilestoneEventType.APPROVED, MilestoneEventType.OVERRIDE)
+        or review.event_type
+        not in (MilestoneEventType.APPROVED, MilestoneEventType.OVERRIDE)
         or review.actor_role not in ("coach", "admin")
     ):
         raise HTTPException(
@@ -117,16 +120,21 @@ async def _source_review(db: AsyncSession, progress: StudentProgress):
     return review
 
 
-async def _uploader_auth_id(db: AsyncSession, progress: StudentProgress, enrollment: Enrollment):
+async def _uploader_auth_id(
+    db: AsyncSession, progress: StudentProgress, enrollment: Enrollment
+):
     last_claim = (
         await db.execute(
             select(MilestoneReviewEvent)
             .where(
                 MilestoneReviewEvent.progress_id == progress.id,
                 MilestoneReviewEvent.event_type == MilestoneEventType.CLAIMED,
-                MilestoneReviewEvent.evidence_media_id_snapshot == progress.evidence_media_id,
+                MilestoneReviewEvent.evidence_media_id_snapshot
+                == progress.evidence_media_id,
             )
-            .order_by(MilestoneReviewEvent.created_at.desc(), MilestoneReviewEvent.id.desc())
+            .order_by(
+                MilestoneReviewEvent.created_at.desc(), MilestoneReviewEvent.id.desc()
+            )
             .limit(1)
         )
     ).scalar_one_or_none()
@@ -183,25 +191,35 @@ async def verify_legacy_competency(
         raise HTTPException(status_code=404, detail="Source milestone not found")
 
     enrollment = await db.get(Enrollment, progress.enrollment_id)
-    if enrollment is None or enrollment.cohort_id is None or not enrollment.member_auth_id:
-        raise HTTPException(status_code=409, detail="Verifiable enrollment and cohort required")
+    if (
+        enrollment is None
+        or enrollment.cohort_id is None
+        or not enrollment.member_auth_id
+    ):
+        raise HTTPException(
+            status_code=409, detail="Verifiable enrollment and cohort required"
+        )
     review = await _source_review(db, progress)
 
     version = await db.get(AcademyMilestoneVersion, payload.milestone_version_id)
     if version is None or version.state != "published" or version.published_at is None:
-        raise HTTPException(status_code=409, detail="Published milestone version required")
+        raise HTTPException(
+            status_code=409, detail="Published milestone version required"
+        )
     definition = await db.get(AcademyMilestoneDefinition, version.definition_id)
     if definition is None:
         raise HTTPException(status_code=409, detail="Missing canonical definition")
     if version.evidence_policy not in ("video", "time_trial"):
         raise HTTPException(
-            status_code=409, detail="Portable practical credit requires video-based evidence"
+            status_code=409,
+            detail="Portable practical credit requires video-based evidence",
         )
 
     snapshot = (
         await db.execute(
-            select(AcademyCohortRequirementsSnapshot)
-            .where(AcademyCohortRequirementsSnapshot.cohort_id == enrollment.cohort_id)
+            select(AcademyCohortRequirementsSnapshot).where(
+                AcademyCohortRequirementsSnapshot.cohort_id == enrollment.cohort_id
+            )
         )
     ).scalar_one_or_none()
     if snapshot is None or snapshot.program_id != enrollment.program_id:
@@ -209,7 +227,9 @@ async def verify_legacy_competency(
             status_code=409, detail="A frozen cohort assessment standard is required"
         )
     if requirements_sha256(snapshot.requirements_json) != snapshot.sha256:
-        raise HTTPException(status_code=409, detail="Cohort requirements integrity mismatch")
+        raise HTTPException(
+            status_code=409, detail="Cohort requirements integrity mismatch"
+        )
 
     match = next(
         (
@@ -221,12 +241,19 @@ async def verify_legacy_competency(
     )
     if match is None or match.get("rubric_snapshot") != version.rubric_json:
         raise HTTPException(
-            status_code=409, detail="This version is not in the cohort's frozen requirements"
+            status_code=409,
+            detail="This version is not in the cohort's frozen requirements",
         )
 
     valid_days = version.assessment_context_json.get("validity_days")
-    if valid_days is not None and (isinstance(valid_days, bool) or not isinstance(valid_days, int) or valid_days <= 0):
-        raise HTTPException(status_code=409, detail="Invalid assessment validity policy")
+    if valid_days is not None and (
+        isinstance(valid_days, bool)
+        or not isinstance(valid_days, int)
+        or valid_days <= 0
+    ):
+        raise HTTPException(
+            status_code=409, detail="Invalid assessment validity policy"
+        )
     if version.safety_gate and valid_days is None:
         raise HTTPException(
             status_code=409, detail="Safety-sensitive credit needs a recheck interval"
@@ -249,13 +276,13 @@ async def verify_legacy_competency(
         or set(payload.criteria_passed) != set(expected)
     ):
         raise HTTPException(
-            status_code=422, detail="Every published criterion must be explicitly attested"
+            status_code=422,
+            detail="Every published criterion must be explicitly attested",
         )
 
     already = (
         await db.execute(
-            select(AcademyCompetencyVerification)
-            .where(
+            select(AcademyCompetencyVerification).where(
                 AcademyCompetencyVerification.source_review_event_id == review.id,
                 AcademyCompetencyVerification.milestone_version_id == version.id,
             )
@@ -270,7 +297,9 @@ async def verify_legacy_competency(
     # admin operations on the same source progress serialize here.
     current_review = await _source_review(db, progress)
     if current_review.id != review.id:
-        raise HTTPException(status_code=409, detail="Source review changed during verification")
+        raise HTTPException(
+            status_code=409, detail="Source review changed during verification"
+        )
 
     now = utc_now()
     record = AcademyCompetencyVerification(
@@ -301,7 +330,9 @@ async def verify_legacy_competency(
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Verification already exists") from exc
+        raise HTTPException(
+            status_code=409, detail="Verification already exists"
+        ) from exc
     await db.refresh(record)
     return _view_verification(record, "verified")
 

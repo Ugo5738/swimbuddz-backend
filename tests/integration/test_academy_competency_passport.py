@@ -31,7 +31,9 @@ from tests.factories import (
 )
 
 
-async def _record_with_approved_video(db_session, seed_member_row, *, validity_days=365):
+async def _record_with_approved_video(
+    db_session, seed_member_row, *, validity_days=365
+):
     member = await seed_member_row()
     program = ProgramFactory.create()
     cohort = CohortFactory.create(program_id=program.id)
@@ -99,13 +101,15 @@ async def _record_with_approved_video(db_session, seed_member_row, *, validity_d
         "schema_version": 1,
         "cohort_id": str(cohort.id),
         "program_id": str(program.id),
-        "milestones": [{
-            "code": definition.code,
-            "version_id": str(version.id or uuid.uuid4()),
-            "rubric_snapshot": version.rubric_json,
-            "assessment_context_snapshot": version.assessment_context_json,
-            "safety_gate": True,
-        }],
+        "milestones": [
+            {
+                "code": definition.code,
+                "version_id": str(version.id or uuid.uuid4()),
+                "rubric_snapshot": version.rubric_json,
+                "assessment_context_snapshot": version.assessment_context_json,
+                "safety_gate": True,
+            }
+        ],
     }
     version.id = uuid.UUID(snapshot_json["milestones"][0]["version_id"])
     snapshot = AcademyCohortRequirementsSnapshot(
@@ -115,15 +119,32 @@ async def _record_with_approved_video(db_session, seed_member_row, *, validity_d
         sha256=requirements_sha256(snapshot_json),
         created_by_auth_id=str(uuid.uuid4()),
     )
-    db_session.add_all([
-        program, cohort, enrollment, legacy, definition, version,
-        progress, claim, approved, snapshot,
-    ])
+    db_session.add_all(
+        [
+            program,
+            cohort,
+            enrollment,
+            legacy,
+            definition,
+            version,
+            progress,
+            claim,
+            approved,
+            snapshot,
+        ]
+    )
     await db_session.commit()
     return SimpleNamespace(
-        member=member, program=program, cohort=cohort, enrollment=enrollment,
-        legacy=legacy, definition=definition, version=version,
-        progress=progress, approved=approved, evidence_id=evidence_id,
+        member=member,
+        program=program,
+        cohort=cohort,
+        enrollment=enrollment,
+        legacy=legacy,
+        definition=definition,
+        version=version,
+        progress=progress,
+        approved=approved,
+        evidence_id=evidence_id,
     )
 
 
@@ -163,18 +184,24 @@ async def test_verified_passport_is_reusable_and_idempotent(
     assert replay.status_code == 409
 
     original = (
-        await db_session.execute(select(AcademyCompetencyVerification))
-    ).scalars().all()
+        (await db_session.execute(select(AcademyCompetencyVerification)))
+        .scalars()
+        .all()
+    )
     assert len(original) == 1
     assert original[0].source_review_event_id == data.approved.id
     assert original[0].expires_at is not None
 
     from services.academy_service.app.main import app
+
     current = app.dependency_overrides.get(get_current_user)
+
     async def owner():
         return make_member_user(user_id=data.member.auth_id)
+
     async def stranger():
         return make_member_user(user_id=str(uuid.uuid4()))
+
     try:
         app.dependency_overrides[get_current_user] = owner
         mine = await academy_client.get("/academy/competencies/me")
@@ -288,7 +315,11 @@ async def test_bad_provenance_and_missing_frozen_requirements_cannot_gain_credit
     )
     assert result.status_code == 409
     assert snapshot.sha256 == requirements_sha256(snapshot.requirements_json)
-    count = (await db_session.execute(select(AcademyCompetencyVerification))).scalars().all()
+    count = (
+        (await db_session.execute(select(AcademyCompetencyVerification)))
+        .scalars()
+        .all()
+    )
     assert count == []
 
 
@@ -307,5 +338,9 @@ async def test_media_verification_failure_does_not_create_credit(
             "/academy/competencies/admin/verify-legacy", json=_payload(data)
         )
     assert result.status_code == 422
-    records = (await db_session.execute(select(AcademyCompetencyVerification))).scalars().all()
+    records = (
+        (await db_session.execute(select(AcademyCompetencyVerification)))
+        .scalars()
+        .all()
+    )
     assert records == []

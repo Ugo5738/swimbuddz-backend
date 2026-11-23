@@ -67,18 +67,12 @@ class AcademyCompetencyVerification(Base):
     )
     rubric_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
     criteria_passed: Mapped[list] = mapped_column(JSONB, nullable=False)
-    assessment_context_snapshot: Mapped[dict] = mapped_column(
-        JSONB, nullable=False
-    )
+    assessment_context_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
     evidence_media_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False
     )
-    evidence_owner_auth_id: Mapped[str] = mapped_column(
-        String(160), nullable=False
-    )
-    verified_by_auth_id: Mapped[str] = mapped_column(
-        String(160), nullable=False
-    )
+    evidence_owner_auth_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    verified_by_auth_id: Mapped[str] = mapped_column(String(160), nullable=False)
     review_notes: Mapped[str] = mapped_column(Text, nullable=False)
     verified_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
@@ -90,9 +84,7 @@ class AcademyCompetencyVerification(Base):
 
 class AcademyCompetencyRevocation(Base):
     __tablename__ = "academy_competency_revocations"
-    __table_args__ = (
-        UniqueConstraint("verification_id", name="uq_acr_verification"),
-    )
+    __table_args__ = (UniqueConstraint("verification_id", name="uq_acr_verification"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -103,9 +95,7 @@ class AcademyCompetencyRevocation(Base):
         nullable=False,
         index=True,
     )
-    revoked_by_auth_id: Mapped[str] = mapped_column(
-        String(160), nullable=False
-    )
+    revoked_by_auth_id: Mapped[str] = mapped_column(String(160), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     revoked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now

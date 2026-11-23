@@ -22,9 +22,13 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("member_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("member_auth_id", sa.String(160), nullable=False),
-        sa.Column("source_enrollment_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "source_enrollment_id", postgresql.UUID(as_uuid=True), nullable=False
+        ),
         sa.Column("source_progress_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("source_review_event_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "source_review_event_id", postgresql.UUID(as_uuid=True), nullable=False
+        ),
         sa.Column(
             "milestone_definition_id",
             postgresql.UUID(as_uuid=True),
@@ -47,28 +51,34 @@ def upgrade() -> None:
         sa.Column("verified_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.UniqueConstraint(
-            "source_review_event_id", "milestone_version_id",
+            "source_review_event_id",
+            "milestone_version_id",
             name="uq_acv_source_review_milestone_version",
         ),
     )
     op.create_index(
-        "ix_acv_member_auth_milestone", "academy_competency_verifications",
+        "ix_acv_member_auth_milestone",
+        "academy_competency_verifications",
         ["member_auth_id", "milestone_definition_id"],
     )
     op.create_index(
         "ix_academy_competency_verifications_member_auth_id",
-        "academy_competency_verifications", ["member_auth_id"],
+        "academy_competency_verifications",
+        ["member_auth_id"],
     )
     op.create_index(
         "ix_academy_competency_verifications_source_progress_id",
-        "academy_competency_verifications", ["source_progress_id"],
+        "academy_competency_verifications",
+        ["source_progress_id"],
     )
     op.create_table(
         "academy_competency_revocations",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column(
-            "verification_id", postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("academy_competency_verifications.id"), nullable=False,
+            "verification_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("academy_competency_verifications.id"),
+            nullable=False,
         ),
         sa.Column("revoked_by_auth_id", sa.String(160), nullable=False),
         sa.Column("reason", sa.Text(), nullable=False),
@@ -77,7 +87,8 @@ def upgrade() -> None:
     )
     op.create_index(
         "ix_academy_competency_revocations_verification_id",
-        "academy_competency_revocations", ["verification_id"],
+        "academy_competency_revocations",
+        ["verification_id"],
     )
     # Keep the ledger append-only even if a future API adds an ORM edit method.
     op.execute(

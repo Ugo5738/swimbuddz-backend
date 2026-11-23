@@ -21668,6 +21668,175 @@
         }
       }
     },
+    "/api/v1/academy/competencies/admin/verify-legacy": {
+      "post": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Verify Legacy Competency",
+        "operationId": "verify_legacy_competency_academy_competencies_admin_verify_legacy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteLegacyReviewInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/competencies/admin/{verification_id}/revoke": {
+      "post": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Revoke Verification",
+        "operationId": "revoke_verification_academy_competencies_admin__verification_id__revoke_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "verification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Verification Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeVerificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/competencies/me": {
+      "get": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "My Competency Passport",
+        "operationId": "my_competency_passport_academy_competencies_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/competencies/admin/members/{member_auth_id}": {
+      "get": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Member Competency Passport",
+        "operationId": "member_competency_passport_academy_competencies_admin_members__member_auth_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/coach/me/dashboard": {
       "get": {
         "tags": [
@@ -100075,6 +100244,42 @@
         ],
         "title": "ProgressStatus"
       },
+      "PromoteLegacyReviewInput": {
+        "properties": {
+          "source_progress_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Progress Id"
+          },
+          "milestone_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Version Id"
+          },
+          "criteria_passed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Criteria Passed"
+          },
+          "equivalence_reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 30,
+            "title": "Equivalence Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_progress_id",
+          "milestone_version_id",
+          "criteria_passed",
+          "equivalence_reason"
+        ],
+        "title": "PromoteLegacyReviewInput"
+      },
       "PublicShowcaseItem": {
         "properties": {
           "id": {
@@ -100617,6 +100822,21 @@
           "time_trial"
         ],
         "title": "RequiredEvidence"
+      },
+      "RevokeVerificationInput": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 20,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "RevokeVerificationInput"
       },
       "ShadowEvaluationCreate": {
         "properties": {
