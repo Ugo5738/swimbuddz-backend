@@ -6,8 +6,11 @@ their own exceptions. This applies to every subsequent cohort, not a fixed list
 of current students or cohorts.
 
 Attendance's worker creates missing `present` / `swimmer` records for started,
-included classes in active cohorts. It runs at startup and every five minutes,
-including repairing missing earlier classes in those cohorts. It reads the
+included classes in active cohorts. A bounded recent-window pass (`lookback_hours=48`)
+runs every 15 minutes and skips cohorts with no eligible started included class in
+that window; a full active-cohort history repair (`lookback_hours=None`) runs at
+worker startup and once daily (`02:15 UTC` / `03:15 WAT`) to heal any missing
+earlier classes. It reads the
 timetable and enrolments through their owning services and checks the existing
 Members pre-swim clearance. It excludes future/draft/cancelled classes, classes
 before enrolment, suspended students, and classes after a pause/drop date.

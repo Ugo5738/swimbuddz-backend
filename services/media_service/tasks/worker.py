@@ -144,7 +144,7 @@ class WorkerSettings:
     cron_jobs = [
         cron(task_cleanup_vault_exports, hour={2}, minute=30),
         cron(task_cleanup_member_vault_clips, hour={3}, minute=0),
-        cron(task_reconcile_vault_bandwidth, minute={0, 15, 30, 45}),
-        cron(task_sync_session_vaults, minute=5),
-        cron(task_backfill_vault_video_previews, minute={2, 17, 32, 47}),
+        cron(task_reconcile_vault_bandwidth, minute=15),
+        cron(task_sync_session_vaults, hour={0, 4, 8, 12, 16, 20}, minute=5),
+        cron(task_backfill_vault_video_previews, minute=32),
     ]

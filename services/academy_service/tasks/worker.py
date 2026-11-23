@@ -199,24 +199,27 @@ class WorkerSettings:
             run_at_startup=False,
         ),
         # Chat reconciliation safety net (CHAT_SERVICE_DESIGN.md §4.2).
-        # Hourly at :50, plus once at worker startup so a fresh deploy
+        # Every 6 hours at :50, plus once at worker startup so a fresh deploy
         # heals any drift accumulated while the worker was down.
         cron(
             task_reconcile_chat_memberships,
+            hour={0, 6, 12, 18},
             minute=50,
             run_at_startup=True,
         ),
         # Members-service tier state is a projection of Academy enrollments.
-        # Re-assert it hourly and at startup to heal cross-service outages.
+        # Re-assert every 6 hours and at startup to heal cross-service outages.
         cron(
             task_reconcile_academy_membership_projections,
+            hour={0, 6, 12, 18},
             minute=55,
             run_at_startup=True,
         ),
         # Billable extension approvals are durable in Academy; retry the
-        # cross-service payout schedule sync hourly and on worker startup.
+        # cross-service payout schedule sync every 6 hours and on worker startup.
         cron(
             task_reconcile_extension_payout_schedules,
+            hour={0, 6, 12, 18},
             minute=57,
             run_at_startup=True,
         ),

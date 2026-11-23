@@ -176,34 +176,51 @@ async def reconcile_pending_membership_payment_state() -> None:
         if tier:
             latest_active.setdefault((payment.member_auth_id, tier), payment)
 
+    projected_ids = []
     for payment in latest_active.values():
-        await _set_pending_tier_payment_for_payment(payment)
+        metadata = getattr(payment, "payment_metadata", None) or {}
+        if metadata.get("pending_tier_projection_set_at"):
+            continue
+        if await _set_pending_tier_payment_for_payment(payment):
+            projected_ids.append(payment.id)
     cleared_ids = []
     for payment in terminal:
         if await _clear_pending_tier_payment_for_payment(payment):
             cleared_ids.append(payment.id)
 
-    if cleared_ids:
-        marker = {
-            "pending_tier_projection_cleared_at": utc_now().isoformat(),
-        }
+    if projected_ids or cleared_ids:
+        now_iso = utc_now().isoformat()
         async with AsyncSessionLocal() as db:
-            await db.execute(
-                update(Payment)
-                .where(Payment.id.in_(cleared_ids))
-                .values(
-                    payment_metadata=func.coalesce(
-                        Payment.payment_metadata,
-                        cast({}, JSONB),
-                    ).op("||")(cast(marker, JSONB))
+            if projected_ids:
+                projected_marker = {"pending_tier_projection_set_at": now_iso}
+                await db.execute(
+                    update(Payment)
+                    .where(Payment.id.in_(projected_ids))
+                    .values(
+                        payment_metadata=func.coalesce(
+                            Payment.payment_metadata,
+                            cast({}, JSONB),
+                        ).op("||")(cast(projected_marker, JSONB))
+                    )
                 )
-            )
+            if cleared_ids:
+                cleared_marker = {"pending_tier_projection_cleared_at": now_iso}
+                await db.execute(
+                    update(Payment)
+                    .where(Payment.id.in_(cleared_ids))
+                    .values(
+                        payment_metadata=func.coalesce(
+                            Payment.payment_metadata,
+                            cast({}, JSONB),
+                        ).op("||")(cast(cleared_marker, JSONB))
+                    )
+                )
             await db.commit()
 
-    if latest_active or terminal:
+    if projected_ids or cleared_ids:
         logger.info(
-            "Reconciled membership payment state: %d active, %d terminal",
-            len(latest_active),
+            "Reconciled membership payment state: %d projected, %d cleared",
+            len(projected_ids),
             len(cleared_ids),
         )
 

@@ -102,8 +102,15 @@ class WorkerSettings:
     ]
 
     cron_jobs = [
-        # Current-quarter community stats and leaderboard, refreshed hourly.
-        cron(task_refresh_current_quarter_reports, minute=10, run_at_startup=True),
+        # Current-quarter community stats and leaderboard, refreshed twice daily
+        # (03:10 WAT overnight and 20:10 WAT after evening swims) rather than
+        # hourly so idle overnight hours do not fan out across every service.
+        cron(
+            task_refresh_current_quarter_reports,
+            hour={2, 19},
+            minute=10,
+            run_at_startup=False,
+        ),
         cron(
             task_refresh_content_acquisition,
             hour=5,

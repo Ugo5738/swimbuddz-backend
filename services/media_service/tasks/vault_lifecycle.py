@@ -132,7 +132,10 @@ async def sync_session_vaults() -> dict[str, int | str]:
                 try:
                     if extend_existing_session_vault_window(vault, session, now=now):
                         await db.commit()
-                    await sync_volunteer_grants(db, vault=vault, created_by=None)
+                    if vault.status in {"scheduled", "open"} and (
+                        vault.upload_closes_at is None or vault.upload_closes_at >= now
+                    ):
+                        await sync_volunteer_grants(db, vault=vault, created_by=None)
                 except Exception:
                     await db.rollback()
                     logger.warning(

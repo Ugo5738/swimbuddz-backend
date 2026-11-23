@@ -101,13 +101,17 @@ class WorkerSettings:
     ]
 
     cron_jobs = [
-        cron(task_send_operational_emails, minute=set(range(60)), run_at_startup=True),
+        cron(
+            task_send_operational_emails,
+            minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
+            run_at_startup=True,
+        ),
         # Recover missed session-published calls and follow rescheduled times.
         cron(task_reconcile_session_reminders, minute=10, run_at_startup=True),
-        # Process pending notifications every 5 minutes
+        # Process pending notifications every 15 minutes
         cron(
             task_process_pending_notifications,
-            minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
+            minute={2, 17, 32, 47},
             run_at_startup=False,
         ),
         # Weekly session digest (Sunday 12 PM WAT / 11 AM UTC)
