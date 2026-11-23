@@ -119,20 +119,16 @@ async def _record_with_approved_video(
         sha256=requirements_sha256(snapshot_json),
         created_by_auth_id=str(uuid.uuid4()),
     )
-    db_session.add_all(
-        [
-            program,
-            cohort,
-            enrollment,
-            legacy,
-            definition,
-            version,
-            progress,
-            snapshot,
-        ]
-    )
-    # Source events refer to progress by raw UUID, so SQLAlchemy cannot
-    # infer the flush dependency without an explicit intermediate flush.
+    # The review/source/snapshot models use scalar UUID relationships.
+    # Flush each FK layer explicitly: SQLAlchemy cannot infer every
+    # dependency from standalone UUIDs in a single flush.
+    db_session.add_all([program, definition])
+    await db_session.flush()
+    db_session.add_all([cohort, legacy, version])
+    await db_session.flush()
+    db_session.add_all([enrollment, snapshot])
+    await db_session.flush()
+    db_session.add(progress)
     await db_session.flush()
     db_session.add_all([claim, approved])
     await db_session.commit()
