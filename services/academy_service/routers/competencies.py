@@ -394,6 +394,19 @@ async def _passport(db: AsyncSession, auth_id: str) -> dict:
     )
     if not records:
         return {"member_auth_id": auth_id, "competencies": [], "verifications": []}
+    definition_ids = {row.milestone_definition_id for row in records}
+    definitions = (
+        (
+            await db.execute(
+                select(AcademyMilestoneDefinition).where(
+                    AcademyMilestoneDefinition.id.in_(definition_ids)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    definition_by_id = {item.id: item for item in definitions}
     ids = [row.id for row in records]
     progress_ids = [row.source_progress_id for row in records]
     revocations = (
@@ -444,7 +457,11 @@ async def _passport(db: AsyncSession, auth_id: str) -> dict:
             state, reason = "expired", "Competency assessment needs renewal"
         else:
             state, reason = "verified", None
-        views.append(_view_verification(row, state, reason=reason))
+        view = _view_verification(row, state, reason=reason)
+        definition = definition_by_id.get(row.milestone_definition_id)
+        view["code"] = definition.code if definition else None
+        view["title"] = definition.title if definition else "Unmapped competency"
+        views.append(view)
 
     by_definition: dict[str, dict] = {}
     for view in views:
@@ -453,6 +470,8 @@ async def _passport(db: AsyncSession, auth_id: str) -> dict:
             key,
             {
                 "milestone_definition_id": key,
+                "code": view["code"],
+                "title": view["title"],
                 "status": "recheck_required",
                 "supporting_verification_ids": [],
             },
