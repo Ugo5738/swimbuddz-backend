@@ -1,11 +1,63 @@
 # Members/Chat connection canary — 17 November 2026
 
+## Chat-only production activation — 22 November 2026
+
+After separate owner approval, Chat was recreated at 13:54 UTC (14:54 Lagos)
+with its existing image and one retained connection per process, zero overflow.
+The GitHub **production Environment** variable `CHAT_API_DB_USE_LOCAL_POOL` is
+persisted as true alongside the existing Members flag. Both API source defaults
+remain false. Members and every other running container kept their identities;
+media reuse remains off. Chat's resolved environment changed only
+`DB_USE_LOCAL_POOL`, preserving its moderation configuration.
+
+The production checkout was `d3c2b2b51d794b1a7d10a4b01c522746e06938b4`; Chat kept
+image `sha256:38cce502bb35423b1dc9f3c289db780de5c91dc5441081723077130fb84f852d`.
+Its pinned image and rollback manifest are retained privately under
+`/home/deploy/operational-backups/canaries/chat-20261122T082527Z`. To roll back
+this test, persist `CHAT_API_DB_USE_LOCAL_POOL=false` and recreate only Chat
+with the saved image/configuration, keeping Members true. No schema or data
+rollback is required.
+
+Initial checks returned Chat/Members/gateway health 200, anonymous Chat access
+403, invalid-token access 401, authorized safeguarding health 200 and an
+authorized database read of a nonexistent channel 404. Chat had one Uvicorn
+process, one established pooler client socket and no restarts, tracebacks,
+operational errors or pool timeouts. These checks do not send messages or test
+paid moderation-provider calls.
+
+The two five-minute samples captured different hourly reconciliation jobs:
+
+| Chat sample (UTC) | Scheduled requests, all HTTP 200 | New connections | Received TCP payload bytes |
+| --- | --- | --- | --- |
+| Before, 13:48:53–13:53:54 | 33 (9 ensure, 24 reconcile) | 33 | 222,004 |
+| After, 13:54:58–13:59:58 | 87 (32 ensure, 55 reconcile) | 1 | 193,017 |
+
+The after window also included five read-only diagnostic requests: two 200s
+and the expected 401/403/404 responses. Neither observer dropped packets. At
+14:00 UTC, direct and gateway authorization checks still passed, one client
+socket remained established, and Chat had no HTTP 5xx, restarts, tracebacks,
+operational errors or queue timeouts. The callers' inspected worker logs also
+had no new errors. No messages were sent by diagnostics.
+
+This demonstrates reuse under a scheduled burst, not a controlled identical
+workload or a percentage forecast for provider-billed egress. TCP payload
+includes TLS/protocol overhead and possible retransmissions. No payloads,
+credentials or member records were stored by the observer. The earlier morning
+sample was idle for Chat and is retained as an idle sample, not savings evidence.
+
+The November 22 morning billing snapshot showed 1.876/5 GB used. Shared Pooler
+Egress was 257.834 MB on November 20 and 253.689 MB on November 21, still above
+the roughly 130 MB/day remaining budget. Those days included other releases
+and workload changes; their improvement cannot be attributed to Members alone.
+Require a complete provider-usage day after Chat activation before declaring
+the combined canary sustainable.
+
 ## Production activation — 19 November 2026
 
 The owner separately approved the Members-only test. At 03:00 UTC (04:00 Lagos),
 only that API was recreated, using its existing image with a one-connection,
-zero-overflow cap. Chat and media reuse remain off. The GitHub **production
-Environment** variable `MEMBERS_API_DB_USE_LOCAL_POOL` is now true, so normal
+zero-overflow cap. At that point, Chat and media reuse remained off. The GitHub
+**production Environment** variable `MEMBERS_API_DB_USE_LOCAL_POOL` is now true, so normal
 GitHub deployments preserve this test; the source-code defaults remain false.
 
 The source revision was `1dc2fc6a76af098a5c4c3b972694b04ad350806a`. The previous
