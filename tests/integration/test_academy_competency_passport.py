@@ -128,11 +128,13 @@ async def _record_with_approved_video(
             definition,
             version,
             progress,
-            claim,
-            approved,
             snapshot,
         ]
     )
+    # Source events refer to progress by raw UUID, so SQLAlchemy cannot
+    # infer the flush dependency without an explicit intermediate flush.
+    await db_session.flush()
+    db_session.add_all([claim, approved])
     await db_session.commit()
     return SimpleNamespace(
         member=member,
