@@ -318,7 +318,7 @@ async def verify_legacy_competency(
             **match.get("assessment_context_snapshot", {}),
             "legacy_milestone_id": str(progress.milestone_id),
             "equivalence_reason": payload.equivalence_reason.strip(),
-            "source_rubric_snapshot": review.coach_notes_snapshot,
+            "legacy_review_notes_snapshot": review.coach_notes_snapshot,
         },
         evidence_media_id=progress.evidence_media_id,
         evidence_owner_auth_id=uploader,
