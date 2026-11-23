@@ -437,6 +437,7 @@ async def _compute_segment_attendance(
     start: datetime,
     end: datetime,
     fallback_attendance: dict,
+    cohort_sessions_cache: dict[str, list[dict]] | None = None,
 ) -> dict:
     """Compute report attendance by primary segment.
 
@@ -476,10 +477,18 @@ async def _compute_segment_attendance(
 
     cohort_ids = sorted({e.get("cohort_id") for e in enrollments if e.get("cohort_id")})
     if cohort_ids:
-        cohort_session_lists = await asyncio.gather(
-            *[_fetch_cohort_sessions(cid, date_from, date_to) for cid in cohort_ids]
-        )
-        sessions_by_cohort = dict(zip(cohort_ids, cohort_session_lists))
+        cache = cohort_sessions_cache if cohort_sessions_cache is not None else {}
+        missing_cohort_ids = [cid for cid in cohort_ids if cid not in cache]
+        if missing_cohort_ids:
+            fetched_lists = await asyncio.gather(
+                *[
+                    _fetch_cohort_sessions(cid, date_from, date_to)
+                    for cid in missing_cohort_ids
+                ]
+            )
+            for cid, fetched_sessions in zip(missing_cohort_ids, fetched_lists):
+                cache[cid] = fetched_sessions
+        sessions_by_cohort = {cid: cache.get(cid, []) for cid in cohort_ids}
         for enrollment in enrollments:
             cohort_id = enrollment.get("cohort_id")
             if not cohort_id:
@@ -612,6 +621,7 @@ async def compute_member_report(
     quarter: int,
     db: AsyncSession,
     member_info: dict | None = None,
+    cohort_sessions_cache: dict[str, list[dict]] | None = None,
 ) -> MemberQuarterlyReport:
     """Compute or update a single member's quarterly report.
 
@@ -621,12 +631,12 @@ async def compute_member_report(
     date_from = start.isoformat()
     date_to = end.isoformat()
 
-    # Fetch all data in parallel
+    # Fetch all data in parallel (wallet_summary is only needed as a fallback
+    # when the extended wallet reporting-summary contract is unavailable).
     (
         fetched_member,
         attendance,
         payments,
-        wallet,
         academy,
         store,
         volunteer,
@@ -638,13 +648,18 @@ async def compute_member_report(
         else _noop(member_info),
         _fetch_attendance_stats(member_auth_id, date_from, date_to),
         _fetch_payment_summary(member_auth_id, date_from, date_to),
-        _fetch_wallet_summary(member_auth_id, date_from, date_to),
         _fetch_academy_summary(member_auth_id, date_from, date_to),
         _fetch_store_summary(member_auth_id, date_from, date_to),
         _fetch_volunteer_summary(member_auth_id, date_from, date_to),
         _fetch_transport_summary(member_auth_id, date_from, date_to),
         fetch_member_extensions(member_auth_id, year, quarter),
     )
+
+    wallet_metrics = (extensions.get("wallet") or {}).get("metrics") or {}
+    if "wallet_credits" in wallet_metrics and "wallet_debits" in wallet_metrics:
+        wallet: dict[str, Any] = {}
+    else:
+        wallet = await _fetch_wallet_summary(member_auth_id, date_from, date_to)
 
     if member_info is None:
         member_info = fetched_member or {}
@@ -673,6 +688,7 @@ async def compute_member_report(
         start=start,
         end=end,
         fallback_attendance=attendance,
+        cohort_sessions_cache=cohort_sessions_cache,
     )
 
     # member_tier is a legacy storage/API field kept for compatibility.
@@ -817,6 +833,7 @@ async def compute_all_member_reports(year: int, quarter: int, db: AsyncSession) 
     # update never assigns leaderboard_opt_out, including concurrent changes.
     count = 0
     failures = 0
+    cohort_sessions_cache: dict[str, list[dict]] = {}
 
     for member in candidate_members:
         try:
@@ -826,6 +843,7 @@ async def compute_all_member_reports(year: int, quarter: int, db: AsyncSession) 
                 quarter=quarter,
                 db=db,
                 member_info=member,
+                cohort_sessions_cache=cohort_sessions_cache,
             )
             tier = str(report.member_tier or "").lower()
             has_quarter_activity = bool(

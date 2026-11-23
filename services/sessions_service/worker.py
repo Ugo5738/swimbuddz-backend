@@ -54,18 +54,18 @@ class WorkerSettings:
     cron_jobs = [
         cron(
             task_retry_club_reschedule_notifications,
-            minute={3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53, 58},
+            minute={3, 18, 33, 48},
             run_at_startup=True,
         ),
         cron(
             task_retry_booking_confirmations,
-            minute={1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56},
+            minute={6, 21, 36, 51},
         ),
-        # Every 5 minutes — flips PENDING bookings past their 15-min TTL
+        # Every 10 minutes — flips PENDING bookings past their 15-min TTL
         # to EXPIRED so the seat is released back to other members.
         cron(
             task_sweep_expired_pending_bookings,
-            minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
+            minute={0, 10, 20, 30, 40, 50},
             run_at_startup=False,
         ),
         # Every 30 minutes — completes/forfeits make-ups whose scheduled
