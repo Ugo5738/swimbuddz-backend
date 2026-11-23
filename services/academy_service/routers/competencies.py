@@ -225,7 +225,7 @@ async def verify_legacy_competency(
         )
 
     valid_days = version.assessment_context_json.get("validity_days")
-    if valid_days is not None and (type(valid_days) is not int or valid_days <= 0):
+    if valid_days is not None and (isinstance(valid_days, bool) or not isinstance(valid_days, int) or valid_days <= 0):
         raise HTTPException(status_code=409, detail="Invalid assessment validity policy")
     if version.safety_gate and valid_days is None:
         raise HTTPException(
@@ -236,12 +236,18 @@ async def verify_legacy_competency(
         raise HTTPException(
             status_code=409, detail="Competency rubric needs explicit criteria"
         )
-    expected = {
+    expected = [
         item if isinstance(item, str) else item.get("code")
         for item in rubric_criteria
-        if isinstance(item, str) or isinstance(item, dict)
-    }
-    if not expected or None in expected or set(payload.criteria_passed) != expected:
+        if isinstance(item, (str, dict))
+    ]
+    if (
+        len(expected) != len(rubric_criteria)
+        or any(not isinstance(item, str) or not item for item in expected)
+        or len(set(expected)) != len(expected)
+        or len(set(payload.criteria_passed)) != len(payload.criteria_passed)
+        or set(payload.criteria_passed) != set(expected)
+    ):
         raise HTTPException(
             status_code=422, detail="Every published criterion must be explicitly attested"
         )
