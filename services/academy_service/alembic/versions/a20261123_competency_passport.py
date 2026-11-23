@@ -51,9 +51,7 @@ def upgrade() -> None:
         sa.Column("verified_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.UniqueConstraint(
-            "source_review_event_id",
-            "milestone_version_id",
-            name="uq_acv_source_review_milestone_version",
+            "source_review_event_id", name="uq_acv_source_review"
         ),
     )
     op.create_index(
