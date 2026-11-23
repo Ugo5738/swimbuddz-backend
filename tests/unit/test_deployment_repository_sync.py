@@ -151,6 +151,9 @@ def test_ssh_bootstrap_loads_release_scripts_before_syncing_dirty_checkout(
             "scripts/deployment/capture_recovery.py": (
                 scripts / "capture_recovery.py"
             ).read_text(),
+            "scripts/deployment/prune_rollback_images.py": (
+                scripts / "prune_rollback_images.py"
+            ).read_text(),
             "scripts/deployment/backup_database.py": (
                 "import os, sys\n"
                 "with open(os.environ['DEPLOYMENT_DOCKER_LOG'], 'a') as log: log.write('backup-verified\\n')\n"
@@ -210,6 +213,7 @@ def test_ssh_bootstrap_loads_release_scripts_before_syncing_dirty_checkout(
             "LE_EMAIL": "test@example.invalid",
             "DEPLOYMENT_DOCKER_LOG": str(docker_log),
             "RECOVERY_ROOT": str(tmp_path / "recovery"),
+            "MIN_DEPLOY_FREE_GIB": "0",
         },
         capture_output=True,
         text=True,
