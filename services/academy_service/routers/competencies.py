@@ -283,7 +283,6 @@ async def verify_legacy_competency(
         await db.execute(
             select(AcademyCompetencyVerification).where(
                 AcademyCompetencyVerification.source_review_event_id == review.id,
-                AcademyCompetencyVerification.milestone_version_id == version.id,
             )
         )
     ).scalar_one_or_none()
