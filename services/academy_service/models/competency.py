@@ -28,8 +28,7 @@ class AcademyCompetencyVerification(Base):
     __table_args__ = (
         UniqueConstraint(
             "source_review_event_id",
-            "milestone_version_id",
-            name="uq_acv_source_review_milestone_version",
+            name="uq_acv_source_review",
         ),
         Index(
             "ix_acv_member_auth_milestone",
