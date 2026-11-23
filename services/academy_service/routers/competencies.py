@@ -179,6 +179,8 @@ async def verify_legacy_competency(
         raise HTTPException(
             status_code=403, detail="Human administrator approval is required"
         )
+    if len(payload.equivalence_reason.strip()) < 30:
+        raise HTTPException(status_code=422, detail="A meaningful equivalence explanation is required")
     progress = (
         await db.execute(
             select(StudentProgress)
@@ -238,13 +240,21 @@ async def verify_legacy_competency(
         ),
         None,
     )
-    if match is None or match.get("rubric_snapshot") != version.rubric_json:
+    if (
+        match is None
+        or match.get("rubric_snapshot") != version.rubric_json
+        or match.get("assessment_context_snapshot") != version.assessment_context_json
+        or match.get("safety_gate") != bool(version.safety_gate)
+    ):
         raise HTTPException(
             status_code=409,
-            detail="This version is not in the cohort's frozen requirements",
+            detail="Published assessment does not match the cohort's frozen requirements",
         )
 
-    valid_days = version.assessment_context_json.get("validity_days")
+    frozen_context = match["assessment_context_snapshot"]
+    if not isinstance(frozen_context, dict):
+        raise HTTPException(status_code=409, detail="Invalid frozen assessment context")
+    valid_days = frozen_context.get("validity_days")
     if valid_days is not None and (
         isinstance(valid_days, bool)
         or not isinstance(valid_days, int)
@@ -346,6 +356,8 @@ async def revoke_verification(
 ):
     if current_user.role == "service_role":
         raise HTTPException(status_code=403, detail="Human administrator required")
+    if len(payload.reason.strip()) < 20:
+        raise HTTPException(status_code=422, detail="A meaningful revocation reason is required")
     record = (
         await db.execute(
             select(AcademyCompetencyVerification)
