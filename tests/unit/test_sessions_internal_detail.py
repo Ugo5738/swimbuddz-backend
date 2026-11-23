@@ -36,14 +36,17 @@ class _ScalarsResult:
 
 
 @pytest.mark.asyncio
-async def test_internal_session_detail_includes_booking_and_coach_context():
+@pytest.mark.parametrize("session_type", ["club", "event"])
+async def test_internal_session_detail_includes_booking_and_coach_context(session_type):
     now = datetime.now(timezone.utc)
+    event_id = uuid4() if session_type == "event" else None
     session = SimpleNamespace(
         id=uuid4(),
+        event_id=event_id,
         title="Orca Technique",
         description="Freestyle pacing",
         notes=None,
-        session_type=SimpleNamespace(value="club"),
+        session_type=SimpleNamespace(value=session_type),
         status=SimpleNamespace(value="scheduled"),
         starts_at=now + timedelta(days=2),
         ends_at=now + timedelta(days=2, hours=2),
@@ -78,6 +81,7 @@ async def test_internal_session_detail_includes_booking_and_coach_context():
         db=db,
     )
 
+    assert result.event_id == (str(event_id) if event_id else None)
     assert result.description == "Freestyle pacing"
     assert result.occupied_slots == 2
     assert result.confirmed_booking_member_ids == [str(member_id)]

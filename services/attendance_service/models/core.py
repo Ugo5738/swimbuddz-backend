@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from libs.common.datetime_utils import utc_now
@@ -9,7 +9,7 @@ from services.attendance_service.models.enums import (
     AttendanceStatus,
     enum_values,
 )
-from sqlalchemy import DateTime
+from sqlalchemy import BigInteger, Date, DateTime, Index, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import CheckConstraint, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -46,6 +46,12 @@ class AttendanceRecord(Base):
     member_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True, index=True
     )
+
+    swim_verified_on: Mapped[date | None] = mapped_column(Date)
+    swim_verified_by: Mapped[str | None] = mapped_column(String)
+    swim_revision: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    swim_delivered_revision: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    swim_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Attendance status/details
     status: Mapped[AttendanceStatus] = mapped_column(
@@ -114,6 +120,11 @@ class AttendanceRecord(Base):
     # member = relationship("Member")
 
     __table_args__ = (
+        Index(
+            "ix_attendance_swim_sync_at",
+            "swim_sync_at",
+            postgresql_where=text("swim_sync_at IS NOT NULL"),
+        ),
         UniqueConstraint(
             "session_id", "member_id", name="uq_session_member_attendance"
         ),

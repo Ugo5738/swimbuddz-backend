@@ -1,5 +1,36 @@
 """Academy Service models package."""
 
+from services.academy_service.models.competency import (
+    AcademyCompetencyRevocation,
+    AcademyCompetencyVerification,
+)
+
+from services.academy_service.models.requirements import (
+    AcademyCohortRequirementsSnapshot,
+)
+
+from services.academy_service.models.curriculum_library import (
+    AcademyMilestoneDefinition,
+    AcademyMilestoneVersion,
+    AcademyDrill,
+    AcademyDrillVersion,
+    AcademyLessonBlueprint,
+    AcademyLessonVersion,
+    AcademyKnowledgeQuiz,
+    AcademyKnowledgeQuizVersion,
+    AcademyModule,
+    AcademyModuleVersion,
+    AcademyLessonDrill,
+    AcademyModuleLesson,
+    AcademyModuleMilestone,
+    AcademyModuleQuiz,
+    AcademyProgramModule,
+    AcademyProgramMilestoneAssignment,
+    AcademyCohortMilestoneAssignment,
+    AcademyMilestoneSkill,
+    AcademyDrillSkill,
+)
+
 from services.academy_service.models.class_entitlement import (
     AcademyClassAllocation,
     AcademyClassPlan,
@@ -71,6 +102,28 @@ from services.academy_service.models.progress import (
 )
 
 __all__ = [
+    "AcademyCompetencyRevocation",
+    "AcademyCompetencyVerification",
+    "AcademyCohortRequirementsSnapshot",
+    "AcademyMilestoneDefinition",
+    "AcademyMilestoneVersion",
+    "AcademyDrill",
+    "AcademyDrillVersion",
+    "AcademyLessonBlueprint",
+    "AcademyLessonVersion",
+    "AcademyKnowledgeQuiz",
+    "AcademyKnowledgeQuizVersion",
+    "AcademyModule",
+    "AcademyModuleVersion",
+    "AcademyLessonDrill",
+    "AcademyModuleLesson",
+    "AcademyModuleMilestone",
+    "AcademyModuleQuiz",
+    "AcademyProgramModule",
+    "AcademyProgramMilestoneAssignment",
+    "AcademyCohortMilestoneAssignment",
+    "AcademyMilestoneSkill",
+    "AcademyDrillSkill",
     "AcademyClassAllocation",
     "AcademyClassPlan",
     "AcademyEnrollmentDeletionAudit",

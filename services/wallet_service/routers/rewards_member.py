@@ -12,6 +12,8 @@ from services.wallet_service.models.rewards import MemberRewardHistory, RewardRu
 from services.wallet_service.models.transaction import WalletTransaction
 from services.wallet_service.schemas import RewardRuleListResponse, RewardRuleResponse
 
+from services.wallet_service.services.swim_rewards import SwimProgress, member_progress
+
 logger = get_logger(__name__)
 router = APIRouter(prefix="/wallet/rewards", tags=["rewards-member"])
 
@@ -19,6 +21,13 @@ router = APIRouter(prefix="/wallet/rewards", tags=["rewards-member"])
 # ---------------------------------------------------------------------------
 # Reward History
 # ---------------------------------------------------------------------------
+
+
+@router.get("/swims", response_model=SwimProgress)
+async def get_swim_progress(
+    user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_async_db)
+):
+    return await member_progress(db, user.user_id)
 
 
 @router.get("/history")

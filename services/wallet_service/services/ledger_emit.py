@@ -23,6 +23,7 @@ from libs.common.ledger_client import post_journal_entry
 from libs.common.logging import get_logger
 from services.wallet_service.models import (
     TransactionType,
+    TransactionDirection,
     WalletLedgerPostFailure,
     WalletTransaction,
 )
@@ -130,6 +131,17 @@ def build_wallet_post_kwargs(
                 external_ref=txn.reference_id,
             )
         )
+    elif (
+        t == TransactionType.ADMIN_ADJUSTMENT
+        and txn.reference_type == "swim_reward_reversal"
+        and txn.direction == TransactionDirection.DEBIT
+    ):
+        # Undo only the marketing-funded promotional liability. Corrections
+        # never become purchased-Bubble spending or penalty revenue.
+        lines = [
+            _line("bubbles_liability_promo", debit=amt, member_ref=member_ref),
+            _line("expense_marketing", credit=amt, member_ref=member_ref),
+        ]
     elif t == TransactionType.PENALTY:
         lines = [
             _line("bubbles_liability", debit=amt, member_ref=member_ref),

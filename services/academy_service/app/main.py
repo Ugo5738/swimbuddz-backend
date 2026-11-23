@@ -11,7 +11,11 @@ from services.academy_service.routers.coach_dashboard import (
     router as coach_dashboard_router,
 )
 from services.academy_service.routers.cohorts import router as cohorts_router
+from services.academy_service.routers.competencies import router as competencies_router
 from services.academy_service.routers.curriculum import router as curriculum_router
+from services.academy_service.routers.curriculum_library import (
+    router as curriculum_library_router,
+)
 from services.academy_service.routers.enrollments import router as enrollments_router
 from services.academy_service.routers.evidence import router as evidence_router
 from services.academy_service.routers.extensions import router as extensions_router
@@ -21,6 +25,7 @@ from services.academy_service.routers.progress import router as progress_router
 from services.academy_service.routers.public_stats import router as public_stats_router
 from services.academy_service.routers.reports import router as reports_router
 from services.academy_service.routers.quizzes import router as quizzes_router
+from services.academy_service.routers.requirements import router as requirements_router
 from services.academy_service.routers.scoring import router as scoring_router
 
 
@@ -41,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(enrollments_router, prefix="/academy")
     app.include_router(progress_router, prefix="/academy")
     app.include_router(evidence_router, prefix="/academy")
+    app.include_router(competencies_router, prefix="/academy")
     app.include_router(coach_dashboard_router, prefix="/academy")
     app.include_router(scoring_router, prefix="/academy")
     app.include_router(reports_router, prefix="/academy")
@@ -56,6 +62,8 @@ def create_app() -> FastAPI:
 
     # Shared routers (curriculum and coach assignments)
     app.include_router(curriculum_router, prefix="/academy")
+    app.include_router(curriculum_library_router, prefix="/academy")
+    app.include_router(requirements_router, prefix="/academy")
     app.include_router(assignment_router, prefix="/academy")
 
     return app

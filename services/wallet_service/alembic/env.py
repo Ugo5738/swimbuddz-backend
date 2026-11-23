@@ -36,6 +36,8 @@ from services.wallet_service.models import (  # noqa: F401; Phase 1 — Active; 
     WalletTransaction,
 )
 
+from services.wallet_service.models.swim import VerifiedSwim  # noqa: F401
+
 settings = get_settings()
 config = context.config
 
@@ -48,6 +50,7 @@ SERVICE_TABLES = {
     # Phase 1
     "wallets",
     "wallet_transactions",
+    "wallet_verified_swims",
     "wallet_topups",
     "wallet_ledger_post_failures",
     "promotional_bubble_grants",

@@ -347,6 +347,54 @@ async def debit_wallet(
 # ---------------------------------------------------------------------------
 
 
+def stage_credit(
+    db: AsyncSession,
+    wallet: Wallet,
+    *,
+    amount: int,
+    transaction_type: TransactionType,
+    idempotency_key: str,
+    description: str,
+    service_source: str,
+    reference_type: str | None,
+    reference_id: str | None,
+    initiated_by: str | None,
+    metadata: dict | None,
+) -> WalletTransaction:
+    """Stage the credit against a locked wallet. The caller owns the transaction."""
+    # 3. Create transaction
+    balance_before = wallet.balance
+    balance_after = wallet.balance + amount
+
+    txn = WalletTransaction(
+        wallet_id=wallet.id,
+        idempotency_key=idempotency_key,
+        transaction_type=transaction_type,
+        direction=TransactionDirection.CREDIT,
+        amount=amount,
+        balance_before=balance_before,
+        balance_after=balance_after,
+        status=TransactionStatus.COMPLETED,
+        description=description,
+        service_source=service_source,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        initiated_by=initiated_by,
+        txn_metadata=metadata,
+    )
+    db.add(txn)
+
+    # 4. Update wallet + appropriate lifetime counter
+    wallet.balance = balance_after
+    if transaction_type == TransactionType.TOPUP:
+        wallet.lifetime_bubbles_purchased += amount
+    else:
+        wallet.lifetime_bubbles_received += amount
+    wallet.updated_at = utc_now()
+
+    return txn
+
+
 async def credit_wallet(
     db: AsyncSession,
     *,
@@ -389,35 +437,20 @@ async def credit_wallet(
             detail="Wallet not found",
         )
 
-    # 3. Create transaction
-    balance_before = wallet.balance
-    balance_after = wallet.balance + amount
-
-    txn = WalletTransaction(
-        wallet_id=wallet.id,
-        idempotency_key=idempotency_key,
-        transaction_type=transaction_type,
-        direction=TransactionDirection.CREDIT,
+    txn = stage_credit(
+        db,
+        wallet,
         amount=amount,
-        balance_before=balance_before,
-        balance_after=balance_after,
-        status=TransactionStatus.COMPLETED,
+        transaction_type=transaction_type,
+        idempotency_key=idempotency_key,
         description=description,
         service_source=service_source,
         reference_type=reference_type,
         reference_id=reference_id,
         initiated_by=initiated_by,
-        txn_metadata=metadata,
+        metadata=metadata,
     )
-    db.add(txn)
-
-    # 4. Update wallet + appropriate lifetime counter
-    wallet.balance = balance_after
-    if transaction_type == TransactionType.TOPUP:
-        wallet.lifetime_bubbles_purchased += amount
-    else:
-        wallet.lifetime_bubbles_received += amount
-    wallet.updated_at = utc_now()
+    balance_before, balance_after = txn.balance_before, txn.balance_after
 
     # 5. Commit
     try:

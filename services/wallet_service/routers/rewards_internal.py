@@ -27,9 +27,25 @@ from services.wallet_service.schemas.rewards import (
 )
 from services.wallet_service.services.rewards_engine import process_event
 
+from services.wallet_service.services.swim_rewards import (
+    SwimVerification,
+    reconcile_swim,
+)
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/internal/wallet", tags=["internal-rewards"])
+
+
+@router.post("/verified-swims", status_code=204)
+async def sync_verified_swim(
+    body: SwimVerification,
+    db: AsyncSession = Depends(get_async_db),
+    actor: AuthUser = Depends(require_service_role),
+):
+    if actor.user_id != "service:attendance":
+        raise HTTPException(403, "Only Attendance may deliver swim verifications.")
+    await reconcile_swim(db, body)
 
 
 @router.post("/events", response_model=EventIngestResponse)

@@ -112,10 +112,12 @@ async def coach_mark_session_attendance(
     existing_rows = (
         (
             await db.execute(
-                select(AttendanceRecord).where(
+                select(AttendanceRecord)
+                .where(
                     AttendanceRecord.session_id == session_id,
                     AttendanceRecord.member_id.in_(member_ids),
                 )
+                .with_for_update()
             )
         )
         .scalars()
@@ -131,38 +133,15 @@ async def coach_mark_session_attendance(
     for entry in payload.entries:
         existing = existing_by_member.get(entry.member_id)
 
-        # Keep a durable row for every decision. Deleting a restored Present
-        # would make explicit-record consumers lose the student's attendance.
-        if entry.status == AttendanceStatus.PRESENT:
-            if existing is None:
-                db.add(
-                    AttendanceRecord(
-                        session_id=session_id,
-                        member_id=entry.member_id,
-                        status=AttendanceStatus.PRESENT,
-                        notes=entry.notes,
-                    )
-                )
-            else:
-                existing.status = AttendanceStatus.PRESENT
-                if entry.notes is not None:
-                    existing.notes = entry.notes
-            upserted += 1
-            continue
-
         if existing is None:
-            db.add(
-                AttendanceRecord(
-                    session_id=session_id,
-                    member_id=entry.member_id,
-                    status=entry.status,
-                    notes=entry.notes,
-                )
+            existing = AttendanceRecord(
+                session_id=session_id, member_id=entry.member_id
             )
-        else:
-            existing.status = entry.status
-            if entry.notes is not None:
-                existing.notes = entry.notes
+            db.add(existing)
+            existing_by_member[entry.member_id] = existing
+        existing.status = entry.status
+        if entry.notes is not None:
+            existing.notes = entry.notes
         upserted += 1
 
     await db.commit()
