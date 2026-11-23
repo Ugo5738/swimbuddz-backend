@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
-from libs.common.datetime_utils import utc_now
 from libs.common.service_client.core import internal_get
 from libs.db.session import get_async_db
 from services.academy_service.models import (
