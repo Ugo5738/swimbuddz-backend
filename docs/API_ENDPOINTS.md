@@ -376,11 +376,12 @@ quarter/member filters while avoiding unrelated automatic relationship reads.
 - `upserted`: number of rows created or updated.
 - `deleted`: number of exception rows removed (cohort `present` revert path).
 
-### Confirmed swims and Bubbles
+### Automatic Swim Rewards & Milestones (`ADR-019`, `ADR-020`)
 
-- `POST /api/v1/attendance/sessions/{session_id}/coach-mark` accepts optional `confirm_swimmers` (default `false`). An assigned Academy coach or admin can set it when submitting a reviewed roster after an eligible swim starts. Eligible Present and Late member swimmers receive `swim_verified_on` in the response. A change to Absent, Excused or Cancelled withdraws confirmation.
-- `GET /api/v1/wallet/rewards/swims` returns the signed-in member’s confirmed swim count, active weeks, current streak, qualifying days this week, weekly limit, whether today counted, eligible Bubbles, issued Bubbles, reward value in naira and the next Lagos week’s start date. Members without any confirmations receive zero totals.
-- The Attendance worker delivers versioned confirmations every minute through the Attendance-only `POST /internal/wallet/verified-swims` endpoint. Wallet serialises issuance per member, records promotional credits and retries ledger delivery through the existing ledger replay workflow.
+- `GET /internal/attendance/member-milestones/{member_auth_id}` (service-role only) returns all-time attended swimmer counts (`total_attended_swims`, `active_weeks`, `current_streak_weeks`, `best_streak_weeks`) computed across started/completed non-cancelled sessions in Lagos time.
+- `GET /api/v1/wallet/rewards/swims` returns both post–22 Nov 2026 Swim Bubbles progress (`week_days`, `weekly_limit`, `today_counted`, `bubbles_earned`, `bubbles_credited`, `reward_value_naira`, `programme_start_date`, `next_week`) and enriched all-time swimming milestones (`all_time_swims`, `all_time_active_weeks`, `all_time_best_streak`, `all_time_current_streak`, `all_time_available`) with graceful fallback if Attendance is unavailable.
+- `GET /api/v1/wallet/rewards/history` returns paginated reward history merged chronologically with completed `swim_reward_reversal` transactions (with plain-English session descriptions and `is_reversal: true`) plus server-computed net lifetime `total_bubbles_awarded`.
+- The Attendance worker delivers versioned attendance updates every minute through the Attendance-only `POST /internal/wallet/verified-swims` endpoint (including `session_title` for plain-English credit/reversal descriptions). Wallet serialises issuance/reversals per member, records promotional credits/reversals, and retries ledger delivery through the existing ledger replay workflow.
 
 ### Background Cron (attendance-worker)
 

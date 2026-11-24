@@ -17605,6 +17605,54 @@
         }
       }
     },
+    "/api/v1/internal/attendance/member-milestones/{member_auth_id}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Member Swim Milestones",
+        "description": "Return all-time attended swim counts and weekly streaks for rewards milestones.\n\nCounts persisted PRESENT/LATE swimmer attendance on non-cancelled sessions that\nhave already started (excluding future pre-booked default-Present rows).",
+        "operationId": "get_member_swim_milestones_internal_attendance_member_milestones__member_auth_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberSwimMilestones"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/programs": {
       "post": {
         "tags": [
@@ -37520,7 +37568,7 @@
           "rewards-member"
         ],
         "summary": "Get My Reward History",
-        "description": "Get the current member's reward history.",
+        "description": "Get the current member's reward history, including swim reward reversals\nand true server-computed net lifetime totals.",
         "operationId": "get_my_reward_history_wallet_rewards_history_get",
         "security": [
           {
@@ -93592,6 +93640,38 @@
         "title": "MemberAttendanceStats",
         "description": "Aggregated attendance stats for a member over a date range."
       },
+      "MemberSwimMilestones": {
+        "properties": {
+          "total_attended_swims": {
+            "type": "integer",
+            "title": "Total Attended Swims",
+            "default": 0
+          },
+          "active_weeks": {
+            "type": "integer",
+            "title": "Active Weeks",
+            "default": 0
+          },
+          "current_streak_weeks": {
+            "type": "integer",
+            "title": "Current Streak Weeks",
+            "default": 0
+          },
+          "best_streak_weeks": {
+            "type": "integer",
+            "title": "Best Streak Weeks",
+            "default": 0
+          },
+          "attendance_available": {
+            "type": "boolean",
+            "title": "Attendance Available",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "MemberSwimMilestones",
+        "description": "All-time attended swimming milestones for a member (Lagos calendar weeks)."
+      },
       "ParticipantAttendanceCreate": {
         "properties": {
           "participant_id": {
@@ -114548,6 +114628,37 @@
             "type": "string",
             "format": "date",
             "title": "Next Week"
+          },
+          "programme_start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Programme Start Date",
+            "default": "2026-11-22"
+          },
+          "all_time_swims": {
+            "type": "integer",
+            "title": "All Time Swims",
+            "default": 0
+          },
+          "all_time_active_weeks": {
+            "type": "integer",
+            "title": "All Time Active Weeks",
+            "default": 0
+          },
+          "all_time_best_streak": {
+            "type": "integer",
+            "title": "All Time Best Streak",
+            "default": 0
+          },
+          "all_time_current_streak": {
+            "type": "integer",
+            "title": "All Time Current Streak",
+            "default": 0
+          },
+          "all_time_available": {
+            "type": "boolean",
+            "title": "All Time Available",
+            "default": false
           }
         },
         "type": "object",
@@ -114598,6 +114709,17 @@
               }
             ],
             "title": "Swim Date"
+          },
+          "session_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Title"
           }
         },
         "type": "object",
