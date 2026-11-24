@@ -2192,3 +2192,8 @@ transport/unexpected responses return 503 and authorization denial remains 403.
 Operational Store grants/admin roles do not replace the Owner check. Public
 `/store/products` and `/store/categories` do not depend on that authorization
 request. No new public endpoint or schema change is introduced.
+
+
+### Reviewed stock preparation and pickup correction (24 November 2026)
+
+The scoped stock preparation script described in `STORE_STOCK_RECONCILIATION_20261124.md` creates audited counts and Fatima’s explicit reservations without changing payments or historical preorder snapshots. Complete her confirmed collection through the existing admin order-status endpoint (`picked_up`). No new API is added.
