@@ -154,6 +154,7 @@ async def sync_due_swims():
                             "swim_date": row.swim_verified_on.isoformat()
                             if row.swim_verified_on
                             else None,
+                            "session_title": session.get("title"),
                         },
                     )
                     response.raise_for_status()

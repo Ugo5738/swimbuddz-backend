@@ -333,3 +333,142 @@ async def get_member_attendance_stats(
         attendance_available=True,
         attended_sessions=attended,
     )
+
+
+class MemberSwimMilestones(BaseModel):
+    """All-time attended swimming milestones for a member (Lagos calendar weeks)."""
+
+    total_attended_swims: int = 0
+    active_weeks: int = 0
+    current_streak_weeks: int = 0
+    best_streak_weeks: int = 0
+    attendance_available: bool = False
+
+
+def compute_milestone_metrics(
+    session_starts: list[datetime], today_lagos
+) -> MemberSwimMilestones:
+    """Compute all-time attended swim count, active weeks, and streaks in Lagos time."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+
+    lagos = ZoneInfo("Africa/Lagos")
+    local_dates = [dt.astimezone(lagos).date() for dt in session_starts]
+    week_mondays = sorted({d - timedelta(days=d.weekday()) for d in local_dates})
+    week_set = set(week_mondays)
+
+    best_streak = 0
+    run = 0
+    prev_week = None
+    one_week = timedelta(weeks=1)
+    for wk in week_mondays:
+        if prev_week is not None and wk == prev_week + one_week:
+            run += 1
+        else:
+            run = 1
+        if run > best_streak:
+            best_streak = run
+        prev_week = wk
+
+    this_monday = today_lagos - timedelta(days=today_lagos.weekday())
+    cursor = this_monday if this_monday in week_set else this_monday - one_week
+    current_streak = 0
+    while cursor in week_set:
+        current_streak += 1
+        cursor -= one_week
+
+    return MemberSwimMilestones(
+        total_attended_swims=len(local_dates),
+        active_weeks=len(week_mondays),
+        current_streak_weeks=current_streak,
+        best_streak_weeks=best_streak,
+        attendance_available=True,
+    )
+
+
+@router.get(
+    "/member-milestones/{member_auth_id}",
+    response_model=MemberSwimMilestones,
+)
+async def get_member_swim_milestones(
+    member_auth_id: str,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return all-time attended swim counts and weekly streaks for rewards milestones.
+
+    Counts persisted PRESENT/LATE swimmer attendance on non-cancelled sessions that
+    have already started (excluding future pre-booked default-Present rows).
+    """
+    from zoneinfo import ZoneInfo
+
+    from libs.common.config import get_settings
+    from libs.common.datetime_utils import utc_now
+    from libs.common.service_client import internal_post
+    from services.attendance_service.models.core import MemberRef
+
+    member_result = await db.execute(
+        select(MemberRef.id).where(MemberRef.auth_id == member_auth_id)
+    )
+    member_uuid = member_result.scalar_one_or_none()
+    if member_uuid is None:
+        return MemberSwimMilestones(attendance_available=True)
+
+    session_ids = list(
+        (
+            await db.scalars(
+                select(AttendanceRecord.session_id)
+                .where(
+                    AttendanceRecord.member_id == member_uuid,
+                    AttendanceRecord.role.in_(
+                        [AttendanceRole.SWIMMER, AttendanceRole.GUEST]
+                    ),
+                    AttendanceRecord.status.in_(
+                        [AttendanceStatus.PRESENT, AttendanceStatus.LATE]
+                    ),
+                )
+                .distinct()
+            )
+        ).all()
+    )
+    if not session_ids:
+        return MemberSwimMilestones(attendance_available=True)
+
+    now = utc_now()
+    ids = sorted(str(sid) for sid in session_ids)
+    attended_starts: list[datetime] = []
+    seen_session_ids: set[str] = set()
+    try:
+        for offset in range(0, len(ids), 200):
+            response = await internal_post(
+                service_url=get_settings().SESSIONS_SERVICE_URL,
+                path="/internal/sessions/summaries/batch",
+                calling_service="attendance",
+                json={"session_ids": ids[offset : offset + 200]},
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            for session in response.json():
+                sid = str(session.get("id") or "")
+                if not sid or sid in seen_session_ids:
+                    continue
+                if session.get("status") not in {
+                    "scheduled",
+                    "in_progress",
+                    "completed",
+                }:
+                    continue
+                raw_start = session.get("starts_at")
+                if not raw_start:
+                    continue
+                when = datetime.fromisoformat(raw_start.replace("Z", "+00:00"))
+                if when <= now:
+                    seen_session_ids.add(sid)
+                    attended_starts.append(when)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail="Session dates unavailable for swim milestones"
+        ) from exc
+
+    today_lagos = now.astimezone(ZoneInfo("Africa/Lagos")).date()
+    return compute_milestone_metrics(attended_starts, today_lagos)
