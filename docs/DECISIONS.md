@@ -391,6 +391,40 @@
   - `swimbuddz-frontend/src/app/(member)/account/wallet/rewards/page.tsx`
   - `swimbuddz-frontend/src/components/swims/SwimRewards.tsx`
 
+---
+
+## ADR-021: Independent Account Registration, Modular User Journeys & Store-First Access
+- **Status:** Settled & Enforced (24 November 2026)
+- **Context & Why:**
+  - Requiring every new registrant to pick a swimming programme (`Community` / `Club` / `Academy`), enter full contact/address details, and declare a swimming level at `/register` created unnecessary friction for Store-only shoppers, Pool Access visitors, and browsers who simply want an account first.
+  - Conversely, hiding contact fields while leaving them in `isStepValid()` or bouncing already-authenticated users from `/explore` → `/club` / `/community` / `/academy` back into `/register` broke signup and trapped logged-in users in registration loops. Similarly, overly broad post-auth heuristics risked sending returning unpaid programme applicants (`approved_unpaid` / `payment_pending`) back to `/explore` or hijacking active Academy students away from `/account/academy`.
+- **Decision & Non-Negotiable Invariants:**
+  - **Identity-Only General Account Registration (`/register`):**
+    - Regular (non-coach, non-upgrade) account creation is decoupled from swimming programme selection and requires only core identity credentials (`firstName`, `lastName`, `email`, `password >= 8 chars`) plus terms confirmation. Phone, location, and swimming level are collected later at programme onboarding or Store delivery checkout.
+    - Coach signup (`?coach=true`) still collects and validates contact details (`phone`, `country`, `state`, `city`).
+    - *"How did you hear about SwimBuddz?"* (`acquisition_source`) stays available on regular signup as an **optional** non-blocking field so flywheel attribution is preserved without slowing down checkout signups.
+    - Omitted optional fields must be sent as `undefined` (never `""` or a default `"Nigeria"` country) when calling `POST /api/v1/pending-registrations/`.
+  - **Authenticated Pass-Through on `/register` & Store Header Preservation:**
+    - When an already-authenticated user visits `/register` (excluding `?upgrade=true` and `?coach=true`), the page immediately forwards them to `safeReturnPath(next) ?? destinationForGoal(goal)` (or `getPostAuthRedirectPath()` / `/admin/dashboard` for admins) so marketing CTAs reached from `/explore` (`/club` → `/register?goal=club`, `/community` → `/register?goal=community`, `/academy` → `/register?goal=academy`) never trap signed-in users on the signup form.
+    - `StoreHeader` preserves the current store path on both **Login** (`/login?redirect=...`) and **Join** (`/register?next=...`).
+  - **Modular Post-Auth Routing (`src/lib/journeys.ts` + `src/lib/registration.ts`):**
+    - Explicit standalone storefront/offering destinations resume immediately (`ADR-017`); stale programme requests never hijack explicit session or profile deep links.
+    - Active Academy learners (`academyActive`) keep precedence over secondary `club: requested` status so they still land on `/account/academy` on plain login.
+    - Accounts with pending/unpaid programme obligations (`payment_pending`, `approved_unpaid`, `expired` on Academy/Club, or `payment_pending`/`expired` on Community) are never classified as `isFreshRegistration` and route directly to `/account/billing?required=<tier>` rather than `/explore`.
+    - Truly fresh identity-only accounts with no destination, no requested programme, and no pending obligation land on `/explore` (which surfaces Academy, Club, Community, Store, Pools, `/account`, and `/account/orders`).
+  - **Store-Only Order Access (`middlewareAccess.ts`):**
+    - `/account/orders` is included in `paywallAllowedPrefixes` so registered Store customers can track orders without purchasing an annual swimming membership, while swimming programme routes (`/club/*`, `/academy/*`, `/sessions/*`) remain gated by server-backed tier entitlements (`ADR-001`).
+- **Canonical Docs & Code:**
+  - `swimbuddz-frontend/src/app/(auth)/register/page.tsx`
+  - `swimbuddz-frontend/src/app/(auth)/register/__tests__/RegisterPage.test.tsx`
+  - `swimbuddz-frontend/src/components/registration/RegistrationEssentialsStep.tsx`
+  - `swimbuddz-frontend/src/app/(public)/explore/page.tsx`
+  - `swimbuddz-frontend/src/lib/journeys.ts`
+  - `swimbuddz-frontend/src/lib/registration.ts`
+  - `swimbuddz-frontend/src/lib/middlewareAccess.ts`
+  - `swimbuddz-frontend/src/components/store/StoreHeader.tsx`
+  - `swimbuddz-frontend/UI_FLOWS.md`
+  - `swimbuddz-frontend/ROUTES_AND_PAGES.md`
 
 ---
 
