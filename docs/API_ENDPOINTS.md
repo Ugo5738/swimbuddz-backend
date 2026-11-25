@@ -376,8 +376,9 @@ quarter/member filters while avoiding unrelated automatic relationship reads.
 - `upserted`: number of rows created or updated.
 - `deleted`: number of exception rows removed (cohort `present` revert path).
 
-### Automatic Swim Rewards & Milestones (`ADR-019`, `ADR-020`)
+### Automatic Swim Rewards & Milestones (`ADR-019`, `ADR-020`, `ADR-022`)
 
+- `GET /api/v1/attendance/me/ytd-summary?year=<YYYY>` returns the signed-in member's lightweight all-swim YTD attendance summary (`sessions_attended`, `sessions_recorded`, `sessions_absent`, `sessions_excused`, `attendance_rate`, `pool_hours`, `streak_current`, `streak_longest`, `active_weeks`) across Club, Academy, and Community sessions in Lagos time with true cross-quarter streaks.
 - `GET /internal/attendance/member-milestones/{member_auth_id}` (service-role only) returns all-time attended swimmer counts (`total_attended_swims`, `active_weeks`, `current_streak_weeks`, `best_streak_weeks`) computed across started/completed non-cancelled sessions in Lagos time.
 - `GET /api/v1/wallet/rewards/swims` returns both post–22 Nov 2026 Swim Bubbles progress (`week_days`, `weekly_limit`, `today_counted`, `bubbles_earned`, `bubbles_credited`, `reward_value_naira`, `programme_start_date`, `next_week`) and enriched all-time swimming milestones (`all_time_swims`, `all_time_active_weeks`, `all_time_best_streak`, `all_time_current_streak`, `all_time_available`) with graceful fallback if Attendance is unavailable.
 - `GET /api/v1/wallet/rewards/history` returns paginated reward history merged chronologically with completed `swim_reward_reversal` transactions (with plain-English session descriptions and `is_reversal: true`) plus server-computed net lifetime `total_bubbles_awarded`.
