@@ -428,6 +428,40 @@
 
 ---
 
+## ADR-022: Payments & Credits Streamlined Layout, All-Swim YTD Summary & Dashboard Polish
+- **Status:** Settled & Enforced (25 November 2026)
+- **Context & Why:**
+  - Review of the member portal surfaced five UX and data accuracy gaps:
+    1. On `/account/wallet/rewards`, the Weekly Swim Bubbles card repeated the same earning rule three times in a row (and a fourth time in the rules list directly below).
+    2. On `/account`, the Next Swim card repeated `My Swims` and `Other swims` secondary links even though Quick Actions and the sidebar already surface both directly underneath/beside it.
+    3. The Dashboard's **2026 Swim Summary** (`fetchYTDStats`) fired four separate quarterly report requests (`Q1–Q4`) per page load, counted only one `primary_segment` per quarter while `pool_hours` counted all swims, truncated streaks across quarter boundaries (`Math.max`), silently dropped quarters without snapshots, and failed (`403`) for members without active annual community membership.
+    4. The Dashboard's `Latest updates` block occupied prime real estate even when empty (`No new announcements at the moment.`) or pinned indefinitely.
+    5. On `/account/billing` (**Payments & Credits**), paid-up members had to scroll past three empty `"Nothing here right now."` obligation cards, a high-urgency black `₦0` box, a dead `#bank-transfer-receipts` anchor when no transfer was pending, duplicate `/api/v1/members/me` fetches, and four collapsed `<details>` toggles — two of which could expand into empty blank boxes (`OutstandingSessionFeesCard` returning `null`, and `ProductPaymentReceipts` filtering out all paid payments lacking `checkout_quote` metadata).
+- **Decision & Non-Negotiable Invariants:**
+  - **Single-Pass Rewards Copy (`SwimRewards.tsx`):** Show dynamic weekly status text only when it conveys live state (1+ earned days, today counted, weekly cap reached, or reversal offset). Keep one concise 1-line rule footnote and a single-sentence launch note when `bubbles_earned === 0 && all_time_swims > 0`.
+  - **Focused Next Swim Hero (`NextSwimDashboardFocus.tsx`):** Present one primary CTA button + inline `+1 🫧` reward cue (plus the attention link only when bookings need action), omitting redundant `My Swims` / `Other swims` links.
+  - **All-Swim YTD Attendance Summary (`GET /api/v1/attendance/me/ytd-summary`):** Provide one lightweight Attendance endpoint computing YTD `sessions_attended` (all `PRESENT`/`LATE` swimmer sessions across Club, Academy, and Community in Lagos time), `sessions_recorded` (`PRESENT + LATE + ABSENT`, excluding `EXCUSED`/`CANCELLED` per `ADR-004`), `attendance_rate`, `pool_hours`, and true cross-quarter Lagos-week `streak_longest` / `streak_current` for any authenticated member. The Dashboard uses this single endpoint rather than fanning out 4 quarterly report requests.
+  - **Conditional Dismissible Updates Strip (`/account`):** Never render an empty announcements box on the Dashboard. Surface a slim dismissible banner only when an active published announcement is pinned or published within the last 14 days (remembering dismissal per announcement ID in `localStorage`).
+  - **Streamlined Payments & Credits (`/account/billing`, extending `ADR-008`):**
+    - Preserve all `ADR-008` trust invariants (server-aggregated obligations, incomplete-source warning banner, Bubbles kept separate from Store credit, double-payment protection for pending transfers).
+    - Reuse `useMemberProfile()` instead of firing a duplicate `/api/v1/members/me` request.
+    - Pair **Payment Status** (calm emerald `All caught up` at `₦0`; amber/rose urgency only when `> ₦0`) beside **Your Credits** in a 2-column top overview, and hide empty obligation groups (`Needs payment`, `Coming up`, `We're checking your payment`) when `serverOverview` loaded cleanly.
+    - Render `PendingTransfersCard` with human-readable purpose labels only when pending transfers exist, and never render a dead `#bank-transfer-receipts` anchor when none exist.
+    - Replace the four collapsed `<details>` sections with clean visible tabs (**Memberships & Plans** showing Annual Membership, Club, Academy, and Membership History; **Payment History** showing *all* payments with expandable quote breakdowns whenever `checkout_quote` metadata is present). Render `OutstandingSessionFeesCard` only when unpaid session bookings actually exist.
+- **Canonical Docs & Code:**
+  - `swimbuddz-backend/services/attendance_service/routers/member/lists.py`
+  - `swimbuddz-backend/services/attendance_service/schemas/main.py`
+  - `swimbuddz-frontend/src/components/swims/SwimRewards.tsx`
+  - `swimbuddz-frontend/src/components/dashboard/NextSwimDashboardFocus.tsx`
+  - `swimbuddz-frontend/src/components/dashboard/YTDStatsOverview.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/page.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/billing/page.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/billing/_billing/FinancialOverviewCard.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/billing/_billing/ProductPaymentReceipts.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/billing/_billing/PendingTransfersCard.tsx`
+
+---
+
 ## Template for Adding New Decisions
 
 Whenever a new product, pricing, accounting, curriculum, or architectural decision is made during a conversation, append a new `ADR-XXX` entry using this structure:
