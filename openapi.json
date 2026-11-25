@@ -17206,6 +17206,63 @@
         }
       }
     },
+    "/api/v1/attendance/me/ytd-summary": {
+      "get": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "Get My Ytd Attendance Summary",
+        "description": "Return a single-request all-swim YTD attendance summary for the member dashboard.\n\nCounts all recorded swimmer sessions across Club, Academy, and Community in\nLagos time and computes true cross-quarter weekly streaks (ADR-022).",
+        "operationId": "get_my_ytd_attendance_summary_attendance_me_ytd_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2035,
+                  "minimum": 2024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberYtdAttendanceSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/attendance/sessions/{session_id}/pool-list": {
       "get": {
         "tags": [
@@ -93671,6 +93728,65 @@
         "type": "object",
         "title": "MemberSwimMilestones",
         "description": "All-time attended swimming milestones for a member (Lagos calendar weeks)."
+      },
+      "MemberYtdAttendanceSummary": {
+        "properties": {
+          "year": {
+            "type": "integer",
+            "title": "Year"
+          },
+          "sessions_attended": {
+            "type": "integer",
+            "title": "Sessions Attended",
+            "default": 0
+          },
+          "sessions_recorded": {
+            "type": "integer",
+            "title": "Sessions Recorded",
+            "default": 0
+          },
+          "sessions_absent": {
+            "type": "integer",
+            "title": "Sessions Absent",
+            "default": 0
+          },
+          "sessions_excused": {
+            "type": "integer",
+            "title": "Sessions Excused",
+            "default": 0
+          },
+          "attendance_rate": {
+            "type": "number",
+            "title": "Attendance Rate",
+            "default": 0.0
+          },
+          "pool_hours": {
+            "type": "number",
+            "title": "Pool Hours",
+            "default": 0.0
+          },
+          "streak_current": {
+            "type": "integer",
+            "title": "Streak Current",
+            "default": 0
+          },
+          "streak_longest": {
+            "type": "integer",
+            "title": "Streak Longest",
+            "default": 0
+          },
+          "active_weeks": {
+            "type": "integer",
+            "title": "Active Weeks",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "year"
+        ],
+        "title": "MemberYtdAttendanceSummary",
+        "description": "Lightweight all-swim YTD attendance summary for the member dashboard."
       },
       "ParticipantAttendanceCreate": {
         "properties": {
