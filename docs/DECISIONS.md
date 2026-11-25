@@ -195,28 +195,46 @@
 
 ---
 
-## ADR-010: Modular Academy Curriculum, Independent Milestones, Drills, Lessons & Competency Ledger
-- **Status:** Settled Architecture & Blueprint (Aug–Nov 2026, `MODULAR_CURRICULUM_PATHWAY.md`, `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`)
+## ADR-010: Modular Academy Curriculum, Versioned Catalog & Evidence-Backed Competency Passport (V2)
+- **Status:** Settled & Enforced — V2 Implementation Contract Accepted (Nov 2026; PRs `#424`, `#442`, `#445`, `#446`, `#217`, `#220`, `#222`, hardening/ops follow-up). Supersedes the V1 schema/auto-backfill clauses of `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` while preserving its pedagogical pathway taxonomy and TI coaching goals.
 - **Context & Why:**
   - Selling only a monolithic 12-week Beginner-to-50m course forced swimmers with partial skills to repeat basics and limited entry points to three intakes a year. Conversely, an unguided à-la-carte lesson menu causes choice overload and lets learners skip water safety.
-  - Furthermore, hard-locking `Milestone` and `AcademyQuiz` rows to a single `program_id` forced curriculum duplication across pathways (*Water-Safe Starter*, *Beginner-to-50m*, *Accelerated Programme*), prevented cohorts from customizing milestone schedules without mutating the parent Program, prevented learner milestone credit from carrying across programs, and lacked a first-class **Drills** entity (*how* to practice a skill in the water with a single TI focal point).
+  - The earlier V1 draft (`ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`) proposed mutating legacy `milestones.program_id` to nullable, attaching mutable milestone rows via `program_milestones`/`cohort_milestones`, and auto-backfilling a mutable `learner_milestone_credits` table from historical `student_progress` rows. Review showed two fatal risks in V1: (1) editing a rubric later would silently alter historical cohort/graduate standards, and (2) auto-backfilling legacy `student_progress` rows of uneven rigor or missing video evidence would inflate trust in portable safety credentials.
 - **Decision & Non-Negotiable Invariants:**
-  - **Sell Outcomes/Pathways, Deliver Competency-Gated Modules:** Customers buy clear outcome pathways (e.g., *Beginner-to-50m Freestyle*, *Water-Safe Starter*, *Breaststroke Pathway*) composed of stackable Foundation (`F1–F4`), Stroke (`S1–S4`), and Deep-Water/Distance (`A1–A2`) modules.
-  - **Assessment Grants Prerequisite Credit:** Free Intro-to-Water clinics are diagnostic assessments (not free lessons) that grant demonstrated competency credits so learners enter at the right module boundary without paying twice for passed skills.
+  - **Sell Outcomes/Pathways, Deliver Competency-Gated Modules:** Customers buy clear outcome pathways (e.g., *Beginner-to-50m Freestyle*, *Water-Safe Starter*, *Breaststroke Pathway*) composed of stackable Foundation (`F1–F4`), Stroke (`S1–S4`), and Deep-Water/Distance (`A1–A2`) modules. Commercial terms, attendance, and class balances remain strictly separate from competency mastery (`ADR-002`, `ADR-004`).
+  - **Assessment Grants Prerequisite Credit (Evidence-Backed Only):** Diagnostic clinics and prior assessments can grant recognized prerequisite credit so learners enter at the right module boundary without repeating verified basics—**never** as automatic trust inflation from unreviewed legacy records, class attendance, or theory quizzes alone.
   - **Group Intake Realities vs. Private Coaching Demand Indicators:**
     - All standard Academy seasonal intakes operate as small-group cohort classes (4–6 students per coach).
     - The onboarding readiness questionnaire (`AcademyDetailsStep.tsx`) collects format preferences (group vs. private 1-on-1). To avoid misleading new registrants into expecting private 1-on-1 classes at standard group tuition, the form clearly disclaims that all cohort intakes are group-based, and that 1-on-1 indicators are recorded for personalized recommendations and future private coaching demand.
-  - **Independent Reusable Curriculum Library (`ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`):**
-    - **Canonical Milestones (`milestones` + `program_milestones` + `cohort_milestones` + `lesson_milestones`):** `milestones.program_id` is nullable; canonical milestones carry a unique `code` (`MS-F1-...`), `category`, `module_code`, and `is_safety_gate`. Programs attach canonical milestones via `program_milestones`; individual cohorts customize their effective milestone set (adding, overriding target week/order, or excluding non-safety-gate milestones) via `cohort_milestones` without mutating the parent Program.
-    - **Portable Learner Competency Ledger (`learner_milestone_credits`):** Keyed by `(member_id, milestone_id)`. Achieving a canonical milestone in any cohort or diagnostic assessment syncs to `learner_milestone_credits` so subsequent cohort enrollments automatically recognize **Prior Credit** without re-testing mastered competencies.
-    - **TI-Aligned Drills Library (`academy_drills` + `lesson_drills` + `skill_drills` + `milestone_remedial_drills` + `student_drill_assignments`):** Every drill defines a `ti_stage` (`water_safety`, `breathing_control`, `balance_comfort`, `streamline_drag`, `propulsion_timing`, `recovery`), **one `primary_focal_point`**, `common_mistakes_json`, `equipment_json`, `default_prescription_json` (sets × distance + rest), and a demo video. Pending or rejected milestones automatically surface linked remedial drills, and coaches/Stroke Lab AI can assign personalized drills to a student's enrollment.
-    - **Library Quizzes (`academy_quizzes`):** `program_id` is nullable so water-safety and hydrodynamic quizzes live in the reusable library while `AcademyQuizAssignment` continues to freeze cohort-week question snapshots (`ADR-009`).
+  - **Versioned Independent Curriculum Catalog (Additive Sidecar — `ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`):**
+    - Five independent catalog entities separate stable identity (`code`, `title`, `is_retired`) from immutable published versions (`state IN ('draft','published')`, `published_at`): `AcademyMilestoneDefinition`/`Version`, `AcademyDrill`/`Version` (with one `primary_focal_cue` aligned to `ADR-013`), `AcademyLessonBlueprint`/`Version`, `AcademyKnowledgeQuiz`/`Version`, and `AcademyModule`/`Version`, linked via typed join tables (`academy_lesson_drills`, `academy_module_lessons`, `academy_module_milestones`, `academy_module_quizzes`, `academy_milestone_skills`, `academy_drill_skills`).
+    - Draft versions may be edited in place and composed (`PATCH` / draft-only join edits); once `published`, versions are immutable. New changes require publishing version `N+1`.
+    - **Publish-Time Milestone Contract:** Publishing an `AcademyMilestoneVersion` fails closed unless `rubric_json.criteria` is a non-empty list of unique non-empty criterion codes/strings, any `assessment_context_json.validity_days` is a positive integer, and every `safety_gate = true` milestone defines a positive `validity_days` recheck interval.
+  - **Deterministic Cohort Requirements & Immutable Frozen Snapshots:**
+    - Programs assemble published modules (`AcademyProgramModule`) and optional direct milestones (`AcademyProgramMilestoneAssignment`); cohorts may add audited overrides (`AcademyCohortMilestoneAssignment` with mandatory `override_reason`) before freezing, and may never remove or downgrade a `safety_gate` milestone.
+    - `build_cohort_requirements` resolves modules + program assignments + cohort additions deterministically (failing closed on unpublished or conflicting versions of the same canonical milestone). Freezing persists an append-only `AcademyCohortRequirementsSnapshot` protected by a SHA-256 checksum and a Postgres `BEFORE UPDATE OR DELETE` trigger (`guard_academy_requirements_snapshot`). Pre-freeze edits/removals are allowed; post-freeze snapshots are immutable.
+  - **Append-Only Evidence-Backed Competency Verification Ledger (`academy_competency_verifications` + `academy_competency_revocations`):**
+    - Both ledger tables are protected by Postgres `BEFORE UPDATE OR DELETE` triggers (`guard_academy_competency_ledger`). Verifications are never edited in place; invalidations append an `AcademyCompetencyRevocation` with a substantive audit reason.
+    - **No Automatic Legacy Backfill:** A historical `StudentProgress` achievement becomes a portable competency credit **only** after a human administrator (never `service_role` or AI) confirms equivalence against a frozen cohort V2 milestone standard, attests every published criterion in `criteria_passed`, provides a substantive `equivalence_reason`, and backend verification confirms the private video evidence exists (`HeadObject` via `media_service` `/internal/media/alumni-evidence/{id}`), belongs to the original claimant/coach uploader, and has not changed since approval.
+    - One source review event (`source_review_event_id`) can issue at most one credential. Validity/expiry anchors to the **original assessment date** (`review.created_at`), never the later administrative import date.
+    - Read projections (`/competencies/me`, `/competencies/admin/members/{member_auth_id}`) dynamically check revocations, expiry, and whether the underlying source `StudentProgress` / latest review decision remains `ACHIEVED` with unchanged evidence — failing closed to `recheck_required` if overridden or missing, and surfacing `revoked` when all supporting verifications have been withdrawn.
+  - **Controlled Rollout & Legacy Isolation:** Legacy graduation, certificates, Club readiness (`ADR-005`), attendance (`ADR-004`), and commercial terms remain isolated until dual-read parity, native coach V2 assessments, and remedial/personalized drill prescriptions are explicitly promoted in later phases.
 - **Canonical Docs & Code:**
-  - `docs/design/ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`
-  - `swimbuddz-backend/docs/design/ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`
+  - `docs/design/ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`
+  - `swimbuddz-backend/docs/design/ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`
+  - `docs/design/ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` *(Superseded V1 reference — pedagogical taxonomy & seed catalogue)*
   - `docs/academy/MODULAR_CURRICULUM_PATHWAY.md`
-  - `swimbuddz-backend/services/academy_service/models/program.py`
-  - `swimbuddz-backend/services/academy_service/models/progress.py`
+  - `swimbuddz-backend/services/academy_service/models/curriculum_library.py`
+  - `swimbuddz-backend/services/academy_service/models/requirements.py`
+  - `swimbuddz-backend/services/academy_service/models/competency.py`
+  - `swimbuddz-backend/services/academy_service/routers/curriculum_library.py`
+  - `swimbuddz-backend/services/academy_service/routers/requirements.py`
+  - `swimbuddz-backend/services/academy_service/routers/competencies.py`
+  - `swimbuddz-backend/services/academy_service/services/requirements_resolver.py`
+  - `swimbuddz-frontend/src/app/(admin)/admin/academy/curriculum-library/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/academy/requirements/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/academy/competencies/page.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/academy/passport/page.tsx`
 
 ---
 
@@ -302,6 +320,7 @@
   - **Self-Service Name Changes:** Recorded immutably in `member_name_changes` (`MemberNameChange`) with actor and before/after values.
   - **Soft Delete (`mode = "soft"`):** Sets `Member.is_active = False`, hides the member from active tabs on `/admin/members`, displays them under the **Deactivated** tab with a `Deactivated` badge, and allows one-click **Reactivate Account**.
   - **Hard Delete (`mode = "hard"`):** Purges member records across all services (`payments`, `attendance`, `academy`, `communications`, `events`, `transport`, `media`, `members`) respecting FK constraints (`RESTRICT`/`NO ACTION` child rows cleaned up first; Pod Leads blocked with `409 Conflict` until reassigned), commits the database transaction first, and **only then** deletes the Supabase Auth user. Before cross-service destructive operations the gateway must preflight Pod Lead references and reject deletion of payments referenced by shared Academy bank receipts allocated to other learners. Stop at the first service failure; this is still not a distributed transaction, so operators must review partial failures before retrying. Any downstream failure is surfaced to the admin UI—never masked with a false success toast.
+  - **Append-Only Competency Ledger Retention on Hard Delete (Nov 2026):** `academy_competency_verifications` and `academy_competency_revocations` (`ADR-010`) store untied source UUIDs (no FK to `enrollments` or `student_progress`) and enforce `BEFORE UPDATE OR DELETE` immutability triggers (`guard_academy_competency_ledger`). Standard admin hard delete removes operational enrollments and `StudentProgress` cleanly without FK failure while intentionally retaining append-only competency audit records (whose read projection automatically degrades to `recheck_required` once source `StudentProgress` is purged). Formal statutory/GDPR erasure of immutable ledger rows requires an explicit out-of-band compliance procedure and must never silently bypass the runtime immutability trigger.
 - **Canonical Docs & Code:**
   - `swimbuddz-backend/services/gateway_service/app/routers/cleanup.py`
   - `swimbuddz-backend/services/members_service/routers/members/admin.py`
