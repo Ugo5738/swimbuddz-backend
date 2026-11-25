@@ -111,14 +111,33 @@ class Settings(BaseSettings):
     STROKELAB_COACH_GATE_MODEL: str = "o4-mini"  # view/usability gate (reasoning)
     # Holistic + per-instance coach model. The ONE swap point between providers:
     #   OpenAI (stills):  STROKELAB_COACH_MODEL=gpt-4o                  + STROKELAB_COACH_VIDEO=false
-    #   Gemini (video):   STROKELAB_COACH_MODEL=gemini/gemini-3.5-flash + STROKELAB_COACH_VIDEO=true
-    #     gemini-3.5-flash = latest GA, best for video. Free testing: gemini/gemini-2.5-flash
-    #     on a NO-BILLING key (enabling billing on a project kills its free tier entirely).
+    #   Gemini (video):   STROKELAB_COACH_MODEL=gemini/gemini-3.8-flash + STROKELAB_COACH_VIDEO=true
+    #   Lean Gemini:      STROKELAB_COACH_MODEL=gemini/gemini-3.5-flash-lite + STROKELAB_COACH_VIDEO=true
+    #   (Note: gemini-2.5-flash is deprecated; use Gemini 3.x models so LiteLLM
+    #   forwards video_metadata.fps and media_resolution.)
     # LiteLLM routes by the model string; GEMINI_API_KEY/OPENAI_API_KEY pick the creds.
     STROKELAB_COACH_MODEL: str = "gpt-4o"  # holistic + per-instance coaching
-    # Send the actual CLIP to the holistic coach (motion!) instead of 8 stills. Only
+    # Send the actual CLIP to the coach (motion!) instead of sparse stills. Only
     # honoured by video-capable models (Gemini); on a stills model it's ignored.
     STROKELAB_COACH_VIDEO: bool = False
+    # Custom frame extraction rate (FPS) sent via Gemini 3+ video_metadata.fps on
+    # short stroke chunks. Static Gemini defaults to 1 FPS, which misses ~0.8-1.0s
+    # arm recoveries; 4.0 FPS gives ~16 frames across a 4s stroke chunk.
+    STROKELAB_COACH_VIDEO_FPS: float = 4.0
+    # Per-part media resolution for Gemini 3+ video chunks ("low" | "medium" | "high").
+    STROKELAB_COACH_VIDEO_DETAIL: str = "medium"
+    # Hybrid chunk input: attach up to 2 crisp high-resolution key frames alongside
+    # the downscaled chunk video clip so the VLM sees both smooth motion and anatomy.
+    STROKELAB_COACH_CHUNK_HYBRID_STILLS: bool = True
+    # Reasoning effort for thinking models (e.g. Gemini 3.x Flash). Keeping this
+    # "low" for structured JSON coaching calls prevents thinking tokens from
+    # starving maxOutputTokens and truncating JSON mid-response.
+    STROKELAB_COACH_REASONING_EFFORT: str = "low"
+    # Optional selective second-model adjudicator (e.g. "gpt-5.4-mini" or "gpt-4o").
+    # Empty = disabled. When set, invoked ONLY when a top fix on a clean clip is
+    # uncertain (single-stroke only or borderline confidence), sending high-res
+    # evidence stills to confirm or downgrade to INFO.
+    STROKELAB_COACH_ADJUDICATOR_MODEL: str = ""
     # Inline-video ceiling AFTER downscale (the holistic coach transcodes every clip
     # to 480p first). 14 keeps the base64 request under Gemini's ~20 MB inline limit;
     # a downscaled clip rarely approaches it, so this is a safety net → stills.
@@ -160,6 +179,10 @@ class Settings(BaseSettings):
     # (serverless GPU — keeps the heavy CV off the app box; see services/ai_service/
     # modal/pose_modal.py). Modal needs the URL + proxy-auth key/secret from deploy.
     STROKELAB_POSE_BACKEND: str = "local"
+    # Which pose keypoint engine to run: "auto" (prefers Apache-2.0 rtmlib/RTMPose
+    # when installed, falls back to yolov8), "rtmpose" (Apache-2.0 onnxruntime), or
+    # "yolov8" (Ultralytics — requires commercial license or AGPL compliance).
+    STROKELAB_POSE_ENGINE: str = "auto"
     STROKELAB_POSE_MODAL_URL: str = ""
     STROKELAB_POSE_MODAL_KEY: str = ""
     STROKELAB_POSE_MODAL_SECRET: str = ""

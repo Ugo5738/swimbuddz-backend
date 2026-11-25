@@ -142,10 +142,21 @@ class PipelineConfig:
     gate_votes: int = 3
     gate_detail: str = "low"
     coach_detail: str = "auto"
-    # Send the clip video (not stills) to the holistic coach. Only video-capable
+    # Send the clip video (not stills) to the coach. Only video-capable
     # models (Gemini) honour it; ignored on a stills model.
     coach_video: bool = False
     coach_video_max_mb: int = 18
+    # Custom frame-extraction rate (FPS) and resolution for Gemini 3+ video chunks.
+    coach_video_fps: float = 4.0
+    coach_video_detail: str = "medium"
+    # Hybrid chunk input: send up to 2 crisp high-res key stills alongside the chunk clip.
+    coach_chunk_hybrid_stills: bool = True
+    # Reasoning effort for thinking models on structured JSON coaching calls.
+    coach_reasoning_effort: Optional[str] = "low"
+    # Optional selective second-model adjudicator for uncertain top fixes only.
+    adjudicator_model: Optional[str] = None
+    # Pose keypoint engine ("auto" | "rtmpose" | "yolov8").
+    pose_engine: str = "auto"
     segment_detail: str = "low"
     segment_batch: int = 12
     max_coached_recoveries: int = (

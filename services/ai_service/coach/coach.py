@@ -65,6 +65,9 @@ async def run_coach(
     gate_context: Optional[dict] = None,
     goal_block: str = "",
     video: Optional[bytes] = None,
+    video_fps: Optional[float] = None,
+    video_detail: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> CoachReport:
     """Run the vision coach over pre-selected frames.
 
@@ -94,6 +97,9 @@ async def run_coach(
         + (f"\n\n{goal_block}" if goal_block else ""),
         images=[] if use_video else [f.jpeg for f in frames],
         video=video,
+        video_fps=video_fps if use_video else None,
+        video_detail=video_detail if use_video else None,
+        reasoning_effort=reasoning_effort,
         model=model,
         image_detail=image_detail,
         temperature=temperature,
@@ -130,9 +136,10 @@ GATE_SYSTEM_PROMPT = """\
 You are a practical gatekeeper for an automated freestyle swim-technique tool. You \
 are shown a few still frames (in time order) from one short clip. Decide ONLY \
 whether the clip has enough visible freestyle swimming for the coach to give some \
-above-water feedback. DO NOT coach.
+above-water feedback, and grade the camera profile quality. DO NOT coach.
 
 Return ONLY this JSON (no prose): {"view": "...", "stroke": "...", \
+"profile_quality": "clean|partial|poor", "catastrophic_flags": [], \
 "usable_for_coaching": true|false, "swimmer_count": 0, "confidence": 0.0, \
 "reason": "short"}
 
@@ -140,23 +147,28 @@ Definitions:
 - view ∈ side-on | head-on | overhead | underwater | mixed | unclear. "side-on" \
 means a side or side-oblique profile where the swimmer generally travels ACROSS \
 the frame (left↔right) and at least the above-water recovery, head, or body \
-rotation can be seen. It does NOT need a perfect pool-level waterline or a perfect \
-hip/leg view. A deck/elevated angle can still be side-on/usable when the swimmer's \
-path is across the frame and one side of the body is visible. \
+rotation can be seen. A deck/elevated angle can still be side-on/usable when the \
+swimmer's path is across the frame and one side of the body is visible. \
 "overhead" means mostly from above. If the freestyle swimmer, arm recovery, head, \
-or body rotation are still clear, this can be usable but limited; use \
-view="overhead" and usable_for_coaching=true. If it is too far, too cropped, or \
-too straight-down to see any useful above-water technique, set usable false. \
-Mark head-on when the swimmer is moving TOWARD or AWAY from the camera; underwater \
-when most useful information is below the surface; mixed when the angle changes \
-across frames. When unsure, if it is freestyle and at least one above-water aspect \
-can be coached, prefer usable_for_coaching=true with lower confidence rather than \
-refusing. Judge COACHABILITY, not image sharpness.
+or body rotation are still clear, use view="overhead", profile_quality="partial", \
+and usable_for_coaching=true. If it is too far, too cropped, or too straight-down \
+to see any useful above-water technique, set profile_quality="poor" and usable=false. \
+Mark head-on when the swimmer moves TOWARD or AWAY from the camera; underwater when \
+most useful information is below the surface; mixed when the angle changes across frames.
+- profile_quality ∈ clean | partial | poor:
+  * "clean": clear side-on or near-side-on freestyle profile with one main trackable \
+swimmer where above-water recovery, head, and body alignment are clearly readable.
+  * "partial": elevated, angled, overhead, slightly distant, or multi-swimmer footage \
+where at least one above-water aspect (recovery, head, or rotation) is still coachable \
+with caveats.
+  * "poor": unusable for coaching (non-freestyle, head-on, underwater, no visible \
+swimmer, too dark/blurry/cropped, or no clear stroke frames).
+- catastrophic_flags: zero or more of ["non_freestyle", "underwater", "head_on", \
+"no_swimmer", "unreadable"]. Include a flag ONLY when clearly true.
 - stroke ∈ freestyle | other | unclear.
 - usable_for_coaching = true if stroke is freestyle, at least one swimmer is clear \
-enough to track, and at least ONE above-water aspect can be judged: arm recovery, \
-head position, body rotation, or body line. It does not require all aspects to be \
-visible.
+enough to track, catastrophic_flags is empty, and at least ONE above-water aspect \
+can be judged: arm recovery, head position, body rotation, or body line.
 - swimmer_count = distinct people visibly swimming.
 - confidence ∈ 0.0-1.0.
 JSON only."""
@@ -179,11 +191,28 @@ class GateVerdict:
     cost_usd: float = 0.0
     latency_ms: int = 0
     model: str = ""
+    profile_quality: str = (
+        ""  # graded: "clean" | "partial" | "poor" ("" on legacy cache)
+    )
+    catastrophic_flags: list[str] = field(default_factory=list)
 
 
 def _mode(values: list, default):
     vals = [v for v in values if v is not None]
     return Counter(vals).most_common(1)[0][0] if vals else default
+
+
+def _majority_flags(votes: list[dict], n_valid: int) -> list[str]:
+    if n_valid <= 0:
+        return []
+    counts: Counter[str] = Counter()
+    for v in votes:
+        raw = v.get("catastrophic_flags")
+        if isinstance(raw, list):
+            for flag in {str(f).strip().lower() for f in raw if f}:
+                counts[flag] += 1
+    threshold = max(1, (n_valid + 1) // 2)  # strict/half majority
+    return sorted(flag for flag, count in counts.items() if count >= threshold)
 
 
 async def run_gate(
@@ -195,6 +224,7 @@ async def run_gate(
     temperature: float = 0.0,
     max_tokens: int = 1500,
     stroke_hint: str = "freestyle",
+    reasoning_effort: Optional[str] = "low",
 ) -> GateVerdict:
     """Run the cheap gate prompt ``n_votes`` times (concurrently) and vote.
 
@@ -218,6 +248,7 @@ async def run_gate(
             temperature=temperature,
             max_tokens=max_tokens,
             response_format=GATE_RESPONSE_FORMAT,
+            reasoning_effort=reasoning_effort,
             trace_name="strokelab_gate",
         )
 
@@ -246,6 +277,11 @@ async def run_gate(
         if n_valid
         else 0.0
     )
+    pq_values = [
+        str(v.get("profile_quality")).strip().lower()
+        for v in votes
+        if v.get("profile_quality") in {"clean", "partial", "poor"}
+    ]
     return GateVerdict(
         usable=usable,
         view=_mode([v.get("view") for v in votes], "unclear"),
@@ -258,6 +294,8 @@ async def run_gate(
         cost_usd=cost,
         latency_ms=latency,
         model=model_used,
+        profile_quality=_mode(pq_values, ""),
+        catastrophic_flags=_majority_flags(votes, n_valid),
     )
 
 

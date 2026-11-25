@@ -37,12 +37,14 @@ from services.ai_service.pipeline.components.aspect import (
 from services.ai_service.pipeline.types import (
     ComponentResult,
     Finding,
+    GateTier,
     Granularity,
     InputProfile,
     Instance,
     Phase,
     RunContext,
 )
+from services.ai_service.pipeline.verify import verify_chunk_finding
 
 logger = get_logger(__name__)
 
@@ -106,8 +108,9 @@ entry_reach — the lead arm / hand timing as the other arm recovers:
 then enters/spears cleanly into a patient front-quadrant line. (best)
 - "short": the lead arm drops, pulls, or starts back too early before the recovering \
 arm replaces it, shortening the line and reducing glide.
-- "overreach": the hand reaches too far past the shoulder line or spears across \
-the body from this angle; use ONLY when the camera clearly supports it.
+- "overreach": the hand reaches excessively far ahead of the shoulder/head \
+relative to a smooth front-quadrant entry. NEVER claim midline crossover from a \
+side-on camera — side-on footage cannot judge cross-midline movement.
 - "unclear"
 
 body_rotation — roll on the long (head-to-toe) axis as the arm recovers:
@@ -214,6 +217,25 @@ def _default_chunk_representatives(instances: list[Instance], k: int) -> list[In
     return _representatives(instances[1:], k)
 
 
+def _pick_hybrid_stills(window: list, inst: Instance) -> list:
+    """Pick up to 2 crisp, distinct key stills from the chunk window.
+
+    Combines the frame closest to the recovery peak with a distinct frame from
+    the window edge (entry/glide alignment) so the VLM gets high-resolution
+    anatomy detail alongside the motion clip.
+    """
+    if not window:
+        return []
+    peak = min(window, key=lambda f: abs(f.timestamp_s - inst.peak_s))
+    if len(window) == 1:
+        return [peak]
+    other = max(window, key=lambda f: abs(f.timestamp_s - peak.timestamp_s))
+    if other.index == peak.index:
+        return [peak]
+    chosen = sorted([peak, other], key=lambda f: f.timestamp_s)
+    return chosen
+
+
 class ChunkCoachComponent(AspectCoachComponent):
     """Coach the visible aspects of each free recovery chunk in one video call."""
 
@@ -223,7 +245,9 @@ class ChunkCoachComponent(AspectCoachComponent):
     arm = "near"  # camera-facing arm — most reliable side-on (fallback: far)
     granularity = Granularity.CHUNK
     image_detail = "auto"
-    max_tokens = 1600  # multi-aspect JSON is longer than a single-aspect verdict
+    # Thinking models (Gemini 3.x Flash) share maxOutputTokens with internal
+    # reasoning tokens; 4096 prevents truncated JSON on multi-aspect responses.
+    max_tokens = 4096
     SYSTEM_PROMPT = CHUNK_PROMPT
     profiles = (InputProfile.SIDE_ON_ABOVE, InputProfile.UNKNOWN)
 
@@ -246,6 +270,7 @@ class ChunkCoachComponent(AspectCoachComponent):
         findings = []
         chunk_diagnostics = []
         parse_failures = 0
+        total_verified_dropped = 0
         cost = 0.0
         for idx, inst in enumerate(reps):
             window = self._window(inst, strip)  # peak frames → evidence/thumbnail
@@ -253,6 +278,7 @@ class ChunkCoachComponent(AspectCoachComponent):
             cached = False
             cache_invalid = False
             used_video = False
+            used_hybrid_stills = False
             if cache is not None and key in cache and _valid_cached_chunk(cache[key]):
                 parsed = cache[key]  # replay — no API
                 cached = True
@@ -265,7 +291,12 @@ class ChunkCoachComponent(AspectCoachComponent):
                     )
                 clip = self._read_chunk(ctx, inst) if ctx.config.coach_video else None
                 used_video = clip is not None
-                parsed, c = await self._coach_chunk(window, clip, system_prompt, ctx)
+                used_hybrid_stills = bool(
+                    used_video and ctx.config.coach_chunk_hybrid_stills and window
+                )
+                parsed, c = await self._coach_chunk(
+                    window, clip, system_prompt, ctx, inst=inst
+                )
                 cost += c
                 if cache is not None and not _chunk_parse_failed(parsed):
                     cache[key] = parsed
@@ -274,7 +305,10 @@ class ChunkCoachComponent(AspectCoachComponent):
                     await asyncio.sleep(ctx.config.coach_call_delay_s)
             if _chunk_parse_failed(parsed):
                 parse_failures += 1
-            chunk_findings = self._findings_multi(parsed, inst, window, ctx)
+            chunk_findings, dropped = self._findings_multi(
+                parsed, inst, window, ctx, strip_len=len(strip)
+            )
+            total_verified_dropped += dropped
             findings.extend(chunk_findings)
             diag = _chunk_diagnostics(
                 parsed,
@@ -282,20 +316,25 @@ class ChunkCoachComponent(AspectCoachComponent):
                 cached=cached,
                 cache_invalid=cache_invalid,
                 used_video=used_video,
+                used_hybrid_stills=used_hybrid_stills,
                 findings=len(chunk_findings),
+                verified_dropped=dropped,
             )
             chunk_diagnostics.append(diag)
             logger.info(
                 "chunk coach: instance=%s parse_ok=%s aspects=%s visible=%s "
-                "unclear=%s findings=%s cached=%s used_video=%s",
+                "unclear=%s findings=%s verified_dropped=%s cached=%s "
+                "used_video=%s hybrid_stills=%s",
                 diag["instance_id"],
                 diag["parse_ok"],
                 diag["aspect_count"],
                 diag["visible_count"],
                 diag["unclear_count"],
                 diag["findings"],
+                diag["verified_dropped"],
                 diag["cached"],
                 diag["used_video"],
+                diag["used_hybrid_stills"],
             )
 
         return ComponentResult(
@@ -310,6 +349,7 @@ class ChunkCoachComponent(AspectCoachComponent):
                 "coached_chunks": len(reps),
                 "available_instances": len(insts),
                 "parse_failures": parse_failures,
+                "verified_dropped": total_verified_dropped,
                 "chunk_diagnostics": chunk_diagnostics,
             },
         )
@@ -324,9 +364,15 @@ class ChunkCoachComponent(AspectCoachComponent):
             ctx.video_path, start_s, CHUNK_PAD_S * 2, ctx.config.coach_video_max_mb
         )
 
-    async def _coach_chunk(self, window, clip, system_prompt, ctx):
-        """One VLM call for this chunk → parsed multi-aspect dict + cost. Sends the
-        clip as video when available (motion), else the chunk's still frames."""
+    async def _coach_chunk(
+        self, window, clip, system_prompt, ctx, *, inst: Instance | None = None
+    ):
+        """One VLM call for this chunk → parsed multi-aspect dict + cost.
+
+        When video is available, sends the ~4s clip with explicit Gemini 3+
+        ``video_fps`` (solving the 1 FPS sampling blind spot) and, when hybrid
+        mode is on, up to 2 crisp key frames for sharp anatomy inspection.
+        """
         if self._coach_fn is not None:  # injected for no-API tests
             return await self._coach_fn(
                 window,
@@ -337,16 +383,41 @@ class ChunkCoachComponent(AspectCoachComponent):
             )
         from services.ai_service.providers.base import call_vlm  # lazy: needs litellm
 
-        images = [] if clip else [f.jpeg for f in window]
+        if clip is not None:
+            if ctx.config.coach_chunk_hybrid_stills and window and inst is not None:
+                key_stills = _pick_hybrid_stills(window, inst)
+                images = [f.jpeg for f in key_stills]
+                ts_list = ", ".join(f"t={f.timestamp_s:.1f}s" for f in key_stills)
+                user_prompt = (
+                    "Watch the attached ~4s video clip for stroke motion and timing, "
+                    f"and use the attached high-resolution key frame(s) ({ts_list}) "
+                    "to check head carriage, elbow height, and body alignment. "
+                    "Return only the JSON."
+                )
+                img_detail = "high"
+            else:
+                images = []
+                user_prompt = "Watch the clip and return only the JSON."
+                img_detail = self.image_detail
+        else:
+            images = [f.jpeg for f in window]
+            user_prompt = (
+                "Assess ONLY what these frames clearly show and return only the JSON."
+            )
+            img_detail = self.image_detail
+
         resp = await call_vlm(
             system_prompt=system_prompt,
-            user_prompt="Watch the clip and return only the JSON.",
+            user_prompt=user_prompt,
             images=images,
             model=ctx.config.coach_model,
-            image_detail=self.image_detail,
+            image_detail=img_detail,
             max_tokens=self.max_tokens,
             response_format={"type": "json_object"},
             video=clip,
+            video_fps=ctx.config.coach_video_fps if clip is not None else None,
+            video_detail=ctx.config.coach_video_detail if clip is not None else None,
+            reasoning_effort=ctx.config.coach_reasoning_effort,
             trace_name="strokelab_chunk",
         )
         try:
@@ -371,10 +442,29 @@ class ChunkCoachComponent(AspectCoachComponent):
                 "content_chars": len(content),
             }, resp.cost_usd
 
-    def _findings_multi(self, parsed: dict, inst: Instance, window, ctx):
-        """One graded Finding per CLEARLY-VISIBLE aspect. not-visible / unclear →
-        nothing (honest silence, never a placeholder)."""
-        out = []
+    def _findings_multi(
+        self,
+        parsed: dict,
+        inst: Instance,
+        window,
+        ctx,
+        *,
+        strip_len: int | None = None,
+    ) -> tuple[list[Finding], int]:
+        """One verified, graded Finding per CLEARLY-VISIBLE aspect.
+
+        Applies deterministic runtime verification (closed-enum check, ADR-013
+        visibility & honesty bans, overhead body-line sink suppression) before
+        publishing any finding.
+        """
+        gate_view = getattr(ctx.gate, "view", None) if ctx.gate is not None else None
+        gate_tier = (
+            GateTier.BORDERLINE
+            if gate_view in {"overhead", "mixed"}
+            else GateTier.CLEAN
+        )
+        out: list[Finding] = []
+        dropped = 0
         for a in parsed.get("aspects") or []:
             if not isinstance(a, dict) or not a.get("visible"):
                 continue
@@ -384,19 +474,34 @@ class ChunkCoachComponent(AspectCoachComponent):
             if not area or verdict in ("", "unclear") or not note:
                 continue
             conf = float(a.get("confidence", 0.0) or 0.0)
-            out.append(
-                self._mk(
-                    verdict,
-                    note,
-                    inst,
-                    window,
-                    ctx,
-                    conf=conf,
-                    area=area,
-                    extra_payload={"aspect": area, "t": round(inst.peak_s, 2)},
-                )
+            cand = self._mk(
+                verdict,
+                note,
+                inst,
+                window,
+                ctx,
+                conf=conf,
+                area=area,
+                extra_payload={"aspect": area, "t": round(inst.peak_s, 2)},
             )
-        return out
+            verified, reason = verify_chunk_finding(
+                cand,
+                profile=ctx.profile,
+                view=gate_view,
+                gate_tier=gate_tier,
+                max_frame_index=strip_len,
+            )
+            if verified is None:
+                dropped += 1
+                logger.info(
+                    "chunk coach: dropped unverified finding; instance=%s area=%s reason=%s",
+                    inst.instance_id,
+                    area,
+                    reason,
+                )
+                continue
+            out.append(verified)
+        return out, dropped
 
     async def coach_instances(self, ctx: RunContext, instance_id: int) -> list[Finding]:
         """On-demand: coach ONE chosen recovery on EVERY visible aspect — the SAME
@@ -432,10 +537,15 @@ class ChunkCoachComponent(AspectCoachComponent):
                     inst.instance_id,
                 )
             clip = self._read_chunk(ctx, inst) if ctx.config.coach_video else None
-            parsed, _ = await self._coach_chunk(window, clip, system_prompt, ctx)
+            parsed, _ = await self._coach_chunk(
+                window, clip, system_prompt, ctx, inst=inst
+            )
             if cache is not None and not _chunk_parse_failed(parsed):
                 cache[key] = parsed
-        return self._findings_multi(parsed, inst, window, ctx)
+        findings, _ = self._findings_multi(
+            parsed, inst, window, ctx, strip_len=len(strip)
+        )
+        return findings
 
 
 def _chunk_parse_failed(parsed: dict) -> bool:
@@ -463,6 +573,8 @@ def _chunk_diagnostics(
     used_video: bool,
     findings: int,
     cache_invalid: bool = False,
+    used_hybrid_stills: bool = False,
+    verified_dropped: int = 0,
 ) -> dict:
     aspects = parsed.get("aspects") if isinstance(parsed, dict) else None
     aspect_dicts = [a for a in (aspects or []) if isinstance(a, dict)]
@@ -472,12 +584,14 @@ def _chunk_diagnostics(
         "cached": cached,
         "cache_invalid": cache_invalid,
         "used_video": used_video,
+        "used_hybrid_stills": used_hybrid_stills,
         "parse_ok": not _chunk_parse_failed(parsed),
         "aspect_count": len(aspect_dicts),
         "visible_count": sum(1 for a in aspect_dicts if bool(a.get("visible"))),
         "unclear_count": sum(1 for verdict in verdicts if verdict in ("", "unclear")),
         "with_note_count": sum(1 for a in aspect_dicts if str(a.get("note") or "")),
         "findings": findings,
+        "verified_dropped": verified_dropped,
     }
     if _chunk_parse_failed(parsed):
         diag.update(
