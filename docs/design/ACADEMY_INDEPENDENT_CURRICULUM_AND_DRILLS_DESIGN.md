@@ -1,6 +1,11 @@
 # Academy Independent Curriculum: Milestones, Drills, Lessons, Skills & Quizzes Design
 
-- **Status:** Settled Architecture & Implementation Blueprint
+> [!WARNING]
+> **Superseded Implementation Schema (Nov 2026):** The database schema and automatic legacy credit backfill clauses in this V1 document have been **superseded by [`ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`](./ACADEMY_COMPETENCY_ARCHITECTURE_V2.md) and [`ADR-010`](../DECISIONS.md#adr-010-modular-academy-curriculum-versioned-catalog--evidence-backed-competency-passport-v2)**.
+> Do **not** alter legacy `milestones.program_id`, create `program_milestones`/`cohort_milestones`/`learner_milestone_credits`, or auto-backfill legacy `student_progress` into portable credentials.
+> This document is preserved for its pedagogical taxonomy, TI coaching principles, and baseline F1–F4 / S1 / A1 curriculum seed catalogue reference.
+
+- **Status:** Superseded V1 Architecture (Replaced by `ACADEMY_COMPETENCY_ARCHITECTURE_V2.md` & ADR-010 V2)
 - **Owner:** Founder + Engineering
 - **Last Updated:** November 2026
 - **Related Decisions:** [`ADR-004`](../DECISIONS.md#adr-004-academy-attendance-defaults-per-student-session-participation--class-consumption), [`ADR-009`](../DECISIONS.md#adr-009-academy-knowledge-quizzes-milestone-evidence--coachadmin-review-overrides), [`ADR-010`](../DECISIONS.md#adr-010-modular-academy-curriculum--stackable-competency-pathways), [`ADR-013`](../DECISIONS.md#adr-013-stroke-lab-ti-coaching-rubric--camera-visibility-honesty)

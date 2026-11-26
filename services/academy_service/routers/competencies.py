@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -26,6 +26,7 @@ from services.academy_service.models import (
     AcademyMilestoneDefinition,
     AcademyMilestoneVersion,
     Enrollment,
+    Milestone,
     MilestoneEventType,
     MilestoneReviewEvent,
     ProgressStatus,
@@ -36,6 +37,20 @@ from services.academy_service.services.requirements_resolver import (
 )
 
 router = APIRouter(prefix="/competencies", tags=["academy-competency-passport"])
+
+DECISION_EVENT_TYPES = (
+    MilestoneEventType.APPROVED,
+    MilestoneEventType.REJECTED,
+    MilestoneEventType.OVERRIDE,
+    MilestoneEventType.STATUS_CHANGED,
+)
+
+STATUS_PRIORITY = {
+    "revoked": 0,
+    "recheck_required": 1,
+    "expired": 2,
+    "verified": 3,
+}
 
 
 class PromoteLegacyReviewInput(BaseModel):
@@ -49,20 +64,31 @@ class RevokeVerificationInput(BaseModel):
     reason: str = Field(min_length=20, max_length=4000)
 
 
-def _view_verification(record, state: str, *, reason: str | None = None) -> dict:
+def _view_verification(
+    record: AcademyCompetencyVerification,
+    state: str,
+    *,
+    reason: str | None = None,
+    revocation: AcademyCompetencyRevocation | None = None,
+) -> dict:
     return {
         "id": str(record.id),
         "member_id": str(record.member_id),
+        "member_auth_id": record.member_auth_id,
         "milestone_definition_id": str(record.milestone_definition_id),
         "milestone_version_id": str(record.milestone_version_id),
         "source_enrollment_id": str(record.source_enrollment_id),
         "source_progress_id": str(record.source_progress_id),
         "source_review_event_id": str(record.source_review_event_id),
         "evidence_media_id": str(record.evidence_media_id),
+        "verified_by_auth_id": record.verified_by_auth_id,
+        "review_notes": record.review_notes,
         "verified_at": record.verified_at,
         "expires_at": record.expires_at,
         "status": state,
         "status_reason": reason,
+        "revoked_at": revocation.revoked_at if revocation else None,
+        "revoked_by_auth_id": revocation.revoked_by_auth_id if revocation else None,
         "criteria_passed": record.criteria_passed,
         "assessment_context_snapshot": record.assessment_context_snapshot,
     }
@@ -74,14 +100,7 @@ async def _latest_decision(db: AsyncSession, progress_id: uuid.UUID):
             select(MilestoneReviewEvent)
             .where(
                 MilestoneReviewEvent.progress_id == progress_id,
-                MilestoneReviewEvent.event_type.in_(
-                    [
-                        MilestoneEventType.APPROVED,
-                        MilestoneEventType.REJECTED,
-                        MilestoneEventType.OVERRIDE,
-                        MilestoneEventType.STATUS_CHANGED,
-                    ]
-                ),
+                MilestoneReviewEvent.event_type.in_(DECISION_EVENT_TYPES),
             )
             .order_by(
                 MilestoneReviewEvent.created_at.desc(),
@@ -90,6 +109,34 @@ async def _latest_decision(db: AsyncSession, progress_id: uuid.UUID):
             .limit(1)
         )
     ).scalar_one_or_none()
+
+
+async def _latest_decisions_batch(
+    db: AsyncSession, progress_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, MilestoneReviewEvent]:
+    """Fetch the latest review decision per progress_id in one Postgres query."""
+    if not progress_ids:
+        return {}
+    rows = (
+        (
+            await db.execute(
+                select(MilestoneReviewEvent)
+                .where(
+                    MilestoneReviewEvent.progress_id.in_(progress_ids),
+                    MilestoneReviewEvent.event_type.in_(DECISION_EVENT_TYPES),
+                )
+                .distinct(MilestoneReviewEvent.progress_id)
+                .order_by(
+                    MilestoneReviewEvent.progress_id,
+                    MilestoneReviewEvent.created_at.desc(),
+                    MilestoneReviewEvent.id.desc(),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {row.progress_id: row for row in rows}
 
 
 async def _source_review(db: AsyncSession, progress: StudentProgress):
@@ -167,6 +214,293 @@ async def _check_media(progress: StudentProgress, owner_auth_id: str):
             status_code=422 if response.status_code == 404 else 503,
             detail="Source video evidence could not be verified",
         )
+
+
+async def _project_verifications(
+    db: AsyncSession, records: list[AcademyCompetencyVerification]
+) -> list[dict]:
+    """Compute live fail-closed passport states in batched queries (zero N+1)."""
+    if not records:
+        return []
+    definition_ids = {row.milestone_definition_id for row in records}
+    definitions = (
+        (
+            await db.execute(
+                select(AcademyMilestoneDefinition).where(
+                    AcademyMilestoneDefinition.id.in_(definition_ids)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    definition_by_id = {item.id: item for item in definitions}
+
+    ids = [row.id for row in records]
+    progress_ids = {row.source_progress_id for row in records}
+    revocations = (
+        (
+            await db.execute(
+                select(AcademyCompetencyRevocation).where(
+                    AcademyCompetencyRevocation.verification_id.in_(ids)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    revoked_by_id = {r.verification_id: r for r in revocations}
+
+    source_records = (
+        (
+            await db.execute(
+                select(StudentProgress).where(StudentProgress.id.in_(progress_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    progress_by_id = {p.id: p for p in source_records}
+    latest_decisions = await _latest_decisions_batch(db, progress_ids)
+
+    now = datetime.now(timezone.utc)
+    views = []
+    for row in records:
+        progress = progress_by_id.get(row.source_progress_id)
+        decision = latest_decisions.get(row.source_progress_id)
+        revoked = revoked_by_id.get(row.id)
+        if revoked:
+            state, reason = "revoked", revoked.reason
+        elif progress is None or decision is None:
+            state, reason = "recheck_required", "Original assessment is unavailable"
+        elif (
+            progress.status != ProgressStatus.ACHIEVED
+            or decision.new_status != ProgressStatus.ACHIEVED
+            or decision.id != row.source_review_event_id
+        ):
+            state, reason = "recheck_required", "Original assessment was changed"
+        elif progress.evidence_media_id != row.evidence_media_id:
+            state, reason = "recheck_required", "Original evidence changed"
+        elif row.expires_at is not None and row.expires_at <= now:
+            state, reason = "expired", "Competency assessment needs renewal"
+        else:
+            state, reason = "verified", None
+
+        view = _view_verification(row, state, reason=reason, revocation=revoked)
+        definition = definition_by_id.get(row.milestone_definition_id)
+        view["code"] = definition.code if definition else None
+        view["title"] = definition.title if definition else "Unmapped competency"
+        views.append(view)
+    return views
+
+
+@router.get("/admin/legacy-candidates")
+async def list_legacy_promotion_candidates(
+    cohort_id: uuid.UUID | None = Query(default=None),
+    member_auth_id: str | None = Query(default=None),
+    include_credited: bool = Query(default=False),
+    limit: int = Query(default=100, ge=1, le=200),
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List achieved legacy StudentProgress records with V2 promotion readiness."""
+    stmt = (
+        select(StudentProgress, Enrollment, Milestone)
+        .join(Enrollment, Enrollment.id == StudentProgress.enrollment_id)
+        .join(Milestone, Milestone.id == StudentProgress.milestone_id)
+        .where(StudentProgress.status == ProgressStatus.ACHIEVED)
+        .order_by(
+            StudentProgress.reviewed_at.desc().nullslast(),
+            StudentProgress.id.desc(),
+        )
+        .limit(limit)
+    )
+    if cohort_id is not None:
+        stmt = stmt.where(Enrollment.cohort_id == cohort_id)
+    if member_auth_id is not None:
+        stmt = stmt.where(Enrollment.member_auth_id == member_auth_id)
+
+    rows = (await db.execute(stmt)).all()
+    if not rows:
+        return []
+
+    progress_ids = {progress.id for progress, _, _ in rows}
+    cohort_ids = {
+        enrollment.cohort_id for _, enrollment, _ in rows if enrollment.cohort_id
+    }
+
+    latest_decisions = await _latest_decisions_batch(db, progress_ids)
+
+    claim_rows = (
+        (
+            await db.execute(
+                select(MilestoneReviewEvent)
+                .where(
+                    MilestoneReviewEvent.progress_id.in_(progress_ids),
+                    MilestoneReviewEvent.event_type == MilestoneEventType.CLAIMED,
+                )
+                .order_by(
+                    MilestoneReviewEvent.progress_id,
+                    MilestoneReviewEvent.created_at.desc(),
+                    MilestoneReviewEvent.id.desc(),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    claims_by_progress: dict[uuid.UUID, list[MilestoneReviewEvent]] = {}
+    for event in claim_rows:
+        claims_by_progress.setdefault(event.progress_id, []).append(event)
+
+    frozen_cohort_ids = (
+        set(
+            (
+                await db.execute(
+                    select(AcademyCohortRequirementsSnapshot.cohort_id).where(
+                        AcademyCohortRequirementsSnapshot.cohort_id.in_(cohort_ids)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if cohort_ids
+        else set()
+    )
+
+    existing_verifications = (
+        (
+            await db.execute(
+                select(AcademyCompetencyVerification).where(
+                    AcademyCompetencyVerification.source_progress_id.in_(progress_ids)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    verification_by_review = {
+        v.source_review_event_id: v for v in existing_verifications
+    }
+    verification_by_progress = {v.source_progress_id: v for v in existing_verifications}
+
+    items = []
+    for progress, enrollment, legacy_milestone in rows:
+        decision = latest_decisions.get(progress.id)
+        existing = (
+            verification_by_review.get(decision.id)
+            if decision is not None
+            else verification_by_progress.get(progress.id)
+        )
+        already_credited = existing is not None
+        if already_credited and not include_credited:
+            continue
+
+        blockers: list[str] = []
+        if enrollment.cohort_id is None or not enrollment.member_auth_id:
+            blockers.append("Missing verifiable cohort or member identity")
+        has_frozen_snapshot = (
+            enrollment.cohort_id is not None
+            and enrollment.cohort_id in frozen_cohort_ids
+        )
+        if not has_frozen_snapshot:
+            blockers.append("Cohort does not have frozen V2 requirements")
+
+        has_human_approved = (
+            progress.reviewed_at is not None
+            and decision is not None
+            and decision.new_status == ProgressStatus.ACHIEVED
+            and decision.event_type
+            in (MilestoneEventType.APPROVED, MilestoneEventType.OVERRIDE)
+            and decision.actor_role in ("coach", "admin")
+        )
+        if not has_human_approved:
+            blockers.append("Missing human-approved source review")
+
+        if progress.evidence_media_id is None:
+            blockers.append("No video evidence attached")
+        elif (
+            decision is not None
+            and decision.evidence_media_id_snapshot != progress.evidence_media_id
+        ):
+            blockers.append("Source evidence differs from reviewed snapshot")
+
+        matching_claim = next(
+            (
+                claim
+                for claim in claims_by_progress.get(progress.id, [])
+                if progress.evidence_media_id is not None
+                and claim.evidence_media_id_snapshot == progress.evidence_media_id
+                and claim.actor_role in ("student", "coach")
+            ),
+            None,
+        )
+        has_claim_provenance = matching_claim is not None
+        if progress.evidence_media_id is not None and not has_claim_provenance:
+            blockers.append("Missing original CLAIMED evidence provenance event")
+
+        items.append(
+            {
+                "source_progress_id": str(progress.id),
+                "enrollment_id": str(enrollment.id),
+                "cohort_id": str(enrollment.cohort_id)
+                if enrollment.cohort_id
+                else None,
+                "program_id": str(enrollment.program_id),
+                "member_id": str(enrollment.member_id),
+                "member_auth_id": enrollment.member_auth_id,
+                "legacy_milestone_id": str(legacy_milestone.id),
+                "legacy_milestone_name": legacy_milestone.name,
+                "achieved_at": progress.achieved_at,
+                "reviewed_at": progress.reviewed_at,
+                "evidence_media_id": (
+                    str(progress.evidence_media_id)
+                    if progress.evidence_media_id
+                    else None
+                ),
+                "coach_notes": progress.coach_notes,
+                "has_frozen_snapshot": has_frozen_snapshot,
+                "has_human_approved_review": has_human_approved,
+                "has_claim_provenance": has_claim_provenance,
+                "already_credited": already_credited,
+                "existing_verification_id": str(existing.id) if existing else None,
+                "eligible": not blockers and not already_credited,
+                "eligibility_blockers": blockers,
+            }
+        )
+    return items
+
+
+@router.get("/admin/verifications")
+async def list_admin_verifications(
+    cohort_id: uuid.UUID | None = Query(default=None),
+    member_auth_id: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=200),
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List issued competency verifications with live status for admin review."""
+    stmt = (
+        select(AcademyCompetencyVerification)
+        .order_by(
+            AcademyCompetencyVerification.verified_at.desc(),
+            AcademyCompetencyVerification.id.desc(),
+        )
+        .limit(limit)
+    )
+    if member_auth_id is not None:
+        stmt = stmt.where(
+            AcademyCompetencyVerification.member_auth_id == member_auth_id
+        )
+    if cohort_id is not None:
+        stmt = stmt.join(
+            Enrollment,
+            Enrollment.id == AcademyCompetencyVerification.source_enrollment_id,
+        ).where(Enrollment.cohort_id == cohort_id)
+
+    records = (await db.execute(stmt)).scalars().all()
+    return await _project_verifications(db, records)
 
 
 @router.post("/admin/verify-legacy", status_code=201)
@@ -410,93 +744,27 @@ async def _passport(db: AsyncSession, auth_id: str) -> dict:
     )
     if not records:
         return {"member_auth_id": auth_id, "competencies": [], "verifications": []}
-    definition_ids = {row.milestone_definition_id for row in records}
-    definitions = (
-        (
-            await db.execute(
-                select(AcademyMilestoneDefinition).where(
-                    AcademyMilestoneDefinition.id.in_(definition_ids)
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    definition_by_id = {item.id: item for item in definitions}
-    ids = [row.id for row in records]
-    progress_ids = [row.source_progress_id for row in records]
-    revocations = (
-        (
-            await db.execute(
-                select(AcademyCompetencyRevocation).where(
-                    AcademyCompetencyRevocation.verification_id.in_(ids)
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    revoked_by_id = {r.verification_id: r for r in revocations}
-    source_records = (
-        (
-            await db.execute(
-                select(StudentProgress).where(StudentProgress.id.in_(progress_ids))
-            )
-        )
-        .scalars()
-        .all()
-    )
-    progress_by_id = {p.id: p for p in source_records}
-    latest_decisions = {}
-    for progress_id in {row.source_progress_id for row in records}:
-        latest_decisions[progress_id] = await _latest_decision(db, progress_id)
 
-    now = datetime.now(timezone.utc)
-    views = []
-    for row in records:
-        progress = progress_by_id.get(row.source_progress_id)
-        decision = latest_decisions[row.source_progress_id]
-        revoked = revoked_by_id.get(row.id)
-        if revoked:
-            state, reason = "revoked", revoked.reason
-        elif progress is None or decision is None:
-            state, reason = "recheck_required", "Original assessment is unavailable"
-        elif (
-            progress.status != ProgressStatus.ACHIEVED
-            or decision.new_status != ProgressStatus.ACHIEVED
-            or decision.id != row.source_review_event_id
-        ):
-            state, reason = "recheck_required", "Original assessment was changed"
-        elif progress.evidence_media_id != row.evidence_media_id:
-            state, reason = "recheck_required", "Original evidence changed"
-        elif row.expires_at is not None and row.expires_at <= now:
-            state, reason = "expired", "Competency assessment needs renewal"
-        else:
-            state, reason = "verified", None
-        view = _view_verification(row, state, reason=reason)
-        definition = definition_by_id.get(row.milestone_definition_id)
-        view["code"] = definition.code if definition else None
-        view["title"] = definition.title if definition else "Unmapped competency"
-        views.append(view)
+    views = await _project_verifications(db, records)
 
     by_definition: dict[str, dict] = {}
     for view in views:
         key = view["milestone_definition_id"]
-        current = by_definition.setdefault(
-            key,
-            {
+        status = view["status"]
+        current = by_definition.get(key)
+        if current is None:
+            current = {
                 "milestone_definition_id": key,
                 "code": view["code"],
                 "title": view["title"],
-                "status": "recheck_required",
+                "status": status,
                 "supporting_verification_ids": [],
-            },
-        )
-        if view["status"] == "verified":
-            current["status"] = "verified"
+            }
+            by_definition[key] = current
+        elif STATUS_PRIORITY.get(status, 0) > STATUS_PRIORITY.get(current["status"], 0):
+            current["status"] = status
+        if status == "verified":
             current["supporting_verification_ids"].append(view["id"])
-        elif current["status"] != "verified" and view["status"] == "expired":
-            current["status"] = "expired"
     return {
         "member_auth_id": auth_id,
         "competencies": list(by_definition.values()),

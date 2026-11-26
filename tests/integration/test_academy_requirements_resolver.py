@@ -279,3 +279,82 @@ async def test_legacy_milestones_are_not_rewritten_by_catalog_snapshots(
         )
     )
     assert raw.milestone_version_id == version.id
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_list_and_remove_assignments_before_and_after_freeze(
+    academy_client, db_session
+):
+    program = ProgramFactory.create()
+    cohort = CohortFactory.create(program_id=program.id)
+    d1, v1 = _milestone(code="MS-DEL-BASE-1")
+    d2, v2 = _milestone(code="MS-DEL-EXTRA-2")
+    db_session.add_all([program, cohort, d1, v1, d2, v2])
+    await db_session.commit()
+
+    prog_assign = await academy_client.post(
+        f"{BASE}/programs/{program.id}/curriculum/milestones",
+        json={"milestone_version_id": str(v1.id), "target_week": 2},
+    )
+    assert prog_assign.status_code == 201
+    cohort_assign = await academy_client.post(
+        f"{BASE}/cohorts/{cohort.id}/curriculum/milestones",
+        json={
+            "milestone_version_id": str(v2.id),
+            "target_week": 5,
+            "override_reason": "Extra accelerated check for this intake.",
+        },
+    )
+    assert cohort_assign.status_code == 201
+
+    prog_list = await academy_client.get(
+        f"{BASE}/programs/{program.id}/curriculum/assignments"
+    )
+    assert prog_list.status_code == 200
+    assert len(prog_list.json()["milestones"]) == 1
+
+    cohort_list = await academy_client.get(
+        f"{BASE}/cohorts/{cohort.id}/curriculum/assignments"
+    )
+    assert cohort_list.status_code == 200
+    assert cohort_list.json()["is_frozen"] is False
+    assert len(cohort_list.json()["milestones"]) == 1
+
+    # Can remove cohort override before freeze.
+    removed = await academy_client.delete(
+        f"{BASE}/cohorts/{cohort.id}/curriculum/milestones/{cohort_assign.json()['id']}"
+    )
+    assert removed.status_code == 204
+
+    # Re-add cohort override, then freeze.
+    cohort_assign_2 = await academy_client.post(
+        f"{BASE}/cohorts/{cohort.id}/curriculum/milestones",
+        json={
+            "milestone_version_id": str(v2.id),
+            "target_week": 6,
+            "override_reason": "Restored cohort requirement before freezing.",
+        },
+    )
+    assert cohort_assign_2.status_code == 201
+    frozen = await academy_client.post(
+        f"{BASE}/cohorts/{cohort.id}/curriculum/requirements/freeze"
+    )
+    assert frozen.status_code == 201
+
+    # Removal after freeze is blocked with 409.
+    blocked = await academy_client.delete(
+        f"{BASE}/cohorts/{cohort.id}/curriculum/milestones/{cohort_assign_2.json()['id']}"
+    )
+    assert blocked.status_code == 409
+
+    # Removing program default after cohort freeze succeeds without mutating frozen snapshot.
+    del_prog = await academy_client.delete(
+        f"{BASE}/programs/{program.id}/curriculum/milestones/{prog_assign.json()['id']}"
+    )
+    assert del_prog.status_code == 204
+    frozen_after = await academy_client.get(
+        f"{BASE}/cohorts/{cohort.id}/curriculum/requirements/frozen"
+    )
+    assert frozen_after.status_code == 200
+    assert len(frozen_after.json()["requirements"]["milestones"]) == 2
