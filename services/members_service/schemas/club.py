@@ -253,6 +253,7 @@ class ClubAssessmentResponse(BaseModel):
 class ClubApplicationResponse(BaseModel):
     id: uuid.UUID
     member_id: uuid.UUID
+    member_auth_id: Optional[str] = None
     member_name: Optional[str] = None
     member_email: Optional[str] = None
     club_id: uuid.UUID

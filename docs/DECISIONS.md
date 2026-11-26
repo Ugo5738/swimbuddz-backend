@@ -196,7 +196,7 @@
 ---
 
 ## ADR-010: Modular Academy Curriculum, Versioned Catalog & Evidence-Backed Competency Passport (V2)
-- **Status:** Settled & Enforced — V2 Implementation Contract Accepted (Nov 2026; PRs `#424`, `#442`, `#445`, `#446`, `#461`, `#217`, `#220`, `#222`, `#234`, plus Native V2 Assessments & TI Drill Prescriptions). Supersedes the V1 schema/auto-backfill clauses of `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` while preserving its pedagogical pathway taxonomy and TI coaching goals.
+- **Status:** Settled & Enforced — V2 Implementation Contract Accepted (Nov 2026; PRs `#424`, `#442`, `#445`, `#446`, `#461`, `#463`, `#217`, `#220`, `#222`, `#234`, `#236`, plus Phase 5A Dual-Read Graduation Parity & Club-Readiness Advisory Bridge). Supersedes the V1 schema/auto-backfill clauses of `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` while preserving its pedagogical pathway taxonomy and TI coaching goals.
 - **Context & Why:**
   - Selling only a monolithic 12-week Beginner-to-50m course forced swimmers with partial skills to repeat basics and limited entry points to three intakes a year. Conversely, an unguided à-la-carte lesson menu causes choice overload and lets learners skip water safety.
   - The earlier V1 draft (`ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`) proposed mutating legacy `milestones.program_id` to nullable, attaching mutable milestone rows via `program_milestones`/`cohort_milestones`, and auto-backfilling a mutable `learner_milestone_credits` table from historical `student_progress` rows. Review showed two fatal risks in V1: (1) editing a rubric later would silently alter historical cohort/graduate standards, and (2) auto-backfilling legacy `student_progress` rows of uneven rigor or missing video evidence would inflate trust in portable safety credentials.
@@ -226,7 +226,10 @@
     - **TI Remedial & Personalized Drill Prescriptions (`academy_milestone_remedial_drills` + `academy_student_drill_assignments`):**
       - Canonical milestones link to recommended TI remedial drills (resolved to latest published `AcademyDrillVersion` with 1 `primary_focal_cue` and steps) surfaced automatically on unverified milestones in the learner's V2 cohort learning plan (`GET /competencies/enrollments/{enrollment_id}/v2-plan`), alongside **Prior Credit** badges for competencies already verified in earlier cohorts or diagnostic clinics.
       - Coaches/admins (and future Stroke Lab AI recommendations) can prescribe version-pinned drills to an enrolled student or member with a personalized focal cue note and sets/distance prescription. Learners may mark their own assigned drills `practiced`; only coaches/admins may mark drills `mastered` or `archived`.
-  - **Controlled Rollout & Legacy Isolation:** Legacy graduation, certificates, Club readiness (`ADR-005`), attendance (`ADR-004`), and commercial terms remain isolated until explicitly switched in Phase 5 after dual-read parity is verified.
+  - **Phase 5A — Controlled Dual-Read Graduation Parity & Club-Readiness Advisory Bridge (Read-Only, Zero Side Effects):**
+    - **Graduation Dual-Read Parity (`GET /academy/competencies/admin/cohorts/{cohort_id}/graduation-parity`):** Computes a batched, zero-N+1 shadow comparison for every enrolled/graduated learner in a cohort comparing legacy eligibility (all program `Milestone` rows achieved in `StudentProgress`, matching `tasks/reporting.py`) against fail-closed V2 eligibility (every required milestone and `safety_gate` in the cohort's SHA-256-verified frozen `AcademyCohortRequirementsSnapshot` satisfied by a live, non-expired, non-revoked verification in `academy_competency_verifications`, recognizing prior/diagnostic credit without altering class balances). Classifies each learner as `aligned_eligible`, `aligned_ineligible`, `legacy_only_eligible`, `v2_only_eligible`, `no_frozen_snapshot`, or `snapshot_integrity_error`. Purely read-only: **never mutates `Enrollment.status`, `certificate_issued_at`, `certificate_code`, or legacy graduation/reward jobs.**
+    - **Club-Readiness Competency Advisory (`GET /academy/competencies/admin/members/{member_auth_id}/club-readiness-advisory` & internal `GET /internal/academy/competencies/members/{member_auth_id}/club-readiness-advisory`):** Surfaces a swimmer's live, non-expired, non-revoked V2 safety-gate credentials and core Club readiness checklist (`MS-S1-FREE-25M`, `MS-A1-TREAD-60S`, `MS-F3-BACK-FLOAT-30S`, `MS-F1-SAFE-ENTRY`) plus any expired/revoked/recheck safety alerts directly in `/admin/club-applications` alongside uploaded videos. Strictly **advisory evidence (`advisory_only: true`, `human_approval_required: true`)**: per `ADR-005`, Club checkout remains locked until a human reviewer explicitly approves the `ClubApplication` (`club_ready` / `club_ready_modified`), and first-session live verification rules remain intact.
+    - **Controlled Switchover Gate:** Legacy graduation, certificates, Club readiness (`ADR-005`), attendance (`ADR-004`), and commercial terms remain untouched until dual-read parity holds on production cohorts and an explicit owner decision authorizes switching consumers in Phase 5B.
 - **Canonical Docs & Code:**
   - `docs/design/ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`
   - `swimbuddz-backend/docs/design/ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`
@@ -240,9 +243,11 @@
   - `swimbuddz-backend/services/academy_service/routers/competencies.py`
   - `swimbuddz-backend/services/academy_service/routers/drill_assignments.py`
   - `swimbuddz-backend/services/academy_service/services/requirements_resolver.py`
+  - `swimbuddz-backend/services/academy_service/services/parity.py`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/curriculum-library/page.tsx`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/requirements/page.tsx`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/competencies/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/club-applications/page.tsx`
   - `swimbuddz-frontend/src/app/coach/students/[enrollmentId]/page.tsx`
   - `swimbuddz-frontend/src/app/(member)/account/academy/enrollments/[id]/page.tsx`
   - `swimbuddz-frontend/src/app/(member)/account/academy/passport/page.tsx`

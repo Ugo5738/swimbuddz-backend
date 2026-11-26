@@ -22233,6 +22233,109 @@
         ]
       }
     },
+    "/api/v1/academy/competencies/admin/cohorts/{cohort_id}/graduation-parity": {
+      "get": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Get Cohort Graduation Parity",
+        "description": "Read-only Phase 5A dual-read shadow comparison: legacy vs. V2 graduation eligibility.",
+        "operationId": "get_cohort_graduation_parity_academy_competencies_admin_cohorts__cohort_id__graduation_parity_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inactive"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/competencies/admin/members/{member_auth_id}/club-readiness-advisory": {
+      "get": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Member Club Readiness Advisory",
+        "description": "Read-only Phase 5A advisory Club-readiness summary from V2 verified credentials.",
+        "operationId": "member_club_readiness_advisory_academy_competencies_admin_members__member_auth_id__club_readiness_advisory_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/competencies/admin/members/{member_auth_id}": {
       "get": {
         "tags": [
@@ -24732,6 +24835,52 @@
         "summary": "Member Academy Financial Obligations",
         "description": "Minimal service-only financial projection, owned by Academy.\n\nNever accept a member ID directly from a public client; Payments derives it\nfrom the authenticated JWT before requesting this service-role endpoint.\nExisting frozen schedules take precedence over cohort pricing.",
         "operationId": "member_academy_financial_obligations_internal_academy_financial_obligations__member_auth_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/academy/competencies/members/{member_auth_id}/club-readiness-advisory": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Internal Member Club Readiness Advisory",
+        "description": "Service-role read-only Club-readiness advisory from V2 competency passport.\n\nStrictly advisory evidence (ADR-005 / ADR-010); never auto-approves Club admission.",
+        "operationId": "internal_member_club_readiness_advisory_internal_academy_competencies_members__member_auth_id__club_readiness_advisory_get",
         "security": [
           {
             "HTTPBearer": []
@@ -74821,6 +74970,17 @@
             "type": "string",
             "format": "uuid",
             "title": "Member Id"
+          },
+          "member_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Auth Id"
           },
           "member_name": {
             "anyOf": [
