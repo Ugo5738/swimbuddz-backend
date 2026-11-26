@@ -84,7 +84,8 @@ SERVICE_TABLES: set[str] = {
     "ledger_audit_log",
 }
 
-url = settings.DATABASE_URL.replace("%", "%%")
+raw_url = (settings.LEDGER_DATABASE_URL or settings.DATABASE_URL).strip()
+url = raw_url.replace("%", "%%")
 config.set_main_option("sqlalchemy.url", url)
 
 

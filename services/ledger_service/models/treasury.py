@@ -30,6 +30,7 @@ class TreasuryBankAccount(Base):
     statement_as_of: Mapped[Optional[date]] = mapped_column(Date)
     statement_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     statement_evidence: Mapped[Optional[str]] = mapped_column(String(250))
+    statement_evidence_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     __table_args__ = (
         UniqueConstraint("org_id", "code", name="uq_treasury_bank_code"),
@@ -69,7 +70,7 @@ class TreasuryBudget(Base):
     org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ledger_organizations.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     category: Mapped[str] = mapped_column(String(80), nullable=False)
-    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="expense")
+    kind: Mapped[str] = mapped_column(String(30), nullable=False, default="expense")
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     starts_on: Mapped[date] = mapped_column(Date, nullable=False)
     ends_on: Mapped[date] = mapped_column(Date, nullable=False)
@@ -77,7 +78,7 @@ class TreasuryBudget(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     __table_args__ = (
         CheckConstraint("amount_minor > 0", name="ck_treasury_budget_positive"),
-        CheckConstraint("kind IN ('expense','funding')", name="ck_treasury_budget_kind"),
+        CheckConstraint("kind IN ('expense','funding','liability_settlement')", name="ck_treasury_budget_kind"),
         CheckConstraint("ends_on >= starts_on", name="ck_treasury_budget_dates"),
     )
 
@@ -87,7 +88,7 @@ class TreasuryRequest(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ledger_organizations.id"), nullable=False, index=True)
-    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # expense | funding
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)  # expense | funding | liability_settlement
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="requested")
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     purpose: Mapped[str] = mapped_column(Text, nullable=False)
@@ -96,6 +97,7 @@ class TreasuryRequest(Base):
     destination_bank_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("treasury_bank_accounts.id"))
     budget_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("treasury_budgets.id"))
     evidence_reference: Mapped[Optional[str]] = mapped_column(String(250))
+    evidence_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     invoice_reference: Mapped[Optional[str]] = mapped_column(String(120))
     vendor_name: Mapped[Optional[str]] = mapped_column(String(180))
     programme: Mapped[Optional[str]] = mapped_column(String(80))
@@ -114,7 +116,7 @@ class TreasuryRequest(Base):
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     __table_args__ = (
-        CheckConstraint("kind IN ('expense','funding')", name="ck_treasury_request_kind"),
+        CheckConstraint("kind IN ('expense','funding','liability_settlement')", name="ck_treasury_request_kind"),
         CheckConstraint("status IN ('requested','approved','rejected','confirmed')", name="ck_treasury_request_status"),
         CheckConstraint("amount_minor > 0", name="ck_treasury_request_positive"),
         Index("ix_treasury_requests_org_status", "org_id", "status"),
@@ -142,6 +144,7 @@ class TreasuryBankSnapshot(Base):
     as_of: Mapped[date] = mapped_column(Date, nullable=False)
     balance_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     evidence_reference: Mapped[str] = mapped_column(String(250), nullable=False)
+    evidence_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     attested_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ledger_users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     __table_args__ = (UniqueConstraint("org_id", "bank_account_id", "as_of", name="uq_treasury_bank_snapshot_day"),)

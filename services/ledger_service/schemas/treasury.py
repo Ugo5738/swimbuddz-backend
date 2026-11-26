@@ -47,6 +47,7 @@ class BankOut(BaseModel):
     statement_balance_minor: Optional[int] = None
     statement_as_of: Optional[date] = None
     statement_verified_at: Optional[datetime] = None
+    statement_evidence_media_id: Optional[UUID] = None
 
 
 class StatementItem(BaseModel):
@@ -69,7 +70,7 @@ class StatementImport(BaseModel):
 
 
 class BudgetCreate(BaseModel):
-    kind: Literal["expense", "funding"] = "expense"
+    kind: Literal["expense", "funding", "liability_settlement"] = "expense"
     name: str = Field(min_length=3, max_length=160)
     category: str = Field(min_length=2, max_length=80)
     amount_minor: int = Field(gt=0)
@@ -87,10 +88,11 @@ class RequestCreate(BaseModel):
     vendor_name: Optional[str] = Field(None, max_length=180)
     invoice_reference: Optional[str] = Field(None, max_length=120)
     evidence_reference: Optional[str] = Field(None, max_length=250)
+    evidence_media_id: Optional[UUID] = None
     programme: Optional[str] = Field(None, max_length=80)
     cost_center_code: Optional[str] = Field(None, max_length=80)
     service_on: Optional[date] = None
-    kind: Literal["expense", "funding"]
+    kind: Literal["expense", "funding", "liability_settlement"]
     amount_minor: int = Field(gt=0)
     purpose: str = Field(min_length=5, max_length=1000)
     category: str = Field(min_length=2, max_length=80)
@@ -102,8 +104,8 @@ class RequestCreate(BaseModel):
     def transfer_destination(self):
         if self.kind == "funding" and not self.destination_bank_id:
             raise ValueError("Funding transfers require a destination bank account")
-        if self.kind == "expense" and self.destination_bank_id:
-            raise ValueError("Expenses cannot have a bank destination")
+        if self.kind in ("expense", "liability_settlement") and self.destination_bank_id:
+            raise ValueError("Disbursements cannot have a bank destination")
         if self.source_bank_id == self.destination_bank_id:
             raise ValueError("A transfer cannot have the same source and destination")
         return self
@@ -129,6 +131,7 @@ class RequestOut(BaseModel):
     vendor_name: Optional[str] = None
     invoice_reference: Optional[str] = None
     evidence_reference: Optional[str] = None
+    evidence_media_id: Optional[UUID] = None
     programme: Optional[str] = None
     cost_center_code: Optional[str] = None
     service_on: Optional[date] = None
@@ -194,6 +197,7 @@ class SnapshotCreate(BaseModel):
     as_of: date
     balance_minor: int
     evidence_reference: str = Field(min_length=5, max_length=250)
+    evidence_media_id: Optional[UUID] = None
 
 
 class ForecastCreate(BaseModel):
@@ -241,4 +245,5 @@ class BankReconciliationRow(BaseModel):
 
 class PostConfirmedRequest(BaseModel):
     expense_account_code: Optional[str] = None
+    liability_account_code: Optional[str] = None
     acknowledgement: bool = False

@@ -9904,6 +9904,31 @@
         }
       }
     },
+    "/api/v1/internal/members/club-finance-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Club Finance Summary",
+        "description": "Return active dated Club enrollments owned by members_service.",
+        "operationId": "club_finance_summary_internal_members_club_finance_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/internal/members/club-access/checks": {
       "post": {
         "tags": [
@@ -24745,6 +24770,31 @@
         }
       }
     },
+    "/api/v1/internal/academy/finance-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Academy Finance Summary",
+        "description": "Service-owned Academy operational finance summary for gateway aggregation.\n\nFixes two reporting defects from the superseded raw-SQL projection:\n  1. ``pending_or_missed_installments_minor`` joins ``enrollments`` and\n     restricts to active/recoverable statuses (``enrolled``,\n     ``dropout_pending``) so dropped learners never inflate receivables.\n  2. ``dropout_pending_enrollments`` is surfaced explicitly alongside\n     ``active_enrollments`` (per ADR-007).",
+        "operationId": "academy_finance_summary_internal_academy_finance_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/academy/extension-requests/cohorts/{cohort_id}": {
       "post": {
         "tags": [
@@ -30773,6 +30823,31 @@
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/internal/payments/finance-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Payments Finance Summary",
+        "description": "Service-owned operational payments & settlement summary for gateway aggregation.",
+        "operationId": "payments_finance_summary_internal_payments_finance_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           }
@@ -56494,6 +56569,53 @@
         }
       }
     },
+    "/api/v1/admin/store/procurement/receipts/{receipt_id}/sync-ledger": {
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Retry Goods Receipt Ledger Sync",
+        "description": "Idempotently replay Ledger posting for a goods receipt with pending_retry.",
+        "operationId": "retry_goods_receipt_ledger_sync_admin_store_procurement_receipts__receipt_id__sync_ledger_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "receipt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Receipt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/store/procurement/orders/{order_id}/invoices": {
       "post": {
         "tags": [
@@ -56572,6 +56694,107 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/admin/store/procurement/invoices/{invoice_id}/settlements": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "List Supplier Invoice Settlements",
+        "operationId": "list_supplier_invoice_settlements_admin_store_procurement_invoices__invoice_id__settlements_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Settle Supplier Invoice",
+        "description": "Record Finance Owner verified settlement against a supplier invoice.\n\nSupports partial and full payments, blocks overpayment, enforces separation\nfrom the invoice preparer, and verifies any linked Ledger journal entry via\nLedger HTTP API (typically from a confirmed Treasury ``liability_settlement``).",
+        "operationId": "settle_supplier_invoice_admin_store_procurement_invoices__invoice_id__settlements_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierInvoiceSettlementRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/admin/store/procurement/inventory-values": {
@@ -56864,6 +57087,189 @@
         }
       }
     },
+    "/api/v1/admin/store/procurement/receivables/{receivable_id}/payments": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "List Receivable Payments",
+        "operationId": "list_receivable_payments_admin_store_procurement_receivables__receivable_id__payments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "receivable_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Receivable Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Record Receivable Payment",
+        "description": "Record a Finance Owner verified partial or full repayment on approved credit.\n\nEnforces separation from the customer, prevents overpayment, posts\nDR <bank> / CR accounts_receivable to Ledger, and marks the receivable\n``settled`` + stamps ``order.paid_at`` once fully paid.",
+        "operationId": "record_receivable_payment_admin_store_procurement_receivables__receivable_id__payments_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "receivable_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Receivable Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivablePaymentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/procurement/fulfilled-orders": {
+      "get": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "List Fulfilled Orders For Return",
+        "description": "List recently fulfilled orders with their line items for audited return/COGS reversal.",
+        "operationId": "list_fulfilled_orders_for_return_admin_store_procurement_fulfilled_orders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/store/procurement/orders/{order_id}/returns": {
+      "post": {
+        "tags": [
+          "store-procurement"
+        ],
+        "summary": "Record Fulfilled Order Return",
+        "description": "Audited fulfilled-order return restoring restockable inventory & reversing COGS.\n\nLooks up the exact historical ``sale`` cost event per line, prevents returning\nmore than originally sold, restores ``InventoryItem`` + ``StoreInventoryValuation``\nand posts ``DR store_inventory / CR cogs_store`` for ``restockable`` items, or\nrecords a ``return_damaged`` shrinkage audit event for damaged goods.",
+        "operationId": "record_fulfilled_order_return_admin_store_procurement_orders__order_id__returns_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderReturnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/store/maintenance/cleanup": {
       "post": {
         "tags": [
@@ -57043,6 +57449,31 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/internal/store/finance-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Store Finance Summary",
+        "description": "Service-owned Store operational finance summary for gateway aggregation.",
+        "operationId": "store_finance_summary_internal_store_finance_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/events/swim-plans": {
@@ -69719,6 +70150,109 @@
         }
       }
     },
+    "/api/v1/admin/finance/organizations": {
+      "get": {
+        "tags": [
+          "ledger-organizations"
+        ],
+        "summary": "List My Organizations",
+        "description": "List active Ledger organizations the authenticated user belongs to.\n\nSupports multi-company switching via ``X-Ledger-Org-Id``. Note: when\nrunning under a strict ``NOBYPASSRLS`` role without a cross-org lookup view,\nclients can also inspect ``/current`` directly with ``X-Ledger-Org-Id``.",
+        "operationId": "list_my_organizations_admin_finance_organizations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserOrganizationMembership"
+                  },
+                  "type": "array",
+                  "title": "Response List My Organizations Admin Finance Organizations Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/organizations/current": {
+      "get": {
+        "tags": [
+          "ledger-organizations"
+        ],
+        "summary": "Get Current Organization",
+        "description": "Return the active organization profile for the current request context.",
+        "operationId": "get_current_organization_admin_finance_organizations_current_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentOrganizationResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "ledger-organizations"
+        ],
+        "summary": "Update Current Organization",
+        "description": "Owner-only update of organization tax/treasury metadata.",
+        "operationId": "update_current_organization_admin_finance_organizations_current_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/finance/treasury/banks": {
       "get": {
         "tags": [
@@ -69859,6 +70393,31 @@
         ],
         "summary": "Expense Ledger Options",
         "operationId": "expense_ledger_options_admin_finance_treasury_expense_ledger_options_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finance/treasury/liability-ledger-options": {
+      "get": {
+        "tags": [
+          "treasury"
+        ],
+        "summary": "Liability Ledger Options",
+        "description": "Active postable liability accounts for settling payables (e.g. supplier invoices).",
+        "operationId": "liability_ledger_options_admin_finance_treasury_liability_ledger_options_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -70954,20 +71513,42 @@
         }
       }
     },
-    "/api/v1/admin/finance/intelligence": {
-      "get": {
+    "/api/v1/internal/ledger/organizations": {
+      "post": {
         "tags": [
-          "finance-intelligence"
+          "ledger-internal"
         ],
-        "summary": "Company Finance Intelligence",
-        "description": "Single-tenant cross-domain operational facts, carefully distinguished.",
-        "operationId": "company_finance_intelligence_admin_finance_intelligence_get",
+        "summary": "Provision Organization",
+        "description": "Provision a brand-new tenant organization with its own CoA, period & owner.",
+        "operationId": "provision_organization_internal_ledger_organizations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionOrganizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
+          "201": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ProvisionOrganizationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -71408,6 +71989,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finance/intelligence": {
+      "get": {
+        "tags": [
+          "finance-intelligence"
+        ],
+        "summary": "Company Finance Intelligence",
+        "description": "Aggregate SwimBuddz operational finance signals via service-owned APIs.",
+        "operationId": "company_finance_intelligence_api_v1_admin_finance_intelligence_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Company Finance Intelligence Api V1 Admin Finance Intelligence Get"
                 }
               }
             }
@@ -133049,6 +133654,18 @@
             "minLength": 5,
             "title": "Evidence Reference"
           },
+          "evidence_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Media Id"
+          },
           "lines": {
             "items": {
               "$ref": "#/components/schemas/ReceiveLineRequest"
@@ -133427,6 +134044,18 @@
             "maxLength": 255,
             "minLength": 5,
             "title": "Source Reference"
+          },
+          "evidence_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Media Id"
           },
           "quantity": {
             "type": "integer",
@@ -133959,6 +134588,38 @@
           "updated_at"
         ],
         "title": "OrderResponse"
+      },
+      "OrderReturnRequest": {
+        "properties": {
+          "reference": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Reference"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 5,
+            "title": "Reason"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReturnLineRequest"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reference",
+          "reason",
+          "lines"
+        ],
+        "title": "OrderReturnRequest"
       },
       "OrderStatus": {
         "type": "string",
@@ -136086,6 +136747,58 @@
         ],
         "title": "PurchaseOrderRequest"
       },
+      "ReceivablePaymentRequest": {
+        "properties": {
+          "amount_minor": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Minor"
+          },
+          "bank_reference": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 3,
+            "title": "Bank Reference"
+          },
+          "bank_account_ref": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 2,
+            "title": "Bank Account Ref",
+            "default": "bank_operating_ngn"
+          },
+          "evidence_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Media Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount_minor",
+          "bank_reference"
+        ],
+        "title": "ReceivablePaymentRequest"
+      },
       "ReceivableRequest": {
         "properties": {
           "order_id": {
@@ -136132,6 +136845,35 @@
           "quantity"
         ],
         "title": "ReceiveLineRequest"
+      },
+      "ReturnLineRequest": {
+        "properties": {
+          "order_item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Order Item Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "condition": {
+            "type": "string",
+            "enum": [
+              "restockable",
+              "damaged"
+            ],
+            "title": "Condition",
+            "default": "restockable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_item_id",
+          "quantity"
+        ],
+        "title": "ReturnLineRequest"
       },
       "SalesSummary": {
         "properties": {
@@ -136538,6 +137280,18 @@
               }
             ],
             "title": "Due On"
+          },
+          "evidence_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Media Id"
           }
         },
         "type": "object",
@@ -136546,6 +137300,75 @@
           "total_minor"
         ],
         "title": "SupplierInvoiceRequest"
+      },
+      "SupplierInvoiceSettlementRequest": {
+        "properties": {
+          "amount_minor": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Minor"
+          },
+          "bank_reference": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 3,
+            "title": "Bank Reference"
+          },
+          "treasury_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Treasury Request Id"
+          },
+          "ledger_journal_entry_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Journal Entry Id"
+          },
+          "evidence_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Media Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount_minor",
+          "bank_reference"
+        ],
+        "title": "SupplierInvoiceSettlementRequest"
       },
       "SupplierListResponse": {
         "properties": {
@@ -149759,6 +150582,14 @@
         ],
         "title": "AccountOut"
       },
+      "AccountingStandard": {
+        "type": "string",
+        "enum": [
+          "accrual",
+          "cash"
+        ],
+        "title": "AccountingStandard"
+      },
       "BalanceSheetReport": {
         "properties": {
           "as_of": {
@@ -149982,6 +150813,18 @@
               }
             ],
             "title": "Statement Verified At"
+          },
+          "statement_evidence_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statement Evidence Media Id"
           }
         },
         "type": "object",
@@ -150130,7 +150973,8 @@
             "type": "string",
             "enum": [
               "expense",
-              "funding"
+              "funding",
+              "liability_settlement"
             ],
             "title": "Kind",
             "default": "expense"
@@ -150379,6 +151223,26 @@
           "source_line_id"
         ],
         "title": "ConfirmRequest"
+      },
+      "CurrentOrganizationResponse": {
+        "properties": {
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationOut"
+          },
+          "available_coa_templates": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Coa Templates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "organization",
+          "available_coa_templates"
+        ],
+        "title": "CurrentOrganizationResponse"
       },
       "Decision": {
         "properties": {
@@ -152042,6 +152906,181 @@
         ],
         "title": "MatchJournal"
       },
+      "OrgStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "suspended",
+          "closed"
+        ],
+        "title": "OrgStatus"
+      },
+      "OrganizationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "legal_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Name"
+          },
+          "base_currency": {
+            "type": "string",
+            "title": "Base Currency"
+          },
+          "fiscal_year_start_month": {
+            "type": "integer",
+            "title": "Fiscal Year Start Month"
+          },
+          "accounting_standard": {
+            "$ref": "#/components/schemas/AccountingStandard"
+          },
+          "tax_country": {
+            "type": "string",
+            "title": "Tax Country"
+          },
+          "vat_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vat Number"
+          },
+          "firs_taxpayer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firs Taxpayer Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrgStatus"
+          },
+          "org_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Metadata"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "base_currency",
+          "fiscal_year_start_month",
+          "accounting_standard",
+          "tax_country",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OrganizationOut"
+      },
+      "OrganizationUpdate": {
+        "properties": {
+          "legal_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Name"
+          },
+          "tax_country": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Country"
+          },
+          "vat_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vat Number"
+          },
+          "firs_taxpayer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firs Taxpayer Id"
+          },
+          "org_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Metadata"
+          }
+        },
+        "type": "object",
+        "title": "OrganizationUpdate"
+      },
       "PeriodOut": {
         "properties": {
           "id": {
@@ -152120,6 +153159,17 @@
               }
             ],
             "title": "Expense Account Code"
+          },
+          "liability_account_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liability Account Code"
           },
           "acknowledgement": {
             "type": "boolean",
@@ -152205,6 +153255,154 @@
           "net_minor"
         ],
         "title": "ProfitLossRow"
+      },
+      "ProvisionOrganizationRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "legal_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Name"
+          },
+          "base_currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Base Currency",
+            "default": "NGN"
+          },
+          "fiscal_year_start_month": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Fiscal Year Start Month",
+            "default": 1
+          },
+          "accounting_standard": {
+            "$ref": "#/components/schemas/AccountingStandard",
+            "default": "accrual"
+          },
+          "tax_country": {
+            "type": "string",
+            "maxLength": 2,
+            "minLength": 2,
+            "title": "Tax Country",
+            "default": "NG"
+          },
+          "coa_template": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 2,
+            "title": "Coa Template",
+            "default": "generic_smb"
+          },
+          "owner_email": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Owner Email"
+          },
+          "owner_auth_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Auth Id"
+          },
+          "owner_display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Display Name"
+          },
+          "org_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "owner_email"
+        ],
+        "title": "ProvisionOrganizationRequest",
+        "description": "Onboard a company onto the multi-tenant detachable Ledger."
+      },
+      "ProvisionOrganizationResponse": {
+        "properties": {
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "base_currency": {
+            "type": "string",
+            "title": "Base Currency"
+          },
+          "coa_template": {
+            "type": "string",
+            "title": "Coa Template"
+          },
+          "accounts_created": {
+            "type": "integer",
+            "title": "Accounts Created"
+          },
+          "initial_period": {
+            "type": "string",
+            "title": "Initial Period"
+          },
+          "owner_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Owner User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "organization_id",
+          "name",
+          "base_currency",
+          "coa_template",
+          "accounts_created",
+          "initial_period",
+          "owner_user_id"
+        ],
+        "title": "ProvisionOrganizationResponse"
       },
       "ReconciliationBreakOut": {
         "properties": {
@@ -152420,6 +153618,18 @@
             ],
             "title": "Evidence Reference"
           },
+          "evidence_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Media Id"
+          },
           "programme": {
             "anyOf": [
               {
@@ -152460,7 +153670,8 @@
             "type": "string",
             "enum": [
               "expense",
-              "funding"
+              "funding",
+              "liability_settlement"
             ],
             "title": "Kind"
           },
@@ -152673,6 +153884,18 @@
             ],
             "title": "Evidence Reference"
           },
+          "evidence_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Media Id"
+          },
           "programme": {
             "anyOf": [
               {
@@ -152817,6 +154040,18 @@
             "maxLength": 250,
             "minLength": 5,
             "title": "Evidence Reference"
+          },
+          "evidence_media_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Media Id"
           }
         },
         "type": "object",
@@ -153090,6 +154325,45 @@
           "credit_minor"
         ],
         "title": "TrialBalanceRow"
+      },
+      "UserOrganizationMembership": {
+        "properties": {
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "legal_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Name"
+          },
+          "base_currency": {
+            "type": "string",
+            "title": "Base Currency"
+          },
+          "role": {
+            "$ref": "#/components/schemas/LedgerRole"
+          }
+        },
+        "type": "object",
+        "required": [
+          "organization_id",
+          "name",
+          "base_currency",
+          "role"
+        ],
+        "title": "UserOrganizationMembership"
       },
       "CalendarActivityType": {
         "properties": {

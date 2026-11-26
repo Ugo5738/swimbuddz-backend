@@ -1,4 +1,4 @@
-"""Ledger must start with the packages installed in its production image."""
+"""Ledger must start cleanly with ONLY its own package + libs/ and zero SwimBuddz coupling."""
 
 import os
 from pathlib import Path
@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 
-def test_ledger_starts_and_registers_intelligence_without_other_services():
+def test_ledger_starts_detached_without_other_services():
     script = """
 import importlib.abc
 import sys
@@ -24,7 +24,15 @@ with TestClient(app) as client:
     result = client.get('/health')
     assert result.status_code == 200, result.text
     assert result.json()['service'] == 'ledger'
-assert '/admin/finance/intelligence' in {route.path for route in app.routes}
+
+routes = {route.path for route in app.routes}
+# ADR-023: Finance Intelligence belongs in gateway_service, never ledger_service.
+assert '/admin/finance/intelligence' not in routes
+# Detachable multi-tenant + treasury liability endpoints must be mounted.
+assert '/admin/finance/organizations' in routes
+assert '/admin/finance/organizations/current' in routes
+assert '/internal/ledger/organizations' in routes
+assert '/admin/finance/treasury/liability-ledger-options' in routes
 """
     result = subprocess.run(
         [sys.executable, "-c", script],

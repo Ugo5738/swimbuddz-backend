@@ -7,7 +7,7 @@ import uuid
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
 from libs.db.session import get_async_db
@@ -29,14 +29,24 @@ from services.store_service.models.procurement import (
     StorePurchaseOrder,
     StorePurchaseOrderLine,
     StoreSupplierInvoice,
+    StoreSupplierInvoiceSettlement,
     StoreTradeReceivable,
+    StoreTradeReceivablePayment,
 )
 from services.store_service.routers.procurement_access import (
     procurement_owner,
     procurement_reader,
     procurement_writer,
+    verify_ledger_journal_entry,
 )
-from sqlalchemy import select, func
+from services.store_service.services.ledger_sync import (
+    post_credit_sale_approval_journal,
+    post_credit_sale_payment_journal,
+    post_goods_receipt_journal,
+    post_opening_inventory_journal,
+    post_return_cogs_reversal_journal,
+)
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/procurement", tags=["store-procurement"])
@@ -68,6 +78,7 @@ class ReceiveLineRequest(BaseModel):
 class GoodsReceiptRequest(BaseModel):
     reference: str = Field(min_length=5, max_length=120)
     evidence_reference: str = Field(min_length=5, max_length=255)
+    evidence_media_id: uuid.UUID | None = None
     lines: list[ReceiveLineRequest] = Field(min_length=1, max_length=100)
 
 
@@ -75,11 +86,22 @@ class SupplierInvoiceRequest(BaseModel):
     reference: str = Field(min_length=2, max_length=120)
     total_minor: int = Field(gt=0)
     due_on: date | None = None
+    evidence_media_id: uuid.UUID | None = None
+
+
+class SupplierInvoiceSettlementRequest(BaseModel):
+    amount_minor: int = Field(gt=0)
+    bank_reference: str = Field(min_length=3, max_length=180)
+    treasury_request_id: uuid.UUID | None = None
+    ledger_journal_entry_id: uuid.UUID | None = None
+    evidence_media_id: uuid.UUID | None = None
+    notes: str | None = Field(None, max_length=1000)
 
 
 class OpeningRequest(BaseModel):
     variant_id: uuid.UUID
     source_reference: str = Field(min_length=5, max_length=255)
+    evidence_media_id: uuid.UUID | None = None
     quantity: int = Field(ge=0)
     total_cost_minor: int = Field(ge=0)
     reason: str = Field(min_length=10, max_length=1000)
@@ -89,6 +111,28 @@ class ReceivableRequest(BaseModel):
     order_id: uuid.UUID
     due_on: date
     reason: str = Field(min_length=10, max_length=1000)
+
+
+class ReceivablePaymentRequest(BaseModel):
+    amount_minor: int = Field(gt=0)
+    bank_reference: str = Field(min_length=3, max_length=180)
+    bank_account_ref: str = Field(
+        default="bank_operating_ngn", min_length=2, max_length=80
+    )
+    evidence_media_id: uuid.UUID | None = None
+    notes: str | None = Field(None, max_length=1000)
+
+
+class ReturnLineRequest(BaseModel):
+    order_item_id: uuid.UUID
+    quantity: int = Field(gt=0)
+    condition: Literal["restockable", "damaged"] = "restockable"
+
+
+class OrderReturnRequest(BaseModel):
+    reference: str = Field(min_length=3, max_length=120)
+    reason: str = Field(min_length=5, max_length=1000)
+    lines: list[ReturnLineRequest] = Field(min_length=1, max_length=100)
 
 
 @router.put("/grants")
@@ -391,9 +435,11 @@ async def receive_goods(
         order_id=order_id,
         reference=payload.reference,
         evidence_reference=payload.evidence_reference,
+        evidence_media_id=payload.evidence_media_id,
         actor_auth_id=actor.user_id,
     )
     db.add(receipt)
+    receipt_total_cost_minor = 0
     for line in payload.lines:
         po_line = lookup[line.purchase_line_id]
         if po_line.received + line.quantity > po_line.quantity:
@@ -432,6 +478,7 @@ async def receive_goods(
                 "Existing stock must have an approved valuation before receiving new goods",
             )
         cost = line.quantity * po_line.unit_landed_minor
+        receipt_total_cost_minor += cost
         inventory.quantity_on_hand += line.quantity
         inventory.last_restock_at = utc_now()
         valuation.quantity += line.quantity
@@ -473,7 +520,79 @@ async def receive_goods(
         else "partially_received"
     )
     await db.commit()
-    return {"id": receipt_id, "order_id": order_id, "status": item.status}
+
+    entry_id, sync_status = await post_goods_receipt_journal(
+        receipt_id=receipt_id,
+        order_number=item.order_number,
+        entry_date=date.today(),
+        total_cost_minor=receipt_total_cost_minor,
+        evidence_reference=payload.evidence_reference,
+    )
+    receipt.ledger_entry_id = entry_id
+    receipt.ledger_sync_status = sync_status
+    await db.commit()
+    return {
+        "id": receipt_id,
+        "order_id": order_id,
+        "status": item.status,
+        "total_cost_minor": receipt_total_cost_minor,
+        "ledger_entry_id": entry_id,
+        "ledger_sync_status": sync_status,
+    }
+
+
+@router.post("/receipts/{receipt_id}/sync-ledger")
+async def retry_goods_receipt_ledger_sync(
+    receipt_id: uuid.UUID,
+    _owner=Depends(procurement_owner),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Idempotently replay Ledger posting for a goods receipt with pending_retry."""
+    receipt = await db.scalar(
+        select(StoreGoodsReceipt)
+        .where(StoreGoodsReceipt.id == receipt_id)
+        .with_for_update()
+    )
+    if receipt is None:
+        raise HTTPException(404, "Goods receipt not found")
+    if receipt.ledger_sync_status == "posted" and receipt.ledger_entry_id:
+        return {
+            "id": receipt.id,
+            "ledger_entry_id": receipt.ledger_entry_id,
+            "ledger_sync_status": receipt.ledger_sync_status,
+        }
+    po = await db.scalar(
+        select(StorePurchaseOrder).where(StorePurchaseOrder.id == receipt.order_id)
+    )
+    total_minor = int(
+        await db.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        StoreGoodsReceiptLine.quantity
+                        * StoreGoodsReceiptLine.unit_landed_minor
+                    ),
+                    0,
+                )
+            ).where(StoreGoodsReceiptLine.receipt_id == receipt.id)
+        )
+        or 0
+    )
+    entry_id, sync_status = await post_goods_receipt_journal(
+        receipt_id=receipt.id,
+        order_number=po.order_number if po else str(receipt.order_id),
+        entry_date=receipt.received_at.date(),
+        total_cost_minor=total_minor,
+        evidence_reference=receipt.evidence_reference,
+    )
+    receipt.ledger_entry_id = entry_id
+    receipt.ledger_sync_status = sync_status
+    await db.commit()
+    return {
+        "id": receipt.id,
+        "ledger_entry_id": entry_id,
+        "ledger_sync_status": sync_status,
+    }
 
 
 @router.post("/orders/{order_id}/invoices", status_code=201)
@@ -527,6 +646,7 @@ async def record_supplier_invoice(
         reference=payload.reference,
         total_minor=payload.total_minor,
         due_on=payload.due_on,
+        evidence_media_id=payload.evidence_media_id,
         created_by=actor.user_id,
     )
     db.add(invoice)
@@ -535,6 +655,7 @@ async def record_supplier_invoice(
         "id": invoice.id,
         "total_minor": invoice.total_minor,
         "verified_paid_minor": 0,
+        "evidence_media_id": invoice.evidence_media_id,
     }
 
 
@@ -559,10 +680,120 @@ async def supplier_liabilities(
             "order_id": row.order_id,
             "reference": row.reference,
             "due_on": row.due_on,
+            "total_minor": row.total_minor,
+            "verified_paid_minor": row.verified_paid_minor,
             "outstanding_minor": row.total_minor - row.verified_paid_minor,
+            "status": (
+                "paid"
+                if row.verified_paid_minor >= row.total_minor
+                else "partially_paid"
+                if row.verified_paid_minor > 0
+                else "unpaid"
+            ),
+            "evidence_media_id": row.evidence_media_id,
         }
         for row in rows
     ]
+
+
+@router.get("/invoices/{invoice_id}/settlements")
+async def list_supplier_invoice_settlements(
+    invoice_id: uuid.UUID,
+    _actor: AuthUser = Depends(procurement_reader),
+    db: AsyncSession = Depends(get_async_db),
+):
+    rows = (
+        await db.scalars(
+            select(StoreSupplierInvoiceSettlement)
+            .where(StoreSupplierInvoiceSettlement.invoice_id == invoice_id)
+            .order_by(StoreSupplierInvoiceSettlement.settled_at.desc())
+        )
+    ).all()
+    return [
+        {
+            "id": r.id,
+            "invoice_id": r.invoice_id,
+            "amount_minor": r.amount_minor,
+            "bank_reference": r.bank_reference,
+            "treasury_request_id": r.treasury_request_id,
+            "ledger_journal_entry_id": r.ledger_journal_entry_id,
+            "evidence_media_id": r.evidence_media_id,
+            "settled_by": r.settled_by,
+            "notes": r.notes,
+            "settled_at": r.settled_at,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/invoices/{invoice_id}/settlements", status_code=201)
+async def settle_supplier_invoice(
+    invoice_id: uuid.UUID,
+    payload: SupplierInvoiceSettlementRequest,
+    request: Request,
+    owner=Depends(procurement_owner),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Record Finance Owner verified settlement against a supplier invoice.
+
+    Supports partial and full payments, blocks overpayment, enforces separation
+    from the invoice preparer, and verifies any linked Ledger journal entry via
+    Ledger HTTP API (typically from a confirmed Treasury ``liability_settlement``).
+    """
+    invoice = await db.scalar(
+        select(StoreSupplierInvoice)
+        .where(StoreSupplierInvoice.id == invoice_id)
+        .with_for_update()
+    )
+    if invoice is None:
+        raise HTTPException(404, "Supplier invoice not found")
+    if owner.auth_id == invoice.created_by:
+        raise HTTPException(
+            403, "Invoice preparer cannot independently certify their own settlement"
+        )
+    outstanding = invoice.total_minor - invoice.verified_paid_minor
+    if payload.amount_minor > outstanding:
+        raise HTTPException(
+            409,
+            f"Settlement exceeds unpaid invoice balance ({outstanding} minor units remaining)",
+        )
+    duplicate = await db.scalar(
+        select(StoreSupplierInvoiceSettlement.id).where(
+            StoreSupplierInvoiceSettlement.invoice_id == invoice_id,
+            StoreSupplierInvoiceSettlement.bank_reference
+            == payload.bank_reference.strip(),
+        )
+    )
+    if duplicate is not None:
+        raise HTTPException(
+            409,
+            "A settlement with this bank reference is already recorded on this invoice",
+        )
+    if payload.ledger_journal_entry_id is not None:
+        await verify_ledger_journal_entry(request, payload.ledger_journal_entry_id)
+
+    settlement = StoreSupplierInvoiceSettlement(
+        invoice_id=invoice.id,
+        amount_minor=payload.amount_minor,
+        bank_reference=payload.bank_reference.strip(),
+        treasury_request_id=payload.treasury_request_id,
+        ledger_journal_entry_id=payload.ledger_journal_entry_id,
+        evidence_media_id=payload.evidence_media_id,
+        settled_by=owner.auth_id or str(owner.id),
+        notes=(payload.notes or "").strip() or None,
+    )
+    db.add(settlement)
+    invoice.verified_paid_minor += payload.amount_minor
+    await db.commit()
+    return {
+        "id": settlement.id,
+        "invoice_id": invoice.id,
+        "amount_minor": settlement.amount_minor,
+        "verified_paid_minor": invoice.verified_paid_minor,
+        "outstanding_minor": invoice.total_minor - invoice.verified_paid_minor,
+        "ledger_journal_entry_id": settlement.ledger_journal_entry_id,
+        "evidence_media_id": settlement.evidence_media_id,
+    }
 
 
 @router.get("/inventory-values")
@@ -621,6 +852,9 @@ async def list_opening_reconciliations(
             "status": row.status,
             "proposed_by": row.proposed_by,
             "approved_by": row.approved_by,
+            "evidence_media_id": row.evidence_media_id,
+            "ledger_entry_id": row.ledger_entry_id,
+            "ledger_sync_status": row.ledger_sync_status,
         }
         for row in rows
     ]
@@ -649,6 +883,7 @@ async def propose_opening_valuation(
     proposed = StoreOpeningReconciliation(
         variant_id=payload.variant_id,
         source_reference=payload.source_reference,
+        evidence_media_id=payload.evidence_media_id,
         quantity=payload.quantity,
         total_cost_minor=payload.total_cost_minor,
         reason=payload.reason,
@@ -721,7 +956,25 @@ async def approve_opening_valuation(
     item.status = "approved" if approve else "rejected"
     item.approved_by = owner.auth_id or str(owner.id)
     await db.commit()
-    return {"id": item.id, "status": item.status}
+
+    if approve and item.total_cost_minor > 0:
+        entry_id, sync_status = await post_opening_inventory_journal(
+            opening_id=item.id,
+            variant_id=item.variant_id,
+            entry_date=date.today(),
+            total_cost_minor=item.total_cost_minor,
+            source_reference=item.source_reference,
+        )
+        item.ledger_entry_id = entry_id
+        item.ledger_sync_status = sync_status
+        await db.commit()
+
+    return {
+        "id": item.id,
+        "status": item.status,
+        "ledger_entry_id": item.ledger_entry_id,
+        "ledger_sync_status": item.ledger_sync_status,
+    }
 
 
 @router.get("/unpaid-orders")
@@ -815,11 +1068,165 @@ async def decide_trade_receivable(
         raise HTTPException(403, "Cannot approve your own requested or personal credit")
     row.status = "approved" if approve else "rejected"
     row.approved_by = owner.auth_id or str(owner.id)
-    # Deliberately not marking an order PAID or fulfilling reserved inventory.
-    # Partial payments need independent bank verification and settlement before
-    # those operations can be exposed through the existing order state machine.
+    if approve:
+        row.approved_at = utc_now()
+    # Per ADR-023: independent credit approval unlocks controlled fulfillment
+    # and books Accounts Receivable immediately, while keeping OrderStatus.PAID
+    # strictly gated on full verified settlement.
     await db.commit()
-    return {"id": row.id, "status": row.status}
+
+    if approve:
+        entry_id, sync_status = await post_credit_sale_approval_journal(
+            receivable_id=row.id,
+            order_id=order.id,
+            order_number=order.order_number,
+            entry_date=date.today(),
+            amount_minor=row.amount_minor,
+            member_auth_id=order.member_auth_id,
+        )
+        row.ledger_entry_id = entry_id
+        row.ledger_sync_status = sync_status
+        await db.commit()
+
+    return {
+        "id": row.id,
+        "status": row.status,
+        "can_fulfill": row.status in ("approved", "settled"),
+        "ledger_entry_id": row.ledger_entry_id,
+        "ledger_sync_status": row.ledger_sync_status,
+    }
+
+
+@router.get("/receivables/{receivable_id}/payments")
+async def list_receivable_payments(
+    receivable_id: uuid.UUID,
+    _actor: AuthUser = Depends(procurement_reader),
+    db: AsyncSession = Depends(get_async_db),
+):
+    rows = (
+        await db.scalars(
+            select(StoreTradeReceivablePayment)
+            .where(StoreTradeReceivablePayment.receivable_id == receivable_id)
+            .order_by(StoreTradeReceivablePayment.paid_at.desc())
+        )
+    ).all()
+    return [
+        {
+            "id": r.id,
+            "receivable_id": r.receivable_id,
+            "amount_minor": r.amount_minor,
+            "bank_reference": r.bank_reference,
+            "bank_account_ref": r.bank_account_ref,
+            "evidence_media_id": r.evidence_media_id,
+            "ledger_entry_id": r.ledger_entry_id,
+            "ledger_sync_status": r.ledger_sync_status,
+            "verified_by": r.verified_by,
+            "notes": r.notes,
+            "paid_at": r.paid_at,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/receivables/{receivable_id}/payments", status_code=201)
+async def record_receivable_payment(
+    receivable_id: uuid.UUID,
+    payload: ReceivablePaymentRequest,
+    owner=Depends(procurement_owner),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Record a Finance Owner verified partial or full repayment on approved credit.
+
+    Enforces separation from the customer, prevents overpayment, posts
+    DR <bank> / CR accounts_receivable to Ledger, and marks the receivable
+    ``settled`` + stamps ``order.paid_at`` once fully paid.
+    """
+    from services.store_service.models import Order, OrderStatus
+
+    row = await db.scalar(
+        select(StoreTradeReceivable)
+        .where(StoreTradeReceivable.id == receivable_id)
+        .with_for_update()
+    )
+    if row is None:
+        raise HTTPException(404, "Credit receivable not found")
+    if row.status != "approved":
+        raise HTTPException(
+            409, "Repayments may only be recorded on approved open credit receivables"
+        )
+    order = await db.scalar(
+        select(Order).where(Order.id == row.order_id).with_for_update()
+    )
+    if order is None:
+        raise HTTPException(404, "Store order not found")
+    if owner.auth_id == order.member_auth_id:
+        raise HTTPException(
+            403, "Buyer cannot independently verify payment on their own credit order"
+        )
+    outstanding = row.amount_minor - row.verified_paid_minor
+    if payload.amount_minor > outstanding:
+        raise HTTPException(
+            409,
+            f"Repayment exceeds remaining credit balance ({outstanding} minor units remaining)",
+        )
+    clean_ref = payload.bank_reference.strip()
+    existing_ref = await db.scalar(
+        select(StoreTradeReceivablePayment.id).where(
+            StoreTradeReceivablePayment.bank_reference == clean_ref
+        )
+    )
+    if existing_ref is not None:
+        raise HTTPException(
+            409, "Bank reference already recorded against a credit repayment"
+        )
+
+    payment = StoreTradeReceivablePayment(
+        receivable_id=row.id,
+        amount_minor=payload.amount_minor,
+        bank_reference=clean_ref,
+        bank_account_ref=payload.bank_account_ref.strip(),
+        evidence_media_id=payload.evidence_media_id,
+        verified_by=owner.auth_id or str(owner.id),
+        notes=(payload.notes or "").strip() or None,
+    )
+    db.add(payment)
+    row.verified_paid_minor += payload.amount_minor
+    fully_settled = row.verified_paid_minor >= row.amount_minor
+    if fully_settled:
+        now = utc_now()
+        row.status = "settled"
+        row.settled_at = now
+        if order.paid_at is None:
+            order.paid_at = now
+        if order.status == OrderStatus.PENDING_PAYMENT:
+            order.status = OrderStatus.PAID
+    await db.commit()
+
+    entry_id, sync_status = await post_credit_sale_payment_journal(
+        payment_id=payment.id,
+        receivable_id=row.id,
+        order_number=order.order_number,
+        entry_date=date.today(),
+        amount_minor=payment.amount_minor,
+        bank_account_ref=payment.bank_account_ref,
+        bank_reference=payment.bank_reference,
+        member_auth_id=order.member_auth_id,
+    )
+    payment.ledger_entry_id = entry_id
+    payment.ledger_sync_status = sync_status
+    await db.commit()
+
+    return {
+        "id": payment.id,
+        "receivable_id": row.id,
+        "status": row.status,
+        "amount_minor": payment.amount_minor,
+        "verified_paid_minor": row.verified_paid_minor,
+        "outstanding_minor": row.amount_minor - row.verified_paid_minor,
+        "order_status": order.status.value,
+        "ledger_entry_id": entry_id,
+        "ledger_sync_status": sync_status,
+    }
 
 
 @router.get("/receivables")
@@ -827,12 +1234,13 @@ async def list_receivables(
     _actor: AuthUser = Depends(procurement_reader),
     db: AsyncSession = Depends(get_async_db),
 ):
+    from services.store_service.models import Order
+
     rows = (
-        await db.scalars(
-            select(StoreTradeReceivable)
-            .order_by(
-                StoreTradeReceivable.id,
-            )
+        await db.execute(
+            select(StoreTradeReceivable, Order.order_number, Order.status)
+            .join(Order, Order.id == StoreTradeReceivable.order_id)
+            .order_by(StoreTradeReceivable.id)
             .limit(250)
         )
     ).all()
@@ -840,9 +1248,267 @@ async def list_receivables(
         {
             "id": r.id,
             "order_id": r.order_id,
+            "order_number": order_number,
+            "order_status": order_status.value
+            if hasattr(order_status, "value")
+            else str(order_status),
             "status": r.status,
             "due_on": r.due_on,
+            "amount_minor": r.amount_minor,
+            "verified_paid_minor": r.verified_paid_minor,
             "outstanding_minor": r.amount_minor - r.verified_paid_minor,
+            "can_fulfill": r.status in ("approved", "settled"),
+            "ledger_entry_id": r.ledger_entry_id,
+            "ledger_sync_status": r.ledger_sync_status,
         }
-        for r in rows
+        for r, order_number, order_status in rows
     ]
+
+
+@router.get("/fulfilled-orders")
+async def list_fulfilled_orders_for_return(
+    _actor: AuthUser = Depends(procurement_reader),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List recently fulfilled orders with their line items for audited return/COGS reversal."""
+    from services.store_service.models import Order, OrderItem, OrderStatus
+
+    orders = (
+        await db.scalars(
+            select(Order)
+            .where(
+                Order.status.in_(
+                    [OrderStatus.PICKED_UP, OrderStatus.DELIVERED, OrderStatus.REFUNDED]
+                )
+            )
+            .order_by(Order.created_at.desc())
+            .limit(80)
+        )
+    ).all()
+    order_ids = [o.id for o in orders]
+    items_by_order: dict[uuid.UUID, list[dict]] = {oid: [] for oid in order_ids}
+    if order_ids:
+        items = (
+            await db.scalars(select(OrderItem).where(OrderItem.order_id.in_(order_ids)))
+        ).all()
+        for it in items:
+            items_by_order[it.order_id].append(
+                {
+                    "id": it.id,
+                    "variant_id": it.variant_id,
+                    "product_name": it.product_name,
+                    "variant_name": it.variant_name,
+                    "quantity": it.quantity,
+                }
+            )
+    return [
+        {
+            "id": o.id,
+            "order_number": o.order_number,
+            "status": o.status.value,
+            "total_minor": int(o.total_ngn * 100),
+            "items": items_by_order.get(o.id, []),
+        }
+        for o in orders
+    ]
+
+
+@router.post("/orders/{order_id}/returns", status_code=201)
+async def record_fulfilled_order_return(
+    order_id: uuid.UUID,
+    payload: OrderReturnRequest,
+    owner=Depends(procurement_owner),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Audited fulfilled-order return restoring restockable inventory & reversing COGS.
+
+    Looks up the exact historical ``sale`` cost event per line, prevents returning
+    more than originally sold, restores ``InventoryItem`` + ``StoreInventoryValuation``
+    and posts ``DR store_inventory / CR cogs_store`` for ``restockable`` items, or
+    records a ``return_damaged`` shrinkage audit event for damaged goods.
+    """
+    from services.store_service.models import Order, OrderItem, OrderStatus
+
+    order = await db.scalar(select(Order).where(Order.id == order_id).with_for_update())
+    if order is None:
+        raise HTTPException(404, "Store order not found")
+    if order.status not in (
+        OrderStatus.PICKED_UP,
+        OrderStatus.DELIVERED,
+        OrderStatus.REFUNDED,
+    ):
+        raise HTTPException(
+            409,
+            "Inventory/COGS return reversal applies only to fulfilled orders",
+        )
+    if owner.auth_id == order.member_auth_id:
+        raise HTTPException(
+            403,
+            "Buyer cannot independently process a return/COGS reversal on their own order",
+        )
+    line_ids = [line.order_item_id for line in payload.lines]
+    if len(line_ids) != len(set(line_ids)):
+        raise HTTPException(
+            422, "Combine duplicate order items in a single return line"
+        )
+
+    order_items = (
+        await db.scalars(select(OrderItem).where(OrderItem.order_id == order_id))
+    ).all()
+    item_map = {it.id: it for it in order_items}
+    if not set(line_ids).issubset(item_map):
+        raise HTTPException(422, "Return contains an item not belonging to this order")
+
+    clean_ref = payload.reference.strip()
+    total_restored_cost_minor = 0
+    results = []
+
+    for req_line in payload.lines:
+        order_item = item_map[req_line.order_item_id]
+        event_ref = f"return:{clean_ref}:{order_item.id}"
+        dup = await db.scalar(
+            select(StoreCostEvent.id).where(StoreCostEvent.reference == event_ref)
+        )
+        if dup is not None:
+            raise HTTPException(409, f"Return reference {clean_ref!r} already recorded")
+
+        prior_returned = int(
+            await db.scalar(
+                select(
+                    func.coalesce(func.sum(func.abs(StoreCostEvent.quantity_delta)), 0)
+                ).where(
+                    StoreCostEvent.variant_id == order_item.variant_id,
+                    StoreCostEvent.evidence
+                    == f"return-order:{order.id}:{order_item.id}",
+                )
+            )
+            or 0
+        )
+        if prior_returned + req_line.quantity > order_item.quantity:
+            raise HTTPException(
+                409,
+                f"Return quantity exceeds remaining returnable units ({order_item.quantity - prior_returned} left)",
+            )
+
+        sale_event = await db.scalar(
+            select(StoreCostEvent).where(
+                StoreCostEvent.reference == f"sale:{order_item.id}",
+                StoreCostEvent.event_kind == "sale",
+            )
+        )
+        restored_cost_minor = 0
+        if sale_event is not None and abs(sale_event.quantity_delta) > 0:
+            sold_qty = abs(sale_event.quantity_delta)
+            sold_cost = abs(sale_event.cost_delta_minor)
+            prior_restored_cost = int(
+                await db.scalar(
+                    select(
+                        func.coalesce(func.sum(StoreCostEvent.cost_delta_minor), 0)
+                    ).where(
+                        StoreCostEvent.variant_id == order_item.variant_id,
+                        StoreCostEvent.event_kind == "return_restock",
+                        StoreCostEvent.evidence
+                        == f"return-order:{order.id}:{order_item.id}",
+                    )
+                )
+                or 0
+            )
+            if prior_returned + req_line.quantity == sold_qty:
+                restored_cost_minor = max(0, sold_cost - prior_restored_cost)
+            else:
+                restored_cost_minor = sold_cost * req_line.quantity // sold_qty
+
+        if req_line.condition == "restockable":
+            inventory = await db.scalar(
+                select(InventoryItem)
+                .where(InventoryItem.variant_id == order_item.variant_id)
+                .with_for_update()
+            )
+            if inventory is None:
+                raise HTTPException(409, "Inventory item missing for returned variant")
+            valuation = await db.scalar(
+                select(StoreInventoryValuation)
+                .where(StoreInventoryValuation.variant_id == order_item.variant_id)
+                .with_for_update()
+            )
+            if (
+                valuation is not None
+                and valuation.quantity == inventory.quantity_on_hand
+                and restored_cost_minor > 0
+            ):
+                valuation.quantity += req_line.quantity
+                valuation.total_cost_minor += restored_cost_minor
+            inventory.quantity_on_hand += req_line.quantity
+            db.add(
+                InventoryMovement(
+                    inventory_item_id=inventory.id,
+                    movement_type=InventoryMovementType.RETURN,
+                    quantity=req_line.quantity,
+                    reference_type="order_return",
+                    reference_id=order.id,
+                    notes=f"{clean_ref}: {payload.reason}",
+                    performed_by=owner.auth_id or str(owner.id),
+                )
+            )
+            db.add(
+                StoreCostEvent(
+                    variant_id=order_item.variant_id,
+                    event_kind="return_restock",
+                    quantity_delta=req_line.quantity,
+                    cost_delta_minor=restored_cost_minor,
+                    reference=event_ref,
+                    evidence=f"return-order:{order.id}:{order_item.id}",
+                    actor_auth_id=owner.auth_id or str(owner.id),
+                )
+            )
+            total_restored_cost_minor += restored_cost_minor
+            results.append(
+                {
+                    "order_item_id": order_item.id,
+                    "condition": "restockable",
+                    "quantity": req_line.quantity,
+                    "restored_cost_minor": restored_cost_minor,
+                }
+            )
+        else:
+            db.add(
+                StoreCostEvent(
+                    variant_id=order_item.variant_id,
+                    event_kind="return_damaged",
+                    quantity_delta=-req_line.quantity,
+                    cost_delta_minor=0,
+                    reference=event_ref,
+                    evidence=f"return-order:{order.id}:{order_item.id}",
+                    actor_auth_id=owner.auth_id or str(owner.id),
+                )
+            )
+            results.append(
+                {
+                    "order_item_id": order_item.id,
+                    "condition": "damaged",
+                    "quantity": req_line.quantity,
+                    "restored_cost_minor": 0,
+                }
+            )
+
+    await db.commit()
+
+    entry_id, sync_status = (None, "not_required")
+    if total_restored_cost_minor > 0:
+        entry_id, sync_status = await post_return_cogs_reversal_journal(
+            return_reference=clean_ref,
+            order_id=order.id,
+            order_number=order.order_number,
+            entry_date=date.today(),
+            restored_cost_minor=total_restored_cost_minor,
+        )
+
+    return {
+        "order_id": order.id,
+        "order_number": order.order_number,
+        "reference": clean_ref,
+        "total_restored_cost_minor": total_restored_cost_minor,
+        "ledger_entry_id": entry_id,
+        "ledger_sync_status": sync_status,
+        "lines": results,
+    }

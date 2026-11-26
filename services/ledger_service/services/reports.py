@@ -418,16 +418,23 @@ async def cash_position(
 ) -> CashPositionReport:
     """Cash by location: settled in bank vs collected-but-in-transit at the PSP.
 
-    Clearing nets toward zero once settlements are ingested (R3); a large
-    clearing balance means cash collected that the bank hasn't settled yet.
+    Dynamically includes every active bank & clearing account for the org (via
+    ``account_metadata->>'is_bank_account'``, ``account_metadata->>'cash_kind'``,
+    ``maps_to LIKE 'bank_%'``, ``maps_to LIKE '%_clearing'``, or legacy
+    ``CASH_ACCOUNTS``), so newly registered bank accounts and arbitrary B2B org
+    charts of accounts are always reflected without code changes.
     """
     maps_to = ChartOfAccounts.account_metadata["maps_to"].astext
+    cash_kind = ChartOfAccounts.account_metadata["cash_kind"].astext
+    is_bank_flag = ChartOfAccounts.account_metadata["is_bank_account"].astext
     rows = (
         await session.execute(
             select(
                 ChartOfAccounts.code,
                 ChartOfAccounts.name,
                 maps_to,
+                cash_kind,
+                is_bank_flag,
                 func.coalesce(func.sum(JournalLine.debit_minor), 0)
                 - func.coalesce(func.sum(JournalLine.credit_minor), 0),
             )
@@ -437,17 +444,37 @@ async def cash_position(
             .where(
                 JournalLine.org_id == org_id,
                 JournalEntry.entry_date <= as_of,
-                maps_to.in_(list(CASH_ACCOUNTS)),
+                ChartOfAccounts.type == AccountType.ASSET,
+                (
+                    maps_to.in_(list(CASH_ACCOUNTS))
+                    | maps_to.like("bank_%")
+                    | maps_to.like("%_clearing")
+                    | cash_kind.in_(("bank", "clearing"))
+                    | (is_bank_flag == "true")
+                ),
             )
-            .group_by(ChartOfAccounts.code, ChartOfAccounts.name, maps_to)
+            .group_by(
+                ChartOfAccounts.code,
+                ChartOfAccounts.name,
+                maps_to,
+                cash_kind,
+                is_bank_flag,
+            )
             .order_by(ChartOfAccounts.code)
         )
     ).all()
 
     out: list[CashPositionRow] = []
     bank = clearing = 0
-    for code, name, m, net_debit in rows:
-        kind = CASH_ACCOUNTS.get(m, "bank")
+    for code, name, m, meta_kind, _is_bank, net_debit in rows:
+        if meta_kind in ("bank", "clearing"):
+            kind = meta_kind
+        elif m and m in CASH_ACCOUNTS:
+            kind = CASH_ACCOUNTS[m]
+        elif m and m.endswith("_clearing"):
+            kind = "clearing"
+        else:
+            kind = "bank"
         out.append(
             CashPositionRow(
                 code=code, name=name, kind=kind, amount_minor=int(net_debit)

@@ -77,6 +77,7 @@ PURPOSE_BUCKET_MAP = {
     # Private bucket - restricted access content
     "coach_document": BucketType.PRIVATE,
     "payment_proof": BucketType.PRIVATE,
+    "finance_document": BucketType.PRIVATE,
     "milestone_evidence": BucketType.PRIVATE,
     "milestone_video": BucketType.PRIVATE,
     "club_assessment_video": BucketType.PRIVATE,
