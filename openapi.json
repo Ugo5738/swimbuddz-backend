@@ -9170,6 +9170,18 @@
               "type": "string",
               "title": "Auth Id"
             }
+          },
+          {
+            "name": "include_photo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Resolve profile photo URL from media_service (set false for ID-only lookups).",
+              "default": true,
+              "title": "Include Photo"
+            },
+            "description": "Resolve profile photo URL from media_service (set false for ID-only lookups)."
           }
         ],
         "responses": {
@@ -9179,6 +9191,54 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MemberBasic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/members/by-auth/{auth_id}/membership": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Member Membership By Auth Id",
+        "description": "Single-hop auth_id \u2192 member_id + normalized membership lookup (ADR-024).\n\nReplaces the 2-step `/by-auth/{auth_id}` (which also called media_service\nfor profile photos) + `/{member_id}/membership` chain used on hot session\nread paths.",
+        "operationId": "get_member_membership_by_auth_id_internal_members_by_auth__auth_id__membership_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/services__members_service__routers__internal___schemas__MemberMembershipResponse"
                 }
               }
             }
@@ -11457,29 +11517,58 @@
           "bookings"
         ],
         "summary": "List My Unpaid Bookings",
-        "description": "List the current member's CONFIRMED bookings with an outstanding fee.\n\nA booking is \"unpaid\" when:\n  - status = CONFIRMED\n  - fee_amount_kobo > 0\n  - no payment_intent_id linked (no Paystack payment recorded)\n  - no wallet_transaction_id linked (not paid via Bubbles)\n\nThe typical source is admin walk-in records: the coach marked a member\npresent at the pool, but the member hadn't booked online. The billing\nUI surfaces this list so the member can pay the pool fee after-the-fact\nvia a generated Paystack link (POST /api/v1/payments/intents with\npurpose=session_booking, payment_metadata.booking_id=<this id>).",
+        "description": "List the current member's CONFIRMED bookings with an outstanding fee.\n\nA booking is \"unpaid\" when:\n  - status = CONFIRMED\n  - fee_amount_kobo > 0\n  - no payment_intent_id linked (no Paystack payment recorded)\n  - no wallet_transaction_id linked (not paid via Bubbles)\n\nThe typical source is admin walk-in records: the coach marked a member\npresent at the pool, but the member hadn't booked online. The billing\nUI surfaces this list so the member can pay the pool fee after-the-fact\nvia a generated Paystack link (POST /api/v1/payments/intents with\npurpose=session_booking, payment_metadata.booking_id=<this id>).\nPass ``?session_id=<uuid>`` to check a single session without scanning\nevery unpaid booking.",
         "operationId": "list_my_unpaid_bookings_sessions_bookings_me_unpaid_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/UnpaidBookingResponse"
                   },
-                  "type": "array",
                   "title": "Response List My Unpaid Bookings Sessions Bookings Me Unpaid Get"
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/sessions/{session_id}/admin/member-admission/{member_id}": {
@@ -11879,7 +11968,7 @@
           "bookings"
         ],
         "summary": "List My Bookings",
-        "description": "List the authenticated member's session bookings.\n\nDefaults to the *active* set \u2014 PENDING (payment in flight, still\nwithin the 15-min TTL) and CONFIRMED (paid, seat held). This is what\nthe member's \"Booked\" tab consumes: the booking lifecycle is\nintent-only, so a confirmed booking never produces an AttendanceRecord\nuntil day-of sign-in \u2014 the Booked tab must read bookings directly,\nnot attendance. Pass ``?status_filter=cancelled`` (etc.) to narrow to\na single state.\n\nRegistered before the admin ``/sessions/{session_id}/bookings`` route\nso the literal ``bookings/me`` path is matched first.",
+        "description": "List the authenticated member's session bookings.\n\nDefaults to the *active* set \u2014 PENDING (payment in flight, still\nwithin the 15-min TTL) and CONFIRMED (paid, seat held). This is what\nthe member's \"Booked\" tab consumes: the booking lifecycle is\nintent-only, so a confirmed booking never produces an AttendanceRecord\nuntil day-of sign-in \u2014 the Booked tab must read bookings directly,\nnot attendance. Pass ``?status_filter=cancelled`` (etc.) to narrow to\na single state, or ``?session_id=<uuid>`` for a single-session lookup.\n\nRegistered before the admin ``/sessions/{session_id}/bookings`` route\nso the literal ``bookings/me`` path is matched first.",
         "operationId": "list_my_bookings_sessions_bookings_me_get",
         "security": [
           {
@@ -11901,6 +11990,23 @@
                 }
               ],
               "title": "Status Filter"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
             }
           }
         ],
@@ -17167,6 +17273,25 @@
           }
         ],
         "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter attendance records to a single session.",
+              "title": "Session Id"
+            },
+            "description": "Filter attendance records to a single session."
+          },
           {
             "name": "include_session",
             "in": "query",
@@ -42339,7 +42464,7 @@
           "transport"
         ],
         "summary": "Get Session Ride Configs",
-        "description": "Get ride configurations for a session with route info and pickup location\navailability.",
+        "description": "Get ride configurations for a session with route info and pickup location\navailability.\n\nShort-circuits immediately when the session has no ride configurations\n(zero cross-service HTTP calls) and batches RideArea, PickupLocation,\nRideBooking counts, and RouteInfo lookups into constant SQL queries\n(ADR-024).",
         "operationId": "get_session_ride_configs_transport_sessions__session_id__ride_configs_get",
         "security": [
           {

@@ -2,7 +2,7 @@
 
 import time
 import uuid
-from typing import List
+from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, Query, Response
@@ -201,6 +201,10 @@ async def get_cohort_attendance_summary(
 @router.get("/me", response_model=List[AttendanceResponse])
 async def get_my_attendance_history(
     response: Response,
+    session_id: Optional[uuid.UUID] = Query(
+        default=None,
+        description="Filter attendance records to a single session.",
+    ),
     include_session: bool = Query(
         default=True,
         description="Include batched session display details.",
@@ -214,10 +218,13 @@ async def get_my_attendance_history(
     Get a bounded attendance-history page for the current member.
     """
     started_at = time.perf_counter()
+    query = select(AttendanceRecord).where(
+        AttendanceRecord.member_id == current_member.id
+    )
+    if session_id is not None:
+        query = query.where(AttendanceRecord.session_id == session_id)
     query = (
-        select(AttendanceRecord)
-        .where(AttendanceRecord.member_id == current_member.id)
-        .order_by(AttendanceRecord.created_at.desc())
+        query.order_by(AttendanceRecord.created_at.desc())
         .offset(offset)
         .limit(limit + 1)
     )

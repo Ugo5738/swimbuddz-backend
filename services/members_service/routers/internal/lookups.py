@@ -14,12 +14,20 @@ from sqlalchemy.orm import joinedload, raiseload
 
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
+from libs.common.datetime_utils import utc_now
 from libs.common.media_utils import resolve_media_urls
 from libs.db.session import get_async_db
 from services.members_service.models import Member
+from services.members_service.services.club_access import has_current_club_access
 
 from ._helpers import _membership_fields
-from ._schemas import ApprovedMemberBasic, MemberBasic, MemberSearchResult
+from ._schemas import (
+    ApprovedMemberBasic,
+    MemberBasic,
+    MemberMembershipResponse,
+    MemberSearchResult,
+)
+from .membership import build_member_membership_response
 
 router = APIRouter()
 
@@ -27,6 +35,10 @@ router = APIRouter()
 @router.get("/by-auth/{auth_id}", response_model=MemberBasic)
 async def get_member_by_auth_id(
     auth_id: str,
+    include_photo: bool = Query(
+        default=True,
+        description="Resolve profile photo URL from media_service (set false for ID-only lookups).",
+    ),
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -40,9 +52,9 @@ async def get_member_by_auth_id(
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    # Resolve profile photo URL from media service
+    # Resolve profile photo URL from media service only when requested.
     photo_url = None
-    if member.profile_photo_media_id:
+    if include_photo and member.profile_photo_media_id:
         url_map = await resolve_media_urls([member.profile_photo_media_id])
         photo_url = url_map.get(member.profile_photo_media_id)
 
@@ -55,6 +67,48 @@ async def get_member_by_auth_id(
         phone=member.profile.phone if member.profile else None,
         profile_photo_url=photo_url,
     )
+
+
+@router.get("/by-auth/{auth_id}/membership", response_model=MemberMembershipResponse)
+async def get_member_membership_by_auth_id(
+    auth_id: str,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Single-hop auth_id → member_id + normalized membership lookup (ADR-024).
+
+    Replaces the 2-step `/by-auth/{auth_id}` (which also called media_service
+    for profile photos) + `/{member_id}/membership` chain used on hot session
+    read paths.
+    """
+    result = await db.execute(
+        select(Member)
+        .where(Member.auth_id == auth_id)
+        .options(raiseload("*"), joinedload(Member.membership))
+    )
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    if member.membership is None:
+        effective_products = []
+        if await has_current_club_access(db, member_id=member.id, at=utc_now()):
+            effective_products = ["club"]
+        primary = effective_products[0] if effective_products else "prospect"
+        return MemberMembershipResponse(
+            member_id=str(member.id),
+            primary_tier=primary,
+            active_tiers=effective_products,
+            declared_tiers=["community"],
+            effective_paid_tiers=effective_products,
+            highest_paid_tier=primary,
+            community_paid_until=None,
+            club_paid_until=None,
+            academy_paid_until=None,
+            post_academy_club_until=None,
+        )
+
+    return await build_member_membership_response(db, member.membership)
 
 
 @router.get("/active", response_model=List[MemberBasic])

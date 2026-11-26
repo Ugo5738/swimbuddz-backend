@@ -284,8 +284,8 @@ quarter/member filters while avoiding unrelated automatic relationship reads.
 - **Auth:** Required
 - **Description:** Return a bounded page of the current member's attendance
   records, newest first. Session display details are resolved in one batch.
-- **Query Params:** `include_session` (default `true`), `limit` (default 100,
-  maximum 200), and `offset`.
+- **Query Params:** `session_id` (optional UUID filter for single-session checks),
+  `include_session` (default `true`), `limit` (default 100, maximum 200), and `offset`.
 - **Pagination Headers:** `X-Result-Count`, `X-Has-More`, and
   `X-Next-Offset` when another page exists.
 - **Diagnostics:** `Server-Timing` reports database, session-batch, and total
@@ -2155,6 +2155,9 @@ Companion worker: `swimbuddz_pools_worker` (ARQ on Redis queue `arq:pools`) — 
 - `POST /internal/sessions/club-reservations` (service role): idempotently confirms zero-fee future reservations for the exact purchased prepaid quarter inclusions. Locks sessions before capacity checks; canceled attendance stays canceled. After commit, attendance synchronization is retried through paid-entitlement fulfillment.
 - `POST /clubs/admin/plans/{plan_id}/sync-prepaid-reservations` (admin): `dry_run=true` previews candidate enrollments and included sessions without mutation. The default `false` backfills active prepaid purchasers of a published quarter, returning successful and failed enrollment IDs; transition members are excluded.
 - `GET /sessions/bookings/me/club-quarter` (member): own upcoming prepaid bookings, including canceled attendance.
+- `GET /sessions/bookings/me` and `GET /sessions/bookings/me/unpaid` (member): accept optional `session_id` UUID query param for fast single-session booking checks during checkout (`ADR-024`).
+- `GET /internal/members/by-auth/{auth_id}/membership` (service role): single-hop auth-ID → member ID + normalized membership lookup (zero `media_service` photo calls, `ADR-024`); `GET /internal/members/by-auth/{auth_id}` also accepts `include_photo=false` for ID-only lookups.
+- `GET /transport/sessions/{session_id}/ride-configs` (member): short-circuits to `[]` with zero cross-service HTTP calls when no ride configs exist for the session and batches area/location/booking-count/route lookups into constant SQL queries (`ADR-024`).
 - `GET /clubs/admin/members/{member_id}/enrollments` (admin): location-specific Club enrollment history used by the Admin member profile.
 - `POST /clubs/admin/enrollments/{source_enrollment_id}/location-transfer/preview` (admin): preview a permanent home-Club move, including remaining source/target swim value. Transition-per-session moves can execute immediately; quarterly-prepaid moves require financial reconciliation.
 - `POST /clubs/admin/enrollments/{source_enrollment_id}/location-transfer` (admin): execute a safe immediate home-Club move. Reuses Club readiness, validates target plan/Pod capacity, ends the source enrollment, creates the target transition enrollment, reconciles Pod membership, and writes a `ClubEnrollmentTransfer` audit row. Prepaid-quarter transfers return 409 until their value difference is explicitly reconciled.
