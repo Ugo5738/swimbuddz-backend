@@ -26,6 +26,7 @@ async def internal_request(
     calling_service: str,
     json: Any = None,
     params: Optional[dict] = None,
+    headers: Optional[dict[str, str]] = None,
     timeout: float = _DEFAULT_TIMEOUT,
 ) -> httpx.Response:
     """Make an authenticated internal service-to-service HTTP call.
@@ -37,6 +38,7 @@ async def internal_request(
         calling_service: Name of the calling service for the JWT "sub" claim.
         json: Optional JSON body.
         params: Optional query parameters.
+        headers: Optional extra HTTP headers (e.g. X-Ledger-Org-Id).
         timeout: Request timeout in seconds.
 
     Returns:
@@ -46,17 +48,21 @@ async def internal_request(
         httpx.RequestError on connection failures.
     """
     url = f"{service_url}{path}"
-    headers = {"Authorization": f"Bearer {_service_role_jwt(calling_service)}"}
+    req_headers = {"Authorization": f"Bearer {_service_role_jwt(calling_service)}"}
     request_id = get_request_id()
     if request_id:
-        headers["X-Request-ID"] = request_id
-    headers["X-Caller-Service"] = calling_service
+        req_headers["X-Request-ID"] = request_id
+    req_headers["X-Caller-Service"] = calling_service
+    if headers:
+        for k, v in headers.items():
+            if k.lower() != "authorization":
+                req_headers[k] = v
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.request(
             method,
             url,
-            headers=headers,
+            headers=req_headers,
             json=json,
             params=params,
         )
@@ -69,6 +75,7 @@ async def internal_get(
     path: str,
     calling_service: str,
     params: Optional[dict] = None,
+    headers: Optional[dict[str, str]] = None,
     timeout: float = _DEFAULT_TIMEOUT,
 ) -> httpx.Response:
     """Convenience wrapper for GET requests."""
@@ -78,6 +85,7 @@ async def internal_get(
         path=path,
         calling_service=calling_service,
         params=params,
+        headers=headers,
         timeout=timeout,
     )
 
@@ -88,6 +96,7 @@ async def internal_post(
     path: str,
     calling_service: str,
     json: Any = None,
+    headers: Optional[dict[str, str]] = None,
     timeout: float = _DEFAULT_TIMEOUT,
 ) -> httpx.Response:
     """Convenience wrapper for POST requests."""
@@ -97,6 +106,7 @@ async def internal_post(
         path=path,
         calling_service=calling_service,
         json=json,
+        headers=headers,
         timeout=timeout,
     )
 
@@ -107,6 +117,7 @@ async def internal_patch(
     path: str,
     calling_service: str,
     json: Any = None,
+    headers: Optional[dict[str, str]] = None,
     timeout: float = _DEFAULT_TIMEOUT,
 ) -> httpx.Response:
     """Convenience wrapper for PATCH requests."""
@@ -116,6 +127,7 @@ async def internal_patch(
         path=path,
         calling_service=calling_service,
         json=json,
+        headers=headers,
         timeout=timeout,
     )
 

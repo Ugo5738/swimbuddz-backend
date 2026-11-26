@@ -47,7 +47,9 @@ from services.store_service.models import (  # noqa: F401
     StorePurchaseOrder,
     StorePurchaseOrderLine,
     StoreSupplierInvoice,
+    StoreSupplierInvoiceSettlement,
     StoreTradeReceivable,
+    StoreTradeReceivablePayment,
 )
 
 settings = get_settings()
@@ -88,7 +90,9 @@ SERVICE_TABLES = {
     "store_inventory_valuations",
     "store_cost_events",
     "store_supplier_invoices",
+    "store_supplier_invoice_settlements",
     "store_trade_receivables",
+    "store_trade_receivable_payments",
     "store_opening_reconciliations",
 }
 
