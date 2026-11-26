@@ -19,6 +19,11 @@ import time
 from pathlib import Path
 
 from libs.common.logging import get_logger
+from services.ai_service.analysis.drills import (
+    format_ti_drill_line,
+    is_safe_drill_text,
+    resolve_ti_drill,
+)
 from services.ai_service.coach.coach import run_coach
 from services.ai_service.coach.rubric import build_goal_block
 from services.ai_service.pipeline.component import Component
@@ -34,6 +39,7 @@ from services.ai_service.pipeline.types import (
     Phase,
     RunContext,
 )
+from services.ai_service.pipeline.verify import check_honesty_violations
 
 logger = get_logger(__name__)
 
@@ -156,6 +162,9 @@ class HolisticCoachComponent(Component):
                 gate_context=gate_context,
                 goal_block=build_goal_block(ctx.coaching),  # discipline framing (§12)
                 video=video_bytes,
+                video_fps=ctx.config.coach_video_fps if video_bytes else None,
+                video_detail=ctx.config.coach_video_detail if video_bytes else None,
+                reasoning_effort=ctx.config.coach_reasoning_effort,
             )
             raw, model, paid = report.raw, report.model, report.cost_usd
             used_video = video_bytes is not None
@@ -164,22 +173,46 @@ class HolisticCoachComponent(Component):
         # In video mode the coach cites timestamps; in stills mode, frame indices.
         ev = _evidence_frames_video if used_video else _evidence_frames
         conf = raw.get("confidence") or 0.0
+        gate_view = getattr(ctx.gate, "view", None) if ctx.gate is not None else None
         findings: list[Finding] = []
+        filtered_fixes = 0
 
         for fx in raw.get("priority_fixes") or []:
+            fault = fx.get("fault", "") or ""
+            why = fx.get("why_it_matters", "") or ""
+            if check_honesty_violations(
+                f"{fault} {why}",
+                profile=ctx.profile,
+                view=gate_view,
+                severity=SEVERITY_FIX,
+            ):
+                filtered_fixes += 1
+                continue
+            area = fx.get("area")
+            drill_text = fx.get("drill", "") or ""
+            ti_drill = resolve_ti_drill(area, discipline=ctx.coaching.discipline)
+            extra = {
+                "why_it_matters": why,
+                "drill": drill_text,
+                "evidence_text": fx.get("evidence", ""),
+            }
+            if ti_drill is not None:
+                extra["drill_key"] = ti_drill["key"]
+                extra["drill_title"] = ti_drill["title"]
+                extra["primary_focal_point"] = ti_drill["primary_focal_point"]
+                extra["safety_note"] = ti_drill["safety_note"]
+                extra["academy_ref"] = ti_drill["academy_ref"]
+                if not is_safe_drill_text(drill_text):
+                    extra["drill"] = format_ti_drill_line(ti_drill)
             findings.append(
                 Finding(
                     component=self.name,
-                    observation=fx.get("fault", "") or "",
+                    observation=fault,
                     severity=SEVERITY_FIX,
                     evidence_frames=ev(fx.get("evidence", ""), ctx.frames),
                     confidence=conf,
-                    area=fx.get("area"),
-                    extra={
-                        "why_it_matters": fx.get("why_it_matters", ""),
-                        "drill": fx.get("drill", ""),
-                        "evidence_text": fx.get("evidence", ""),
-                    },
+                    area=area,
+                    extra=extra,
                 )
             )
         for w in raw.get("whats_working") or []:
@@ -215,6 +248,7 @@ class HolisticCoachComponent(Component):
                 "usable_for_coaching": raw.get("usable_for_coaching"),
                 "model": model,
                 "video": used_video,
+                "filtered_fixes": filtered_fixes,
             },
         )
 

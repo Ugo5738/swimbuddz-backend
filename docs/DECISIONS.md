@@ -286,17 +286,28 @@
 ---
 
 ## ADR-013: Stroke Lab AI Video Analyzer & Total Immersion (TI) Coaching Doctrine
-- **Status:** Settled & Enforced (Jul–Sep 2026, PRs `#208`, `#210`, `#232`)
+- **Status:** Settled & Enforced (Jul–Nov 2026, PRs `#208`, `#210`, `#232`, `#439`, v2 reliability upgrade)
 - **Context & Why:**
   - Generic LLM swim advice often tells adult learners to "kick harder" or "pull harder" (increasing drag and exhaustion) or hallucinates underwater catch/crossover faults that are impossible to see from an above-water side camera.
+  - Furthermore, default 1 FPS static video processing misses ~0.8–1.0s arm recoveries, Gemini 2.5/3.x thinking tokens truncate JSON when `max_tokens` is tight, newer late-2026 model IDs (e.g. `gemini-3.8-flash`, `gemini-3.5-flash-lite`) can silently return `$0.00` from LiteLLM pricing tables (blinding cost circuit breakers), and `ultralytics` `yolov8-pose` carries AGPL commercial licensing obligations.
 - **Decision & Non-Negotiable Invariants:**
   - **TI-Informed Priority Order (`STROKELAB_TI_COACHING_KNOWLEDGE_BANK.md`):** Stroke Lab coaches efficiency-first in strict order: **1. Balance & Comfort → 2. Drag Reduction & Streamline (Shape the Vessel) → 3. Whole-Body Rotation & Propulsion**, prescribing **one focal point / drill at a time**.
   - **Strict Camera-Angle Visibility Rules ("Honesty Over Helpfulness"):** Never diagnose underwater catch/pull from above-water clips, and never claim midline crossover from side-on footage. Return `unclear` / `unavailable` when an aspect is not visible.
-  - **Public & Member Analyzer:** Public guest analyzer enforces compute isolation, credit checks, and worker ready-emails (`STROKELAB_PUBLIC_ANALYZER_DESIGN.md`).
+  - **Controlled Staged Pipeline Over Autonomous Agent Swarms (25 Nov 2026):** Keep fixed, deterministic ARQ-orchestrated stages (`Gate → Segment/Pose → Chunk/Aspect Coach → Verify → Grade → Aggregator → Compare`) with bounded per-attempt call/spend circuit breakers rather than free-roaming multi-agent debates.
+  - **Explicit Video FPS, Hybrid Key Stills & Thinking-Token Headroom:** Pass explicit `video_metadata.fps` (default `4.0` FPS on ~4s stroke chunks, configurable via `STROKELAB_COACH_VIDEO_FPS`) and optional high-resolution key frames alongside chunk video (`STROKELAB_COACH_CHUNK_HYBRID_STILLS`) for Gemini 3+ video calls; enforce `reasoning_effort="low"` and `max_tokens >= 4096` headroom for thinking-model JSON responses, plus resilient JSON object extraction.
+  - **Fail-Safe Cost Accounting for New Models:** Maintain a conservative fallback token-rate table (anchored on standard post-promo Jan 2027 rates, e.g., `gemini-3.8-flash` `$1.50/$7.50` per 1M tokens) in `providers/base.py` so per-attempt and daily AI cost circuit breakers never report `$0.00` on models absent from LiteLLM's bundled pricing JSON.
+  - **Graded 3-Tier Gate, Runtime Verification & Safe TI Drill Grounding:** The gate emits graded `profile_quality` (`clean | partial | poor`) plus explicit `catastrophic_flags` while preserving 3-tier `clean / borderline / refuse` UX. Deterministic post-VLM verification (`pipeline/verify.py`) enforces closed-enum verdicts, runtime ADR-013 honesty/visibility bans (including overhead body-line sink suppression and side-on crossover rejection), cross-stroke consensus across sampled chunks, and optional selective second-model adjudication (`STROKELAB_COACH_ADJUDICATOR_MODEL`) only for uncertain top findings. Drills map deterministically to the curated beginner-safe TI drill catalog (`analysis/drills.py`, aligned with `ADR-010`) rather than unvetted free-text LLM advice.
+  - **Permissive Pose Engine & Zero-Cost Longitudinal Progress:** Support an Apache-2.0 `rtmlib` / `onnxruntime` (`RTMPose`) pose recovery backend (`STROKELAB_POSE_ENGINE`) alongside `yolov8` to remove AGPL exposure, and attach deterministic zero-VLM-cost longitudinal progression diffs (`pipeline/compare.py`) comparing verified aspect verdicts against a swimmer's previous completed freestyle analysis.
+  - **Coach-Labeled Multi-Config Bake-Off Before Model Swaps:** Benchmark candidate models and input modes (starting with 25–30 stratified coach-labeled clips, scaling to 100+) across repeated runs via `validation/bakeoff_eval.py`, tracking coach inter-rater agreement, repeatability, refusal accuracy, honesty violations, and Jan-2027 unit cost before changing production defaults.
+  - **Public & Member Analyzer:** Public guest analyzer enforces compute isolation, verified email ownership, credit checks, cost circuit breakers, and worker ready-emails (`STROKELAB_PUBLIC_ANALYZER_DESIGN.md`).
 - **Canonical Docs & Code:**
   - `docs/design/STROKELAB_TI_COACHING_KNOWLEDGE_BANK.md`
   - `docs/design/STROKELAB_VLM_COACH_DESIGN.md`
   - `docs/design/STROKELAB_PUBLIC_ANALYZER_DESIGN.md`
+  - `swimbuddz-backend/docs/design/STROKELAB_MVP_ENGINE_EVALUATION_20261121.md`
+  - `swimbuddz-backend/services/ai_service/pipeline/verify.py`
+  - `swimbuddz-backend/services/ai_service/pipeline/compare.py`
+  - `swimbuddz-backend/services/ai_service/validation/bakeoff_eval.py`
 
 ---
 

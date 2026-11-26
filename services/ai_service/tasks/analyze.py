@@ -630,6 +630,12 @@ async def _run_coach_pipeline(
         coach_model=s.STROKELAB_COACH_MODEL,
         coach_video=s.STROKELAB_COACH_VIDEO,
         coach_video_max_mb=s.STROKELAB_COACH_VIDEO_MAX_MB,
+        coach_video_fps=s.STROKELAB_COACH_VIDEO_FPS,
+        coach_video_detail=s.STROKELAB_COACH_VIDEO_DETAIL,
+        coach_chunk_hybrid_stills=s.STROKELAB_COACH_CHUNK_HYBRID_STILLS,
+        coach_reasoning_effort=s.STROKELAB_COACH_REASONING_EFFORT,
+        adjudicator_model=s.STROKELAB_COACH_ADJUDICATOR_MODEL or None,
+        pose_engine=s.STROKELAB_POSE_ENGINE,
         segment_model=s.STROKELAB_COACH_SEGMENT_MODEL,
         max_coached_recoveries=s.STROKELAB_COACH_MAX_RECOVERIES,
         coach_call_delay_s=s.STROKELAB_COACH_INTER_VLM_DELAY_S,
@@ -878,6 +884,65 @@ async def _mark_coach_retrying(
         await _mark_failed(job_id, "temporarily_unavailable")
 
 
+async def _attach_longitudinal_comparison(
+    session,
+    job: AnalysisJob,
+    coach_payload: dict | None,
+) -> None:
+    """Attach a deterministic $0 progress diff vs the swimmer's previous swim.
+
+    Best-effort: never blocks completion. Compares only against the same owner's
+    most recent prior COMPLETED analysis of the same stroke.
+    """
+    if not coach_payload:
+        return
+    try:
+        from services.ai_service.pipeline.compare import compare_runs
+
+        owner_filter = None
+        if job.source == AnalysisJobSource.MEMBER and job.member_auth_id is not None:
+            owner_filter = AnalysisJob.member_auth_id == job.member_auth_id
+        elif job.source == AnalysisJobSource.PUBLIC and job.guest_email:
+            owner_filter = AnalysisJob.guest_email == job.guest_email
+        if owner_filter is None:
+            return
+
+        prev_row = await session.execute(
+            select(AnalysisJob, AnalysisResult)
+            .join(AnalysisResult, AnalysisResult.job_id == AnalysisJob.id)
+            .where(
+                owner_filter,
+                AnalysisJob.id != job.id,
+                AnalysisJob.status == AnalysisJobStatus.COMPLETED,
+                AnalysisJob.stroke_type == job.stroke_type,
+            )
+            .order_by(AnalysisJob.completed_at.desc(), AnalysisJob.created_at.desc())
+            .limit(1)
+        )
+        match = prev_row.first()
+        if match is None:
+            return
+        prev_job, prev_result = match
+        diff = compare_runs(
+            coach_payload,
+            prev_result.coach_result,
+            previous_job_id=str(prev_job.id),
+            previous_completed_at=(
+                prev_job.completed_at.isoformat() if prev_job.completed_at else None
+            ),
+        )
+        if diff is not None:
+            coach_payload["comparison"] = diff
+            if isinstance(coach_payload.get("result"), dict):
+                meta = dict(coach_payload["result"].get("meta") or {})
+                meta["comparison"] = diff
+                coach_payload["result"]["meta"] = meta
+    except Exception:
+        logger.debug(
+            "Longitudinal comparison skipped for job %s", job.id, exc_info=True
+        )
+
+
 async def _write_completed(
     job_id: uuid.UUID,
     detected_stroke: str,
@@ -903,6 +968,8 @@ async def _write_completed(
         # The annotated pose-overlay video is retired with the pose engine; the
         # result page falls back to the original clip.
         job.annotated_video_storage_path = None
+
+        await _attach_longitudinal_comparison(session, job, coach_payload)
 
         provider_usage = None
         if usage_events is not None:
