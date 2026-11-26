@@ -20,6 +20,8 @@ from libs.db.base import Base
 from services.academy_service.models import (  # noqa: F401
     AcademyCompetencyRevocation,
     AcademyCompetencyVerification,
+    AcademyMilestoneRemedialDrill,
+    AcademyStudentDrillAssignment,
     AcademyCohortRequirementsSnapshot,
     AcademyMilestoneDefinition,
     AcademyMilestoneVersion,
@@ -75,6 +77,8 @@ target_metadata = Base.metadata
 SERVICE_TABLES = {
     "academy_competency_verifications",
     "academy_competency_revocations",
+    "academy_milestone_remedial_drills",
+    "academy_student_drill_assignments",
     "academy_cohort_requirements_snapshots",
     "academy_milestone_definitions",
     "academy_milestone_versions",

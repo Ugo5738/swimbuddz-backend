@@ -196,7 +196,7 @@
 ---
 
 ## ADR-010: Modular Academy Curriculum, Versioned Catalog & Evidence-Backed Competency Passport (V2)
-- **Status:** Settled & Enforced — V2 Implementation Contract Accepted (Nov 2026; PRs `#424`, `#442`, `#445`, `#446`, `#217`, `#220`, `#222`, hardening/ops follow-up). Supersedes the V1 schema/auto-backfill clauses of `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` while preserving its pedagogical pathway taxonomy and TI coaching goals.
+- **Status:** Settled & Enforced — V2 Implementation Contract Accepted (Nov 2026; PRs `#424`, `#442`, `#445`, `#446`, `#461`, `#217`, `#220`, `#222`, `#234`, plus Native V2 Assessments & TI Drill Prescriptions). Supersedes the V1 schema/auto-backfill clauses of `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` while preserving its pedagogical pathway taxonomy and TI coaching goals.
 - **Context & Why:**
   - Selling only a monolithic 12-week Beginner-to-50m course forced swimmers with partial skills to repeat basics and limited entry points to three intakes a year. Conversely, an unguided à-la-carte lesson menu causes choice overload and lets learners skip water safety.
   - The earlier V1 draft (`ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`) proposed mutating legacy `milestones.program_id` to nullable, attaching mutable milestone rows via `program_milestones`/`cohort_milestones`, and auto-backfilling a mutable `learner_milestone_credits` table from historical `student_progress` rows. Review showed two fatal risks in V1: (1) editing a rubric later would silently alter historical cohort/graduate standards, and (2) auto-backfilling legacy `student_progress` rows of uneven rigor or missing video evidence would inflate trust in portable safety credentials.
@@ -218,7 +218,15 @@
     - **No Automatic Legacy Backfill:** A historical `StudentProgress` achievement becomes a portable competency credit **only** after a human administrator (never `service_role` or AI) confirms equivalence against a frozen cohort V2 milestone standard, attests every published criterion in `criteria_passed`, provides a substantive `equivalence_reason`, and backend verification confirms the private video evidence exists (`HeadObject` via `media_service` `/internal/media/alumni-evidence/{id}`), belongs to the original claimant/coach uploader, and has not changed since approval.
     - One source review event (`source_review_event_id`) can issue at most one credential. Validity/expiry anchors to the **original assessment date** (`review.created_at`), never the later administrative import date.
     - Read projections (`/competencies/me`, `/competencies/admin/members/{member_auth_id}`) dynamically check revocations, expiry, and whether the underlying source `StudentProgress` / latest review decision remains `ACHIEVED` with unchanged evidence — failing closed to `recheck_required` if overridden or missing, and surfacing `revoked` when all supporting verifications have been withdrawn.
-  - **Controlled Rollout & Legacy Isolation:** Legacy graduation, certificates, Club readiness (`ADR-005`), attendance (`ADR-004`), and commercial terms remain isolated until dual-read parity, native coach V2 assessments, and remedial/personalized drill prescriptions are explicitly promoted in later phases.
+    - **Native V2 Assessment Write Paths (`source_type IN ('legacy_promotion', 'cohort_v2', 'diagnostic_assessment')`):**
+      - `cohort_v2` (`POST /competencies/coach/assess-cohort`): An assigned cohort coach (`require_coach_for_cohort`) or human admin directly verifies an enrolled swimmer against one of the cohort's frozen V2 video/time-trial milestones, validating private S3 video (`linked_id = "{enrollment_id}:{milestone_version_id}"`), attesting every published rubric criterion, and recording substantive assessment notes (`>=20` chars).
+      - `diagnostic_assessment` (`POST /competencies/admin/assess-diagnostic`): A human coach or admin verifies a swimmer during a pre-enrollment diagnostic clinic against any published video/time-trial V2 milestone (`linked_id = "diagnostic:{member_id}:{milestone_version_id}"`), issuing portable prerequisite credit before cohort enrollment.
+      - `assessor_role IN ('coach', 'admin')`: `service_role` and AI remain strictly blocked (`403`) from issuing practical competency credentials.
+      - Read projections evaluate `legacy_promotion` rows against source `StudentProgress` + latest review event, and evaluate primary `cohort_v2` / `diagnostic_assessment` rows directly against revocation + expiry (`verified` / `expired` / `revoked`).
+    - **TI Remedial & Personalized Drill Prescriptions (`academy_milestone_remedial_drills` + `academy_student_drill_assignments`):**
+      - Canonical milestones link to recommended TI remedial drills (resolved to latest published `AcademyDrillVersion` with 1 `primary_focal_cue` and steps) surfaced automatically on unverified milestones in the learner's V2 cohort learning plan (`GET /competencies/enrollments/{enrollment_id}/v2-plan`), alongside **Prior Credit** badges for competencies already verified in earlier cohorts or diagnostic clinics.
+      - Coaches/admins (and future Stroke Lab AI recommendations) can prescribe version-pinned drills to an enrolled student or member with a personalized focal cue note and sets/distance prescription. Learners may mark their own assigned drills `practiced`; only coaches/admins may mark drills `mastered` or `archived`.
+  - **Controlled Rollout & Legacy Isolation:** Legacy graduation, certificates, Club readiness (`ADR-005`), attendance (`ADR-004`), and commercial terms remain isolated until explicitly switched in Phase 5 after dual-read parity is verified.
 - **Canonical Docs & Code:**
   - `docs/design/ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`
   - `swimbuddz-backend/docs/design/ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`
@@ -230,10 +238,13 @@
   - `swimbuddz-backend/services/academy_service/routers/curriculum_library.py`
   - `swimbuddz-backend/services/academy_service/routers/requirements.py`
   - `swimbuddz-backend/services/academy_service/routers/competencies.py`
+  - `swimbuddz-backend/services/academy_service/routers/drill_assignments.py`
   - `swimbuddz-backend/services/academy_service/services/requirements_resolver.py`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/curriculum-library/page.tsx`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/requirements/page.tsx`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/competencies/page.tsx`
+  - `swimbuddz-frontend/src/app/coach/students/[enrollmentId]/page.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/academy/enrollments/[id]/page.tsx`
   - `swimbuddz-frontend/src/app/(member)/account/academy/passport/page.tsx`
 
 ---
