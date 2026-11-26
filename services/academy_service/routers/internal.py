@@ -979,3 +979,20 @@ async def member_academy_financial_obligations(
         }
         for enrollment in enrollments
     ]
+
+
+@router.get("/competencies/members/{member_auth_id}/club-readiness-advisory")
+async def internal_member_club_readiness_advisory(
+    member_auth_id: str,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Service-role read-only Club-readiness advisory from V2 competency passport.
+
+    Strictly advisory evidence (ADR-005 / ADR-010); never auto-approves Club admission.
+    """
+    from services.academy_service.services.parity import (
+        compute_club_readiness_advisory,
+    )
+
+    return await compute_club_readiness_advisory(db, member_auth_id)
