@@ -186,17 +186,29 @@ async def send_weekly_progress_reports():
 
 async def check_and_issue_certificates():
     """
-    Check for enrollments where all milestones are achieved but no certificate issued.
-    Generate certificates and send emails.
+    Check for enrollments eligible for completion certificates and graduation rewards.
+
+    Respects ``ACADEMY_V2_GRADUATION_MODE`` (default ``"legacy"``):
+    - ``"legacy"``: Legacy program milestone completion governs issuance.
+    - ``"shadow_log"``: Legacy governs issuance; also logs non-PII V2 parity summaries.
+    - ``"v2_enforced"``: Cohorts with a SHA-256-verified frozen V2 snapshot require
+      live verified V2 credentials for every required milestone & safety_gate plus
+      required cohort quizzes; unfrozen historical cohorts safely retain legacy rules.
     """
     async for db in get_async_db():
         try:
             # Reward-granting lives in academy's enrollment tasks; import here to
             # avoid any import-time coupling between the two task modules.
+            from services.academy_service.services.parity import (
+                compute_cohort_graduation_parity,
+                get_graduation_mode,
+                required_quizzes_passed_by_enrollment,
+            )
             from services.academy_service.tasks.enrollment import (
                 grant_graduation_rewards,
             )
 
+            graduation_mode = get_graduation_mode()
             now = utc_now()
             reward_cutoff = now - timedelta(days=REWARD_RETRY_DAYS)
 
@@ -214,16 +226,49 @@ async def check_and_issue_certificates():
                 if not program:
                     continue
 
-                # Total milestones defined for this program
-                total_milestones = (
-                    await db.execute(
-                        select(func.count(Milestone.id)).where(
-                            Milestone.program_id == program.id
+                # Optional shadow telemetry (never alters or blocks legacy issuance)
+                v2_parity_by_enrollment: dict[str, dict] | None = None
+                use_v2_for_cohort = False
+                if graduation_mode == "shadow_log":
+                    try:
+                        await compute_cohort_graduation_parity(db, cohort.id)
+                    except Exception:
+                        logger.warning(
+                            "Shadow graduation parity logging failed for cohort %s "
+                            "(best-effort; legacy issuance unaffected)",
+                            cohort.id,
+                            exc_info=True,
                         )
+                elif graduation_mode == "v2_enforced":
+                    parity_report = await compute_cohort_graduation_parity(
+                        db, cohort.id
                     )
-                ).scalar() or 0
-                if total_milestones == 0:
-                    continue  # No milestones defined
+                    if parity_report["has_frozen_snapshot"]:
+                        if not parity_report["snapshot_integrity_valid"]:
+                            logger.error(
+                                "Skipping V2 certificate issuance for cohort %s: "
+                                "frozen snapshot integrity check failed",
+                                cohort.id,
+                            )
+                            continue
+                        use_v2_for_cohort = True
+                        v2_parity_by_enrollment = {
+                            row["enrollment_id"]: row
+                            for row in parity_report["enrollments"]
+                        }
+
+                # Total legacy milestones defined for this program (required when legacy rules apply)
+                total_milestones = 0
+                if not use_v2_for_cohort:
+                    total_milestones = (
+                        await db.execute(
+                            select(func.count(Milestone.id)).where(
+                                Milestone.program_id == program.id
+                            )
+                        )
+                    ).scalar() or 0
+                    if total_milestones == 0:
+                        continue  # No milestones defined
 
                 # Enrollments that may need a certificate OR a (re)grant of
                 # graduation rewards: not yet certified, or certified within the
@@ -239,6 +284,14 @@ async def check_and_issue_certificates():
                 enrollments = (await db.execute(enrollment_query)).scalars().all()
                 if not enrollments:
                     continue
+
+                quizzes_passed_map: dict = {}
+                if use_v2_for_cohort:
+                    quizzes_passed_map = await required_quizzes_passed_by_enrollment(
+                        db,
+                        cohort_id=cohort.id,
+                        enrollment_ids=[e.id for e in enrollments],
+                    )
 
                 # Bulk-lookup member details
                 member_ids = list({str(e.member_id) for e in enrollments})
@@ -266,18 +319,27 @@ async def check_and_issue_certificates():
                     if not member:
                         continue
 
-                    # Count coach-approved (ACHIEVED) milestones.
-                    achieved_count = (
-                        await db.execute(
-                            select(func.count(StudentProgress.id)).where(
-                                StudentProgress.enrollment_id == enrollment.id,
-                                StudentProgress.status == "achieved",
+                    if use_v2_for_cohort and v2_parity_by_enrollment is not None:
+                        parity_row = v2_parity_by_enrollment.get(str(enrollment.id))
+                        if (
+                            not parity_row
+                            or not parity_row["v2_eligible"]
+                            or not quizzes_passed_map.get(enrollment.id, False)
+                        ):
+                            continue
+                    else:
+                        # Count coach-approved (ACHIEVED) legacy milestones.
+                        achieved_count = (
+                            await db.execute(
+                                select(func.count(StudentProgress.id)).where(
+                                    StudentProgress.enrollment_id == enrollment.id,
+                                    StudentProgress.status == "achieved",
+                                )
                             )
-                        )
-                    ).scalar() or 0
+                        ).scalar() or 0
 
-                    if achieved_count < total_milestones:
-                        continue  # Hasn't finished all milestones yet.
+                        if achieved_count < total_milestones:
+                            continue  # Hasn't finished all milestones yet.
 
                     # Issue the certificate the first time they qualify.
                     if enrollment.certificate_issued_at is None:

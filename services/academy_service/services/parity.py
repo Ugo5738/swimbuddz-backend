@@ -9,13 +9,14 @@ All functions in this module are strictly read-only projections:
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from libs.common.config import get_settings
 from libs.common.datetime_utils import utc_now
 from libs.common.logging import get_logger
 from libs.common.service_client import get_members_bulk
@@ -34,11 +35,59 @@ from services.academy_service.models import (
     ProgressStatus,
     StudentProgress,
 )
+from services.academy_service.models.quizzes import (
+    AcademyQuizAssignment,
+    AcademyQuizAttempt,
+)
 from services.academy_service.services.requirements_resolver import (
     requirements_sha256,
 )
 
 logger = get_logger(__name__)
+
+GraduationMode = Literal["legacy", "shadow_log", "v2_enforced"]
+_VALID_GRADUATION_MODES: set[str] = {"legacy", "shadow_log", "v2_enforced"}
+
+
+def get_graduation_mode() -> GraduationMode:
+    """Return normalized Academy V2 graduation consumer mode (fails safe to 'legacy')."""
+    raw = getattr(get_settings(), "ACADEMY_V2_GRADUATION_MODE", "legacy") or "legacy"
+    normalized = raw.strip().lower()
+    if normalized not in _VALID_GRADUATION_MODES:
+        logger.warning(
+            "Unknown ACADEMY_V2_GRADUATION_MODE=%r; failing safe to 'legacy'",
+            raw,
+        )
+        return "legacy"
+    return normalized  # type: ignore[return-value]
+
+
+def get_graduation_mode_summary() -> dict[str, Any]:
+    """Read-only status payload surfacing the active Phase 5B graduation consumer mode."""
+    mode = get_graduation_mode()
+    descriptions = {
+        "legacy": (
+            "Legacy milestone completion governs certificate issuance and PDF downloads "
+            "(default safe mode)."
+        ),
+        "shadow_log": (
+            "Legacy milestone completion still governs certificates while the daily job "
+            "records non-PII V2 dual-read parity telemetry."
+        ),
+        "v2_enforced": (
+            "Frozen cohorts require live verified V2 competency credentials (including "
+            "safety gates) and required cohort quizzes for certificate issuance and PDF "
+            "downloads; unfrozen historical cohorts safely retain legacy rules."
+        ),
+    }
+    return {
+        "mode": mode,
+        "v2_enforced_active": mode == "v2_enforced",
+        "shadow_logging_active": mode == "shadow_log",
+        "legacy_fallback_for_unfrozen_cohorts": True,
+        "description": descriptions[mode],
+    }
+
 
 DECISION_EVENT_TYPES = (
     MilestoneEventType.APPROVED,
@@ -770,3 +819,249 @@ async def compute_club_readiness_advisory(
             "revoked": revoked_count,
         },
     }
+
+
+async def _missing_required_cohort_quizzes(
+    db: AsyncSession,
+    *,
+    cohort_id: uuid.UUID | None,
+    enrollment_id: uuid.UUID,
+) -> set[uuid.UUID]:
+    if cohort_id is None:
+        return set()
+    required_quizzes = set(
+        (
+            await db.execute(
+                select(AcademyQuizAssignment.id).where(
+                    AcademyQuizAssignment.cohort_id == cohort_id,
+                    AcademyQuizAssignment.required.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not required_quizzes:
+        return set()
+    passed_quizzes = set(
+        (
+            await db.execute(
+                select(AcademyQuizAttempt.assignment_id).where(
+                    AcademyQuizAttempt.enrollment_id == enrollment_id,
+                    AcademyQuizAttempt.passed.is_(True),
+                    AcademyQuizAttempt.assignment_id.in_(required_quizzes),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return required_quizzes - passed_quizzes
+
+
+async def required_quizzes_passed_by_enrollment(
+    db: AsyncSession,
+    *,
+    cohort_id: uuid.UUID,
+    enrollment_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, bool]:
+    """Batch-check required cohort knowledge quiz completion for a cohort (zero N+1)."""
+    if not enrollment_ids:
+        return {}
+    required_quizzes = set(
+        (
+            await db.execute(
+                select(AcademyQuizAssignment.id).where(
+                    AcademyQuizAssignment.cohort_id == cohort_id,
+                    AcademyQuizAssignment.required.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not required_quizzes:
+        return {eid: True for eid in enrollment_ids}
+    passed_rows = (
+        await db.execute(
+            select(
+                AcademyQuizAttempt.enrollment_id,
+                AcademyQuizAttempt.assignment_id,
+            ).where(
+                AcademyQuizAttempt.enrollment_id.in_(enrollment_ids),
+                AcademyQuizAttempt.passed.is_(True),
+                AcademyQuizAttempt.assignment_id.in_(required_quizzes),
+            )
+        )
+    ).all()
+    passed_by_enrollment: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for eid, assignment_id in passed_rows:
+        passed_by_enrollment.setdefault(eid, set()).add(assignment_id)
+    return {
+        eid: required_quizzes.issubset(passed_by_enrollment.get(eid, set()))
+        for eid in enrollment_ids
+    }
+
+
+async def evaluate_enrollment_certificate_eligibility(
+    db: AsyncSession,
+    enrollment: Enrollment,
+    *,
+    mode: GraduationMode | None = None,
+    check_quizzes: bool = True,
+) -> dict[str, Any]:
+    """Single authoritative eligibility evaluator for certificate downloads & issuance.
+
+    - In 'legacy' or 'shadow_log' mode (or when the cohort has no frozen V2 snapshot),
+      evaluates legacy StudentProgress milestones + optional required cohort quizzes.
+    - In 'v2_enforced' mode for a cohort with a frozen V2 snapshot, fails closed on
+      snapshot integrity errors, requires live verified V2 credentials for every
+      required milestone and safety_gate (recognizing prior/diagnostic credit and
+      failing closed on expiry/revocation), and checks required cohort quizzes.
+    """
+    effective_mode = mode or get_graduation_mode()
+
+    snapshot = (
+        (
+            await db.execute(
+                select(AcademyCohortRequirementsSnapshot).where(
+                    AcademyCohortRequirementsSnapshot.cohort_id == enrollment.cohort_id
+                )
+            )
+        ).scalar_one_or_none()
+        if enrollment.cohort_id
+        else None
+    )
+
+    if effective_mode == "v2_enforced" and snapshot is not None:
+        if (
+            snapshot.program_id != enrollment.program_id
+            or requirements_sha256(snapshot.requirements_json) != snapshot.sha256
+        ):
+            return {
+                "eligible": False,
+                "mode_used": "v2_enforced",
+                "reason": (
+                    "Certificate eligibility suspended: frozen cohort requirements "
+                    "integrity check failed"
+                ),
+            }
+
+        raw_milestones = snapshot.requirements_json.get("milestones", [])
+        required_milestones = [
+            m
+            for m in raw_milestones
+            if bool(m.get("required_for_completion")) or bool(m.get("safety_gate"))
+        ]
+        if not required_milestones or not enrollment.member_auth_id:
+            return {
+                "eligible": False,
+                "mode_used": "v2_enforced",
+                "reason": (
+                    "Certificate eligibility suspended: required V2 competency "
+                    "credentials are incomplete"
+                ),
+            }
+
+        records = (
+            (
+                await db.execute(
+                    select(AcademyCompetencyVerification)
+                    .where(
+                        AcademyCompetencyVerification.member_auth_id
+                        == str(enrollment.member_auth_id)
+                    )
+                    .order_by(
+                        AcademyCompetencyVerification.verified_at.desc(),
+                        AcademyCompetencyVerification.id.desc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        projected = await project_verifications(db, records)
+        verified_def_ids = {
+            v["milestone_definition_id"] for v in projected if v["status"] == "verified"
+        }
+        missing_codes = [
+            str(m.get("code") or m.get("definition_id"))
+            for m in required_milestones
+            if str(m.get("definition_id") or "") not in verified_def_ids
+        ]
+        if missing_codes:
+            return {
+                "eligible": False,
+                "mode_used": "v2_enforced",
+                "reason": (
+                    "Certificate eligibility suspended: required V2 competency "
+                    "credential is missing, expired, or revoked"
+                ),
+                "missing_v2_codes": missing_codes,
+            }
+
+        if check_quizzes:
+            missing_quizzes = await _missing_required_cohort_quizzes(
+                db, cohort_id=enrollment.cohort_id, enrollment_id=enrollment.id
+            )
+            if missing_quizzes:
+                return {
+                    "eligible": False,
+                    "mode_used": "v2_enforced",
+                    "reason": (
+                        "Certificate eligibility suspended: knowledge quizzes are "
+                        "incomplete"
+                    ),
+                }
+
+        return {"eligible": True, "mode_used": "v2_enforced", "reason": None}
+
+    # Legacy evaluation (or safe fallback for unfrozen cohorts)
+    expected_milestones = set(
+        (
+            await db.execute(
+                select(Milestone.id).where(
+                    Milestone.program_id == enrollment.program_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    achieved_milestones = set(
+        (
+            await db.execute(
+                select(StudentProgress.milestone_id).where(
+                    StudentProgress.enrollment_id == enrollment.id,
+                    StudentProgress.status == ProgressStatus.ACHIEVED,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not expected_milestones or not expected_milestones.issubset(achieved_milestones):
+        return {
+            "eligible": False,
+            "mode_used": "legacy",
+            "reason": (
+                "Certificate eligibility suspended: a practical milestone is not "
+                "verified"
+            ),
+        }
+
+    if check_quizzes:
+        missing_quizzes = await _missing_required_cohort_quizzes(
+            db, cohort_id=enrollment.cohort_id, enrollment_id=enrollment.id
+        )
+        if missing_quizzes:
+            return {
+                "eligible": False,
+                "mode_used": "legacy",
+                "reason": (
+                    "Certificate eligibility suspended: knowledge quizzes are "
+                    "incomplete"
+                ),
+            }
+
+    return {"eligible": True, "mode_used": "legacy", "reason": None}

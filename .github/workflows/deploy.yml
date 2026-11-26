@@ -199,6 +199,7 @@ jobs:
           pytest -v tests/integration/test_academy_requirements_resolver.py
           pytest -v tests/integration/test_academy_v2_assessments_and_drills.py
           pytest -v tests/integration/test_academy_v2_parity.py
+          pytest -v tests/integration/test_academy_v2_phase5b_cutover.py
           pytest -v tests/integration/test_academy_default_attendance.py
           pytest -v tests/integration/test_academy_individual_review.py
           pytest -v tests/integration/test_academy_student_exceptions.py

@@ -20,7 +20,7 @@ from libs.auth.dependencies import (
 )
 from libs.auth.models import AuthUser
 from libs.common.datetime_utils import utc_now
-from libs.common.service_client import get_member_by_id
+from libs.common.service_client import get_member_by_auth_id, get_member_by_id
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     AcademyDrill,
@@ -28,11 +28,32 @@ from services.academy_service.models import (
     AcademyMilestoneDefinition,
     AcademyStudentDrillAssignment,
     Enrollment,
+    EnrollmentStatus,
 )
 
 router = APIRouter(prefix="/competencies", tags=["academy-drill-prescriptions"])
 
 DrillAssignmentStatus = Literal["assigned", "practiced", "mastered", "archived"]
+
+# Deterministic, curated mapping from Stroke Lab TI academy_ref keys (ADR-013)
+# to canonical Academy V2 drill codes (ADR-010). Free-text AI drill creation is
+# intentionally forbidden; every prescribed drill resolves to a published catalog version.
+STROKELAB_ACADEMY_REF_TO_DRILL_CODE: dict[str, str] = {
+    "academy:ti:superman-glide": "DRL-F4-SUPERMAN-GLIDE",
+    "academy:ti:one-goggle-breathing": "DRL-S1-ONE-GOGGLE-BREATH",
+    "academy:ti:zen-skate": "DRL-S1-TI-SKATE",
+    "academy:ti:shark-fin-recovery": "DRL-S1-SHARK-FIN-RECOVERY",
+    "academy:ti:patient-lead-hand": "DRL-S1-6-KICK-SWITCH",
+    "academy:ti:mail-slot-entry": "DRL-S1-MAIL-SLOT-ENTRY",
+}
+
+
+class StrokeLabDrillInput(BaseModel):
+    academy_ref: str = Field(min_length=5, max_length=120)
+    strokelab_job_id: str | None = Field(default=None, max_length=120)
+    focal_cue_note: str | None = Field(default=None, max_length=1000)
+    sets: int = Field(default=3, ge=1, le=20)
+    distance_m: Decimal | None = Field(default=Decimal("25"), gt=0, le=500)
 
 
 class AssignDrillInput(BaseModel):
@@ -162,6 +183,151 @@ async def serialize_drill_assignments(
             }
         )
     return result
+
+
+async def prescribe_strokelab_drill_for_member(
+    db: AsyncSession,
+    *,
+    member_auth_id: str,
+    member_id: uuid.UUID | None,
+    academy_ref: str,
+    strokelab_job_id: str | None = None,
+    focal_cue_note: str | None = None,
+    sets: int = 3,
+    distance_m: Decimal | None = Decimal("25"),
+) -> dict:
+    """Resolve a vetted Stroke Lab academy_ref to a published V2 drill assignment.
+
+    Strictly idempotent for active assignments and NEVER creates a competency
+    verification row (ADR-010 / ADR-013).
+    """
+    drill_code = STROKELAB_ACADEMY_REF_TO_DRILL_CODE.get(academy_ref.strip())
+    if drill_code is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Unsupported Stroke Lab drill reference",
+        )
+
+    drill = (
+        await db.execute(
+            select(AcademyDrill).where(
+                AcademyDrill.code == drill_code,
+                AcademyDrill.is_retired.is_(False),
+            )
+        )
+    ).scalar_one_or_none()
+    if drill is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Academy V2 drill {drill_code} is not yet published in the catalog",
+        )
+
+    drill_version = (
+        await db.execute(
+            select(AcademyDrillVersion)
+            .where(
+                AcademyDrillVersion.drill_id == drill.id,
+                AcademyDrillVersion.state == "published",
+                AcademyDrillVersion.published_at.is_not(None),
+            )
+            .order_by(AcademyDrillVersion.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if drill_version is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Academy V2 drill {drill_code} has no published version",
+        )
+
+    # Link to the swimmer's active enrolled Academy cohort when present so
+    # their assigned coach also sees the recommended TI drill in their deck.
+    active_enrollment = (
+        await db.execute(
+            select(Enrollment)
+            .where(
+                Enrollment.member_auth_id == member_auth_id,
+                Enrollment.status == EnrollmentStatus.ENROLLED,
+            )
+            .order_by(Enrollment.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    resolved_member_id = member_id or (
+        active_enrollment.member_id if active_enrollment else None
+    )
+    if resolved_member_id is None:
+        member = await get_member_by_auth_id(member_auth_id, calling_service="academy")
+        if not member or not member.get("id"):
+            raise HTTPException(
+                status_code=404, detail="Member profile not found for drill assignment"
+            )
+        resolved_member_id = uuid.UUID(str(member["id"]))
+
+    existing = (
+        await db.execute(
+            select(AcademyStudentDrillAssignment)
+            .where(
+                AcademyStudentDrillAssignment.member_auth_id == member_auth_id,
+                AcademyStudentDrillAssignment.drill_version_id == drill_version.id,
+                AcademyStudentDrillAssignment.assigned_by_role == "strokelab_ai",
+                AcademyStudentDrillAssignment.status.in_(["assigned", "practiced"]),
+            )
+            .order_by(AcademyStudentDrillAssignment.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        serialized = (await serialize_drill_assignments(db, [existing]))[0]
+        serialized["already_assigned"] = True
+        return serialized
+
+    source_tag = (
+        f"strokelab:{strokelab_job_id.strip()}"
+        if strokelab_job_id and strokelab_job_id.strip()
+        else "strokelab:advisory"
+    )[:160]
+    row = AcademyStudentDrillAssignment(
+        member_id=resolved_member_id,
+        member_auth_id=member_auth_id,
+        enrollment_id=active_enrollment.id if active_enrollment else None,
+        drill_version_id=drill_version.id,
+        milestone_definition_id=None,
+        assigned_by_auth_id=source_tag,
+        assigned_by_role="strokelab_ai",
+        focal_cue_note=focal_cue_note.strip() if focal_cue_note else None,
+        sets=sets,
+        distance_m=distance_m,
+        status="assigned",
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    serialized = (await serialize_drill_assignments(db, [row]))[0]
+    serialized["already_assigned"] = False
+    return serialized
+
+
+@router.post("/me/drills/from-strokelab", status_code=201)
+async def save_strokelab_drill_to_my_plan(
+    payload: StrokeLabDrillInput,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Member saves a vetted Stroke Lab TI drill recommendation into their Academy drill list."""
+    if current_user.role == "service_role":
+        raise HTTPException(status_code=403, detail="Member identity required")
+    return await prescribe_strokelab_drill_for_member(
+        db,
+        member_auth_id=str(current_user.user_id),
+        member_id=None,
+        academy_ref=payload.academy_ref,
+        strokelab_job_id=payload.strokelab_job_id,
+        focal_cue_note=payload.focal_cue_note,
+        sets=payload.sets,
+        distance_m=payload.distance_m,
+    )
 
 
 @router.get("/drills/published")
