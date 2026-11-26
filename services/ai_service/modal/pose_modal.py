@@ -2,6 +2,10 @@
 runs off the small app box. The worker POSTs a clip, this returns the recovery
 count + per-recovery peak times. yolov8-pose on a T4 runs a clip in ~seconds.
 
+NOTE (commercial licensing): This legacy endpoint uses AGPL-licensed ``ultralytics``.
+For commercial production deployments, prefer ``pose_modal_rtmpose.py`` (Apache-2.0
+``rtmlib`` + ``onnxruntime-gpu``), which implements the exact same HTTP contract.
+
 This MIRRORS the algorithm in services/ai_service/coach/pose.py (locked/stable) —
 kept self-contained so it deploys to Modal with no repo imports. Keep the two in
 sync if the counter changes.

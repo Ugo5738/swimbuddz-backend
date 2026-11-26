@@ -144,6 +144,7 @@ async def _modal_count(path: str, s):
         detection_rate=data["detection_rate"],
         near_wrist_conf=data["near_wrist_conf"],
         peaks_s=tuple(data.get("peaks_s") or []),
+        engine=str(data.get("engine") or "yolov8"),
     )
 
 

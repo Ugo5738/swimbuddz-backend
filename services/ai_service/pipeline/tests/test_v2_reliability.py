@@ -586,6 +586,57 @@ def test_pose_keypoints_dispatch_selects_rtmpose_without_ultralytics(monkeypatch
     assert payload["count"] == 3
 
 
+def test_modal_count_preserves_rtmpose_engine_field(monkeypatch, tmp_path):
+    from services.ai_service.pipeline.components.pose_recovery import _modal_count
+
+    clip = tmp_path / "swim.mp4"
+    clip.write_bytes(b"fake-video-bytes")
+
+    class FakeResp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "ok": True,
+                "count": 4,
+                "confidence": "ok",
+                "detection_rate": 0.92,
+                "near_wrist_conf": 0.77,
+                "peaks_s": [0.9, 2.1, 3.4, 4.7],
+                "engine": "rtmpose",
+            }
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, **kwargs):
+            return FakeResp()
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    settings = SimpleNamespace(
+        STROKELAB_POSE_MODAL_KEY="k",
+        STROKELAB_POSE_MODAL_SECRET="s",
+        STROKELAB_POSE_TIMEOUT_S=30,
+        STROKELAB_POSE_MODAL_URL="https://example.modal.run",
+        STROKELAB_POSE_MAX_FRAMES=200,
+    )
+    res = asyncio.run(_modal_count(str(clip), settings))
+    assert res is not None
+    assert res.engine == "rtmpose"
+    assert res.count == 4
+    assert res.peaks_s == (0.9, 2.1, 3.4, 4.7)
+
+
 def test_count_recoveries_supports_rtmpose_engine(monkeypatch):
     np = pytest.importorskip("numpy")
 
