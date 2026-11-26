@@ -1,4 +1,4 @@
-"""Shared Refund API routers — Admin, Member, and Internal service-to-service (ADR-023)."""
+"""Shared Refund API routers — Admin, Member, and Internal service-to-service (ADR-024)."""
 
 import uuid
 from typing import Optional
@@ -183,9 +183,7 @@ async def approve_refund_admin(
 ):
     """Approve a requested refund (accrues Refunds Payable in the ledger)."""
     refund = (
-        await db.execute(
-            select(Refund).where(Refund.id == refund_id).with_for_update()
-        )
+        await db.execute(select(Refund).where(Refund.id == refund_id).with_for_update())
     ).scalar_one_or_none()
     if not refund:
         raise HTTPException(status_code=404, detail="Refund not found")
@@ -208,9 +206,7 @@ async def initiate_paystack_refund_admin(
 ):
     """Initiate (or idempotently return) a Paystack API refund."""
     refund = (
-        await db.execute(
-            select(Refund).where(Refund.id == refund_id).with_for_update()
-        )
+        await db.execute(select(Refund).where(Refund.id == refund_id).with_for_update())
     ).scalar_one_or_none()
     if not refund:
         raise HTTPException(status_code=404, detail="Refund not found")
@@ -231,9 +227,7 @@ async def sync_paystack_refund_admin(
 ):
     """Poll Paystack GET /refund/{id} to reconcile refund status."""
     refund = (
-        await db.execute(
-            select(Refund).where(Refund.id == refund_id).with_for_update()
-        )
+        await db.execute(select(Refund).where(Refund.id == refund_id).with_for_update())
     ).scalar_one_or_none()
     if not refund:
         raise HTTPException(status_code=404, detail="Refund not found")
@@ -249,9 +243,7 @@ async def verify_refund_bank_account_admin(
 ):
     """Verify recipient NUBAN via Paystack resolve_account before bank-transfer refund."""
     refund = (
-        await db.execute(
-            select(Refund).where(Refund.id == refund_id).with_for_update()
-        )
+        await db.execute(select(Refund).where(Refund.id == refund_id).with_for_update())
     ).scalar_one_or_none()
     if not refund:
         raise HTTPException(status_code=404, detail="Refund not found")
@@ -289,9 +281,7 @@ async def complete_manual_refund_admin(
 ):
     """Confirm manual bank-transfer refund disbursement with a verified bank reference."""
     refund = (
-        await db.execute(
-            select(Refund).where(Refund.id == refund_id).with_for_update()
-        )
+        await db.execute(select(Refund).where(Refund.id == refund_id).with_for_update())
     ).scalar_one_or_none()
     if not refund:
         raise HTTPException(status_code=404, detail="Refund not found")
@@ -313,9 +303,7 @@ async def fail_or_cancel_refund_admin(
 ):
     """Cancel an uninitiated refund or mark a disbursement failed."""
     refund = (
-        await db.execute(
-            select(Refund).where(Refund.id == refund_id).with_for_update()
-        )
+        await db.execute(select(Refund).where(Refund.id == refund_id).with_for_update())
     ).scalar_one_or_none()
     if not refund:
         raise HTTPException(status_code=404, detail="Refund not found")
@@ -490,13 +478,11 @@ async def internal_close_unpaid_store_payment(
     """Safely close an unpaid STORE_ORDER payment after live Paystack check under lock.
 
     Prevents cancelling an order whose Paystack payment just succeeded or whose
-    manual bank-transfer proof is pending admin review (ADR-003, ADR-007, ADR-023).
+    manual bank-transfer proof is pending admin review (ADR-003, ADR-007, ADR-024).
     """
     payment = (
         await db.execute(
-            select(Payment)
-            .where(Payment.reference == reference)
-            .with_for_update()
+            select(Payment).where(Payment.reference == reference).with_for_update()
         )
     ).scalar_one_or_none()
 
@@ -541,10 +527,7 @@ async def internal_close_unpaid_store_payment(
         )
 
     # Live Paystack verification for pending online attempts before closing.
-    if (
-        (payment.payment_method or "paystack") == "paystack"
-        and _paystack_enabled()
-    ):
+    if (payment.payment_method or "paystack") == "paystack" and _paystack_enabled():
         try:
             ps_data = await _verify_paystack_transaction(payment.reference)
         except HTTPException:

@@ -1,4 +1,4 @@
-"""Add Store post-purchase order lifecycle, tender fields, and cases (ADR-023).
+"""Add Store post-purchase order lifecycle, tender fields, and cases (ADR-024).
 
 Hand-written migration — adds separated payment/fulfillment status enums and
 columns on store_orders, sourcing/net-price snapshots on store_order_items,
@@ -6,7 +6,7 @@ transaction_type on store_credit_transactions, and the store_order_cases /
 store_order_case_items tables with CHECK constraints and indexes.
 
 Revision ID: g20261125ord
-Revises: f181126a7302
+Revises: f181126a7303
 """
 
 import sqlalchemy as sa
@@ -14,7 +14,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "g20261125ord"
-down_revision = "f181126a7302"
+down_revision = "f181126a7303"
 branch_labels = None
 depends_on = None
 
@@ -361,10 +361,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_store_order_case_items_case_id", table_name="store_order_case_items")
+    op.drop_index(
+        "ix_store_order_case_items_case_id", table_name="store_order_case_items"
+    )
     op.drop_table("store_order_case_items")
     op.drop_index("ix_store_order_cases_order_status", table_name="store_order_cases")
-    op.drop_index("ix_store_order_cases_refund_reference", table_name="store_order_cases")
+    op.drop_index(
+        "ix_store_order_cases_refund_reference", table_name="store_order_cases"
+    )
     op.drop_index("ix_store_order_cases_status", table_name="store_order_cases")
     op.drop_index("ix_store_order_cases_case_type", table_name="store_order_cases")
     op.drop_index("ix_store_order_cases_member_auth_id", table_name="store_order_cases")

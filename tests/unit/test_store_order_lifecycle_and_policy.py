@@ -1,4 +1,4 @@
-"""Unit tests for Store post-purchase order lifecycle, policy engine, and cases (ADR-023)."""
+"""Unit tests for Store post-purchase order lifecycle, policy engine, and cases (ADR-024)."""
 
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -155,7 +155,9 @@ class TestLineAllocationAndRefundTenders:
         assert calc.bubbles_refund == 0
         assert calc.store_credit_refund_kobo == 2_000_000
 
-    def test_wallet_bubbles_resolution_preserves_sub_100_naira_remainder_as_credit(self):
+    def test_wallet_bubbles_resolution_preserves_sub_100_naira_remainder_as_credit(
+        self,
+    ):
         order = _make_order(
             subtotal=Decimal("15050.00"),
             delivery_fee=Decimal("0.00"),
@@ -270,7 +272,9 @@ class TestOrderActionEligibility:
         )
         elig_day_10 = get_order_action_eligibility(day_10, now=now)
         assert elig_day_10.can_request_return_exchange is False
-        assert elig_day_10.can_report_defect is True  # FCCPA statutory defect claim still open!
+        assert (
+            elig_day_10.can_report_defect is True
+        )  # FCCPA statutory defect claim still open!
 
 
 class TestLifecycleGuardsAndAtomics:
@@ -334,7 +338,9 @@ class TestLifecycleGuardsAndAtomics:
         assert "exact same price" in err.value.detail
 
     @pytest.mark.asyncio
-    async def test_restock_returned_items_only_restocks_when_condition_is_restockable(self):
+    async def test_restock_returned_items_only_restocks_when_condition_is_restockable(
+        self,
+    ):
         order = _make_order()
         case = SimpleNamespace(
             id=uuid.uuid4(),
@@ -376,7 +382,9 @@ class TestLifecycleGuardsAndAtomics:
                 )
             ),
             get=AsyncMock(return_value=credit_obj),
-            add=lambda _obj: (_ for _ in ()).throw(AssertionError("Must not double-add")),
+            add=lambda _obj: (_ for _ in ()).throw(
+                AssertionError("Must not double-add")
+            ),
         )
         res = await restore_order_store_credits(db, order, "user-1")
         assert res is credit_obj

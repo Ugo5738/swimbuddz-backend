@@ -1,4 +1,4 @@
-"""Customer post-purchase order actions: self-cancel, variant swap, and cases (ADR-023)."""
+"""Customer post-purchase order actions: self-cancel, variant swap, and cases (ADR-024)."""
 
 import uuid
 from typing import Optional
@@ -64,7 +64,9 @@ router = APIRouter(tags=["store-order-actions"])
 logger = get_logger(__name__)
 
 
-def _serialize_case(case: StoreOrderCase, order: Optional[Order] = None) -> OrderCaseResponse:
+def _serialize_case(
+    case: StoreOrderCase, order: Optional[Order] = None
+) -> OrderCaseResponse:
     items_out: list[OrderCaseItemResponse] = []
     for ci in case.items or []:
         oi = ci.order_item
@@ -153,7 +155,9 @@ async def _load_member_order(
     return order
 
 
-@router.get("/orders/{order_number}/actions", response_model=OrderActionEligibilityResponse)
+@router.get(
+    "/orders/{order_number}/actions", response_model=OrderActionEligibilityResponse
+)
 async def get_order_actions(
     order_number: str,
     current_user: AuthUser = Depends(get_current_user),
@@ -185,9 +189,7 @@ async def get_order_actions(
             "Could not fetch refunds for order %s: %s", order.order_number, exc
         )
 
-    cases_sorted = sorted(
-        order.cases or [], key=lambda c: c.created_at, reverse=True
-    )
+    cases_sorted = sorted(order.cases or [], key=lambda c: c.created_at, reverse=True)
     elig = get_order_action_eligibility(
         order,
         now=utc_now(),
@@ -253,7 +255,7 @@ async def self_cancel_order(
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Self-cancel an unpaid order or a paid stocked order awaiting preparation (ADR-023)."""
+    """Self-cancel an unpaid order or a paid stocked order awaiting preparation (ADR-024)."""
     order = await _load_member_order(
         db, order_number, current_user.user_id, for_update=True
     )
@@ -556,7 +558,7 @@ async def create_order_case(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="This order is not currently within the 7-day return/exchange window.",
             )
-        # Non-defective post-handover returns use exchange, Store Credit, or Bubbles (ADR-023)
+        # Non-defective post-handover returns use exchange, Store Credit, or Bubbles (ADR-024)
         allowed_non_defect = {
             None,
             OrderCaseResolution.VARIANT_EXCHANGE,
@@ -591,14 +593,17 @@ async def create_order_case(
             oi = order_items_by_id.get(req_item.order_item_id)
             if not oi:
                 raise HTTPException(
-                    status_code=400, detail="Selected item does not belong to this order"
+                    status_code=400,
+                    detail="Selected item does not belong to this order",
                 )
             if req_item.quantity > oi.quantity:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Requested quantity exceeds ordered quantity for {oi.product_name}",
                 )
-            selected_items.append((oi, req_item.quantity, req_item.replacement_variant_id))
+            selected_items.append(
+                (oi, req_item.quantity, req_item.replacement_variant_id)
+            )
     else:
         selected_items = [(oi, oi.quantity, None) for oi in order.items]
 
@@ -685,9 +690,7 @@ async def list_my_order_cases(
 ):
     """List post-purchase cases submitted for a member's order."""
     order = await _load_member_order(db, order_number, current_user.user_id)
-    cases_sorted = sorted(
-        order.cases or [], key=lambda c: c.created_at, reverse=True
-    )
+    cases_sorted = sorted(order.cases or [], key=lambda c: c.created_at, reverse=True)
     return [_serialize_case(c, order) for c in cases_sorted]
 
 

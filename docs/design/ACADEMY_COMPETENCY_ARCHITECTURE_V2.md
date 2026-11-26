@@ -1,7 +1,7 @@
 # SwimBuddz Academy — Competency Architecture V2
 
-**Status:** Proposed implementation contract; replaces the unverified implementation assumptions in `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` after review.  
-**Date:** 18 November 2026  
+**Status:** Accepted & Enforced via [`ADR-010`](../DECISIONS.md#adr-010-modular-academy-curriculum-versioned-catalog--evidence-backed-competency-passport-v2) (Phases 1–4 + Phase 5A Implemented: Versioned Catalog, Frozen Snapshots, Evidence-Backed Passport, Native Cohort & Diagnostic V2 Assessments, Prior-Credit Cohort Plan, TI Remedial/Personalized Drill Prescriptions, Read-Only Dual-Read Graduation Parity Engine, and Advisory Club-Readiness Competency Bridge; Phase 5B Consumer Switchover Pending Production Parity Sign-Off). Supersedes the V1 schema and auto-backfill clauses in `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`.  
+**Date:** 18 November 2026 (Updated 26 November 2026)  
 **Scope:** Academy curriculum, evidence, assessment, progression and their interfaces to Club and Stroke Lab.  
 **Related:** ADR-004, ADR-009, ADR-010, ADR-013, ADR-016.  
 **Explicit non-goal:** Rewriting attendance, payments, classes remaining, bank transfers or the Club payment model.
@@ -161,7 +161,11 @@ Release Curriculum Studio for admins, coach session deck and learner workspace b
 
 ### Phase 5 — credentials, Club, AI and retirement
 
-Switch graduation and certificate consumers, then Club readiness, then optional Stroke Lab recommendations. Decommission legacy paths only once there are zero old-client consumers, dual-read parity holds and retention requirements are satisfied.
+- **Phase 5A (Implemented — Read-Only Shadow Parity & Advisory Bridge):**
+  - Cohort graduation dual-read parity (`GET /academy/competencies/admin/cohorts/{cohort_id}/graduation-parity`) shadow-compares legacy graduation eligibility (`tasks/reporting.py`: all program `Milestone` rows achieved in `StudentProgress`) against fail-closed V2 eligibility (every required milestone and `safety_gate` in the SHA-256-verified frozen cohort snapshot satisfied by live non-expired, non-revoked credentials in `academy_competency_verifications`), reporting batched parity KPIs and per-learner discrepancies (`aligned_eligible`, `aligned_ineligible`, `legacy_only_eligible`, `v2_only_eligible`, `no_frozen_snapshot`, `snapshot_integrity_error`) without mutating enrollments, certificates, or rewards.
+  - Club-readiness competency advisory (`GET /academy/competencies/admin/members/{member_auth_id}/club-readiness-advisory` and internal `GET /internal/academy/competencies/members/{member_auth_id}/club-readiness-advisory`) surfaces verified safety-gate credentials, core Club checklist mapping (`MS-S1-FREE-25M`, `MS-A1-TREAD-60S`, `MS-F3-BACK-FLOAT-30S`, `MS-F1-SAFE-ENTRY`), and expired/revoked alerts inside `/admin/club-applications` as advisory evidence while preserving mandatory human reviewer approval (`ADR-005`).
+- **Phase 5B (Gated — Consumer Switchover & Legacy Retirement):**
+  - Switch graduation and certificate consumers, then Club readiness, then optional Stroke Lab recommendations only after production dual-read parity holds and the owner explicitly authorizes cutover. Decommission legacy paths only once there are zero old-client consumers, dual-read parity holds, and retention requirements are satisfied.
 
 ## 6. Acceptance tests (release blocking)
 

@@ -1,4 +1,4 @@
-"""Add shared refunds table and Paystack settlement deductions column (ADR-023).
+"""Add shared refunds table and Paystack settlement deductions column (ADR-024).
 
 Hand-written migration — creates PostgreSQL enums (refund_method_enum,
 refund_status_enum), CHECK constraints, indexes, and the deductions_minor

@@ -57,7 +57,7 @@ async def paystack_webhook(
 
     # Paystack refund.* webhooks identify transactions by data.id and
     # data.transaction_reference (not data.reference), so handle them before the
-    # Payment.reference lookup below (ADR-023).
+    # Payment.reference lookup below (ADR-024).
     if isinstance(event, str) and event.startswith("refund."):
         from services.payments_service.services.refund_service import (
             apply_paystack_refund_event,

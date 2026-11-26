@@ -306,7 +306,7 @@ async def emit_refund_disbursed_to_ledger(
 
 
 async def emit_refund_approved_to_ledger(db: AsyncSession, refund) -> bool:
-    """Accrue an approved cash refund (ADR-023):
+    """Accrue an approved cash refund (ADR-024):
 
         DR <purpose revenue/deferred account>   (cash_refund_kobo)
         CR refunds_payable (2130)               (cash_refund_kobo)
@@ -386,7 +386,7 @@ async def emit_refund_approved_to_ledger(db: AsyncSession, refund) -> bool:
 
 
 async def emit_refund_completed_to_ledger(db: AsyncSession, refund) -> bool:
-    """Clear Refunds Payable on cash refund completion (ADR-023):
+    """Clear Refunds Payable on cash refund completion (ADR-024):
 
         DR refunds_payable (2130)                               (cash_refund_kobo)
         CR paystack_clearing (Paystack) / bank_operating_ngn    (cash_refund_kobo)
@@ -398,9 +398,7 @@ async def emit_refund_completed_to_ledger(db: AsyncSession, refund) -> bool:
     if amount <= 0:
         return True
     provider = (getattr(refund, "provider", None) or "").lower()
-    credit_ref = (
-        "paystack_clearing" if provider == "paystack" else "bank_operating_ngn"
-    )
+    credit_ref = "paystack_clearing" if provider == "paystack" else "bank_operating_ngn"
     settings = get_settings()
     currency = refund.currency or "NGN"
     ref = refund.refund_reference
@@ -543,7 +541,7 @@ async def emit_payout_paid_to_ledger(db: AsyncSession, payout) -> None:
 
 
 async def emit_settlement_to_ledger(db: AsyncSession, settlement) -> bool:
-    """Drain clearing for a Paystack settlement (ADR-023 deduction-safe):
+    """Drain clearing for a Paystack settlement (ADR-024 deduction-safe):
 
         DR bank_operating_ngn (net) + DR expense_psp_fees (fees)
         CR paystack_clearing       (net + fees = gross - deductions)

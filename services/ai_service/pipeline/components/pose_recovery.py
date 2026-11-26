@@ -144,6 +144,7 @@ async def _modal_count(path: str, s):
         detection_rate=data["detection_rate"],
         near_wrist_conf=data["near_wrist_conf"],
         peaks_s=tuple(data.get("peaks_s") or []),
+        engine=str(data.get("engine") or "yolov8"),
     )
 
 
@@ -164,6 +165,7 @@ async def _subprocess_count(path: str, s):
         "services.ai_service.coach.pose_runner",
         str(path),
         str(s.STROKELAB_POSE_MAX_FRAMES),
+        str(getattr(s, "STROKELAB_POSE_ENGINE", "auto")),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
     )
@@ -204,6 +206,7 @@ async def _subprocess_count(path: str, s):
         detection_rate=data["detection_rate"],
         near_wrist_conf=data["near_wrist_conf"],
         peaks_s=tuple(data.get("peaks_s") or []),
+        engine=str(data.get("engine") or "yolov8"),
     )
 
 
@@ -217,6 +220,7 @@ def _payload(result) -> dict:
         "near_wrist_conf": round(result.near_wrist_conf, 3),
         "refused": result.refused,
         "peaks_s": list(result.peaks_s),
+        "engine": getattr(result, "engine", "yolov8"),
     }
 
 

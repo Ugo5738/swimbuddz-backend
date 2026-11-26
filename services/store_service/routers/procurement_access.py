@@ -32,11 +32,15 @@ async def procurement_owner(
     authorization = request.headers.get("authorization")
     if not authorization:
         raise HTTPException(401, "Sign in to verify Finance Owner access")
+    headers = {"Authorization": authorization}
+    org_header = request.headers.get("x-ledger-org-id")
+    if org_header:
+        headers["X-Ledger-Org-Id"] = org_header
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 f"{get_settings().LEDGER_SERVICE_URL}/admin/finance/users/me",
-                headers={"Authorization": authorization},
+                headers=headers,
             )
     except httpx.RequestError as exc:
         raise HTTPException(503, "Finance authorization is unavailable") from exc
@@ -57,6 +61,52 @@ async def procurement_owner(
     except (KeyError, ValueError, TypeError) as exc:
         raise HTTPException(503, "Finance authorization is unavailable") from exc
     return FinanceOwner(id=owner_id, auth_id=auth_id)
+
+
+async def verify_ledger_journal_entry(
+    request: Request,
+    journal_entry_id: uuid.UUID,
+) -> dict:
+    """Confirm a referenced Ledger journal entry exists and is posted via HTTP.
+
+    Never imports ledger_service; forwards the authenticated owner's bearer token
+    (and optional X-Ledger-Org-Id) to Ledger's own journal-entry read endpoint.
+    """
+    authorization = request.headers.get("authorization")
+    if not authorization:
+        raise HTTPException(401, "Sign in to verify linked ledger journal entry")
+    headers = {"Authorization": authorization}
+    org_header = request.headers.get("x-ledger-org-id")
+    if org_header:
+        headers["X-Ledger-Org-Id"] = org_header
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{get_settings().LEDGER_SERVICE_URL}/admin/finance/journal-entries/{journal_entry_id}",
+                headers=headers,
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            503, "Finance service unavailable while verifying journal entry"
+        ) from exc
+    if response.status_code == 404:
+        raise HTTPException(
+            422, "Referenced ledger journal entry was not found in your organization"
+        )
+    if response.status_code in {401, 403}:
+        raise HTTPException(
+            response.status_code, "Not authorized to verify this ledger journal entry"
+        )
+    if response.status_code != 200:
+        raise HTTPException(
+            503, "Finance service unavailable while verifying journal entry"
+        )
+    data = response.json()
+    if not isinstance(data, dict) or data.get("status") != "posted":
+        raise HTTPException(
+            422, "Referenced ledger journal entry must be in posted status"
+        )
+    return data
 
 
 async def procurement_reader(

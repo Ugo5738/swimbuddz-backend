@@ -1,4 +1,4 @@
-"""First-class shared Refund model (ADR-023).
+"""First-class shared Refund model (ADR-024).
 
 Owned by payments_service and reusable across Store, Academy, Club, and Sessions
 while each owning domain service keeps its own cancellation/return policy.
@@ -145,7 +145,7 @@ class Refund(Base):
     )
     store_credit_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
-    # Two-step ledger flags (ADR-023)
+    # Two-step ledger flags (ADR-024)
     ledger_accrual_posted: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )

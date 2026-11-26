@@ -20,8 +20,10 @@ def main() -> int:
         return 2
     clip = sys.argv[1]
     max_frames = int(sys.argv[2])
+    engine = sys.argv[3] if len(sys.argv) >= 4 else "auto"
 
-    # Heavy deps (cv2/torch/ultralytics) load only here, in the child process.
+    # Heavy deps (cv2/onnxruntime/rtmlib or torch/ultralytics) load only here,
+    # in the isolated child process.
     from services.ai_service.coach.pose import count_recoveries
     from services.ai_service.pipeline.components.pose_recovery import _decode_dense
 
@@ -30,7 +32,7 @@ def main() -> int:
         print(json.dumps({"ok": False, "reason": "no_frames"}))
         return 0
 
-    r = count_recoveries(frames, times)
+    r = count_recoveries(frames, times, engine=engine)
     print(
         json.dumps(
             {
@@ -41,6 +43,7 @@ def main() -> int:
                 "near_wrist_conf": r.near_wrist_conf,
                 "refused": r.refused,
                 "peaks_s": list(r.peaks_s),
+                "engine": r.engine,
             }
         )
     )

@@ -272,6 +272,7 @@ async def test_revocation_and_source_override_remove_current_credit(
     assert again.status_code == 409
     final = await academy_client.get(passport_url)
     assert final.json()["verifications"][0]["status"] == "revoked"
+    assert final.json()["competencies"][0]["status"] == "revoked"
     assert await db_session.scalar(select(AcademyCompetencyRevocation.id)) is not None
 
 
@@ -342,3 +343,57 @@ async def test_media_verification_failure_does_not_create_credit(
         .all()
     )
     assert records == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_admin_legacy_candidates_and_verifications_listing(
+    academy_client, db_session, seed_member_row
+):
+    data = await _record_with_approved_video(db_session, seed_member_row)
+
+    candidates = await academy_client.get(
+        "/academy/competencies/admin/legacy-candidates",
+        params={"cohort_id": str(data.cohort.id)},
+    )
+    assert candidates.status_code == 200, candidates.text
+    rows = candidates.json()
+    assert len(rows) == 1
+    assert rows[0]["source_progress_id"] == str(data.progress.id)
+    assert rows[0]["eligible"] is True
+    assert rows[0]["eligibility_blockers"] == []
+    assert rows[0]["already_credited"] is False
+
+    with patch(
+        "services.academy_service.routers.competencies.internal_get",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(status_code=200),
+    ):
+        promoted = await academy_client.post(
+            "/academy/competencies/admin/verify-legacy", json=_payload(data)
+        )
+    assert promoted.status_code == 201, promoted.text
+
+    # Default listing hides already-credited rows; include_credited=true returns them.
+    after_default = await academy_client.get(
+        "/academy/competencies/admin/legacy-candidates",
+        params={"cohort_id": str(data.cohort.id)},
+    )
+    assert after_default.json() == []
+    after_all = await academy_client.get(
+        "/academy/competencies/admin/legacy-candidates",
+        params={"cohort_id": str(data.cohort.id), "include_credited": "true"},
+    )
+    assert len(after_all.json()) == 1
+    assert after_all.json()[0]["already_credited"] is True
+
+    # Admin verifications endpoint lists the promoted record with live status.
+    verifications = await academy_client.get(
+        "/academy/competencies/admin/verifications",
+        params={"cohort_id": str(data.cohort.id)},
+    )
+    assert verifications.status_code == 200, verifications.text
+    v_rows = verifications.json()
+    assert len(v_rows) == 1
+    assert v_rows[0]["status"] == "verified"
+    assert v_rows[0]["code"] == data.definition.code

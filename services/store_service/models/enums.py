@@ -94,7 +94,7 @@ class AuditEntityType(str, enum.Enum):
 
 
 class OrderPaymentStatus(str, enum.Enum):
-    """Payment dimension of a store order, independent of fulfillment (ADR-023)."""
+    """Payment dimension of a store order, independent of fulfillment (ADR-024)."""
 
     UNPAID = "unpaid"
     PENDING_REVIEW = "pending_review"
@@ -105,7 +105,7 @@ class OrderPaymentStatus(str, enum.Enum):
 
 
 class OrderFulfillmentStatus(str, enum.Enum):
-    """Physical fulfillment dimension of a store order (ADR-023)."""
+    """Physical fulfillment dimension of a store order (ADR-024)."""
 
     NOT_STARTED = "not_started"
     AWAITING_PREPARATION = "awaiting_preparation"
@@ -119,7 +119,7 @@ class OrderFulfillmentStatus(str, enum.Enum):
 
 
 class OrderCaseType(str, enum.Enum):
-    """Kind of post-purchase customer request or remedy (ADR-023)."""
+    """Kind of post-purchase customer request or remedy (ADR-024)."""
 
     CANCEL_REQUEST = "cancel_request"
     VARIANT_SWAP = "variant_swap"

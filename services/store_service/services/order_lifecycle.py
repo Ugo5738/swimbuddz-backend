@@ -1,4 +1,4 @@
-"""Transactional Store order lifecycle operations (ADR-023).
+"""Transactional Store order lifecycle operations (ADR-024).
 
 Handles:
 - Idempotent StoreCredit restoration on cancellation (fixes legacy silent credit loss)
@@ -74,16 +74,20 @@ async def release_order_inventory_reservations(
 ) -> None:
     """Release reserved stock for each stocked item in a cancelled/failed order."""
     items = (
-        await db.execute(
-            select(OrderItem)
-            .where(OrderItem.order_id == order.id)
-            .options(
-                selectinload(OrderItem.variant).selectinload(
-                    ProductVariant.inventory_item
+        (
+            await db.execute(
+                select(OrderItem)
+                .where(OrderItem.order_id == order.id)
+                .options(
+                    selectinload(OrderItem.variant).selectinload(
+                        ProductVariant.inventory_item
+                    )
                 )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     for item in items:
         if item.is_preorder or item.sourcing_type in (
@@ -133,26 +137,34 @@ async def restore_order_store_credits(
 
     # Check if already restored for this order to guarantee idempotency.
     existing_restore = (
-        await db.execute(
-            select(StoreCreditTransaction).where(
-                StoreCreditTransaction.order_id == order.id,
-                StoreCreditTransaction.transaction_type == "restore",
+        (
+            await db.execute(
+                select(StoreCreditTransaction).where(
+                    StoreCreditTransaction.order_id == order.id,
+                    StoreCreditTransaction.transaction_type == "restore",
+                )
             )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if existing_restore is not None and amount_override_ngn is None:
         return await db.get(StoreCredit, existing_restore.store_credit_id)
 
     # Restore against the original StoreCreditTransaction rows when restoring applied credit.
     if amount_override_ngn is None:
         debit_txs = (
-            await db.execute(
-                select(StoreCreditTransaction).where(
-                    StoreCreditTransaction.order_id == order.id,
-                    StoreCreditTransaction.transaction_type == "debit",
+            (
+                await db.execute(
+                    select(StoreCreditTransaction).where(
+                        StoreCreditTransaction.order_id == order.id,
+                        StoreCreditTransaction.transaction_type == "debit",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if debit_txs:
             first_credit: Optional[StoreCredit] = None
             for tx in debit_txs:
@@ -268,7 +280,9 @@ async def swap_order_item_variant(
         )
     ).scalar_one_or_none()
     if not old_variant:
-        raise HTTPException(status_code=404, detail="Original product variant not found")
+        raise HTTPException(
+            status_code=404, detail="Original product variant not found"
+        )
     if new_variant.id == old_variant.id:
         raise HTTPException(
             status_code=400, detail="Selected variant is already on this order"
@@ -423,12 +437,16 @@ async def restock_returned_case_items(
         return 0
 
     case_items = (
-        await db.execute(
-            select(StoreOrderCaseItem)
-            .where(StoreOrderCaseItem.case_id == case.id)
-            .options(selectinload(StoreOrderCaseItem.order_item))
+        (
+            await db.execute(
+                select(StoreOrderCaseItem)
+                .where(StoreOrderCaseItem.case_id == case.id)
+                .options(selectinload(StoreOrderCaseItem.order_item))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     # If case covers the full order (no explicit case items), restock all order lines.
     lines_to_restock: list[tuple[OrderItem, int]] = []
@@ -438,8 +456,10 @@ async def restock_returned_case_items(
                 lines_to_restock.append((ci.order_item, ci.quantity))
     else:
         order_items = (
-            await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
-        ).scalars().all()
+            (await db.execute(select(OrderItem).where(OrderItem.order_id == order.id)))
+            .scalars()
+            .all()
+        )
         lines_to_restock = [(oi, oi.quantity) for oi in order_items]
 
     restocked_units = 0
@@ -631,9 +651,9 @@ async def execute_case_financial_resolution(
         case.status = OrderCaseStatus.COMPLETED
         case.resolved_by_auth_id = actor_auth_id
         case.resolved_at = now
-        if calc.total_refund_kobo >= _to_kobo(order.effective_order_total_ngn) - _to_kobo(
-            order.delivery_fee_ngn if not include_delivery_fee else 0
-        ):
+        if calc.total_refund_kobo >= _to_kobo(
+            order.effective_order_total_ngn
+        ) - _to_kobo(order.delivery_fee_ngn if not include_delivery_fee else 0):
             order.refunded_at = now
             sync_order_status_dimensions(
                 order,

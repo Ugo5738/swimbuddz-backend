@@ -1,4 +1,4 @@
-"""Store post-purchase order cases (cancellations, swaps, returns, defects) — ADR-023."""
+"""Store post-purchase order cases (cancellations, swaps, returns, defects) — ADR-024."""
 
 import random
 import string

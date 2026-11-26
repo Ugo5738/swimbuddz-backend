@@ -97,7 +97,9 @@ __all__ = [
     "StorePurchaseOrder",
     "StorePurchaseOrderLine",
     "StoreSupplierInvoice",
+    "StoreSupplierInvoiceSettlement",
     "StoreTradeReceivable",
+    "StoreTradeReceivablePayment",
 ]
 
 from services.store_service.models.procurement import (
@@ -110,5 +112,7 @@ from services.store_service.models.procurement import (
     StorePurchaseOrder,
     StorePurchaseOrderLine,
     StoreSupplierInvoice,
+    StoreSupplierInvoiceSettlement,
     StoreTradeReceivable,
+    StoreTradeReceivablePayment,
 )

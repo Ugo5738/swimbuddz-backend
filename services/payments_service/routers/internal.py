@@ -1214,3 +1214,76 @@ async def attributed_payments_report(
             for member_auth_id, purpose, count, amount in results.all()
         ]
     }
+
+
+@router.get("/finance-summary", dependencies=[Depends(require_service_role)])
+async def payments_finance_summary(db: AsyncSession = Depends(get_async_db)):
+    """Service-owned operational payments & settlement summary for gateway aggregation."""
+    from services.payments_service.models.settlement import PaystackSettlement
+
+    payment_rows = (
+        await db.execute(
+            select(
+                Payment.payment_method,
+                Payment.provider,
+                func.count(Payment.id),
+                func.coalesce(func.sum(Payment.amount), 0),
+            )
+            .where(
+                Payment.status == PaymentStatus.PAID,
+                Payment.currency == "NGN",
+            )
+            .group_by(Payment.payment_method, Payment.provider)
+        )
+    ).all()
+
+    settlement_row = (
+        await db.execute(
+            select(
+                func.count(PaystackSettlement.id).filter(
+                    PaystackSettlement.ledger_posted.is_(True)
+                ),
+                func.count(PaystackSettlement.id).filter(
+                    PaystackSettlement.ledger_posted.is_(False)
+                ),
+                func.coalesce(
+                    func.sum(PaystackSettlement.gross_minor).filter(
+                        PaystackSettlement.ledger_posted.is_(True)
+                    ),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(PaystackSettlement.net_minor).filter(
+                        PaystackSettlement.ledger_posted.is_(True)
+                    ),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(PaystackSettlement.fees_minor).filter(
+                        PaystackSettlement.ledger_posted.is_(True)
+                    ),
+                    0,
+                ),
+            )
+        )
+    ).one()
+
+    return {
+        "successful_checkout_groups": [
+            {
+                "method": method or "unknown",
+                "provider": provider or "unknown",
+                "confirmed_count": int(count),
+                "gross_ngn": f"{total:.2f}",
+            }
+            for method, provider, count, total in payment_rows
+        ],
+        "posted_paystack_settlements": {
+            "count": int(settlement_row[0] or 0),
+            "gross_minor": int(settlement_row[2] or 0),
+            "net_minor": int(settlement_row[3] or 0),
+            "fees_minor": int(settlement_row[4] or 0),
+        },
+        "unposted_paystack_settlement_batches": int(settlement_row[1] or 0),
+        "warning": "Provider-confirmed charges are not equal to bank cash; reconcile PSP settlements and transfers.",
+    }

@@ -109,6 +109,11 @@ class StoreGoodsReceipt(Base):
     )
     reference: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     evidence_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    evidence_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    ledger_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    ledger_sync_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="not_posted"
+    )
     actor_auth_id: Mapped[str] = mapped_column(String(255), nullable=False)
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
@@ -193,12 +198,50 @@ class StoreSupplierInvoice(Base):
         BigInteger, nullable=False, default=0
     )
     due_on: Mapped[Optional[date]] = mapped_column(Date)
+    evidence_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     __table_args__ = (
         UniqueConstraint("supplier_id", "reference", name="uq_store_supplier_invoice"),
         CheckConstraint(
             "total_minor > 0 AND verified_paid_minor >= 0 AND verified_paid_minor <= total_minor",
             name="ck_store_supplier_invoice_amount",
+        ),
+    )
+
+
+class StoreSupplierInvoiceSettlement(Base):
+    """Append-only Finance Owner certified settlements against a supplier invoice."""
+
+    __tablename__ = "store_supplier_invoice_settlements"
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("store_supplier_invoices.id"),
+        nullable=False,
+        index=True,
+    )
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    bank_reference: Mapped[str] = mapped_column(String(180), nullable=False)
+    treasury_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    ledger_journal_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True)
+    )
+    evidence_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    settled_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    settled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    __table_args__ = (
+        UniqueConstraint(
+            "invoice_id",
+            "bank_reference",
+            name="uq_store_supplier_invoice_settlement_ref",
+        ),
+        CheckConstraint(
+            "amount_minor > 0", name="ck_store_supplier_invoice_settlement_positive"
         ),
     )
 
@@ -220,6 +263,12 @@ class StoreTradeReceivable(Base):
     due_on: Mapped[date] = mapped_column(Date, nullable=False)
     requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
     approved_by: Mapped[Optional[str]] = mapped_column(String(255))
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    settled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    ledger_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    ledger_sync_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="not_posted"
+    )
     __table_args__ = (
         CheckConstraint(
             "amount_minor > 0 AND verified_paid_minor >= 0 AND verified_paid_minor <= amount_minor",
@@ -228,6 +277,43 @@ class StoreTradeReceivable(Base):
         CheckConstraint(
             "status IN ('requested','approved','rejected','settled')",
             name="ck_store_trade_receivable_status",
+        ),
+    )
+
+
+class StoreTradeReceivablePayment(Base):
+    """Append-only verified partial or full customer credit repayments."""
+
+    __tablename__ = "store_trade_receivable_payments"
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    receivable_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("store_trade_receivables.id"),
+        nullable=False,
+        index=True,
+    )
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    bank_reference: Mapped[str] = mapped_column(
+        String(180), unique=True, nullable=False
+    )
+    bank_account_ref: Mapped[str] = mapped_column(
+        String(80), nullable=False, default="bank_operating_ngn"
+    )
+    evidence_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    ledger_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    ledger_sync_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="not_posted"
+    )
+    verified_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    paid_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    __table_args__ = (
+        CheckConstraint(
+            "amount_minor > 0", name="ck_store_trade_receivable_payment_positive"
         ),
     )
 
@@ -243,12 +329,17 @@ class StoreOpeningReconciliation(Base):
     source_reference: Mapped[str] = mapped_column(
         String(255), unique=True, nullable=False
     )
+    evidence_media_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     total_cost_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     proposed_by: Mapped[str] = mapped_column(String(255), nullable=False)
     approved_by: Mapped[Optional[str]] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    ledger_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    ledger_sync_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="not_posted"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )

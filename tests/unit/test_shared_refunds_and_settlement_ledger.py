@@ -1,4 +1,4 @@
-"""Unit tests for shared Refund service, Paystack webhooks, and deduction-safe settlement ledger (ADR-023)."""
+"""Unit tests for shared Refund service, Paystack webhooks, and deduction-safe settlement ledger (ADR-024)."""
 
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -35,7 +35,9 @@ class TestResolveRefundMethod:
         assert provider == "paystack"
         assert age_fallback is False
 
-    def test_paystack_payment_older_than_1_year_falls_back_to_manual_bank_transfer(self):
+    def test_paystack_payment_older_than_1_year_falls_back_to_manual_bank_transfer(
+        self,
+    ):
         payment = SimpleNamespace(
             provider="paystack",
             payment_method="paystack",
@@ -266,8 +268,12 @@ class TestSettlementDeductionLedgerFix:
         assert ok is True
         lines = {line["account_ref"]: line for line in posted_kwargs["lines"]}
         assert lines["bank_operating_ngn"]["debit"] == 7_350_000
-        assert lines["expense_psp_fees"]["debit"] == 150_000  # Strictly fees, NOT 2,650,000!
-        assert lines["paystack_clearing"]["credit"] == 7_500_000  # net + fees = gross - deductions
+        assert (
+            lines["expense_psp_fees"]["debit"] == 150_000
+        )  # Strictly fees, NOT 2,650,000!
+        assert (
+            lines["paystack_clearing"]["credit"] == 7_500_000
+        )  # net + fees = gross - deductions
         assert (
             lines["bank_operating_ngn"]["debit"] + lines["expense_psp_fees"]["debit"]
             == lines["paystack_clearing"]["credit"]

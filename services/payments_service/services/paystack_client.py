@@ -418,7 +418,7 @@ class PaystackClient:
         return results
 
     # =========================================================================
-    # Refund Methods (ADR-023)
+    # Refund Methods (ADR-024)
     # =========================================================================
 
     async def create_refund(

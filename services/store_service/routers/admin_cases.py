@@ -1,4 +1,4 @@
-"""Admin post-purchase case review, return inspection, and audited cancel-and-refund (ADR-023)."""
+"""Admin post-purchase case review, return inspection, and audited cancel-and-refund (ADR-024)."""
 
 import uuid
 from decimal import Decimal
@@ -64,7 +64,9 @@ def _case_eager_options():
     )
 
 
-def _compute_case_items_target_kobo(order: Order, case: StoreOrderCase) -> Optional[int]:
+def _compute_case_items_target_kobo(
+    order: Order, case: StoreOrderCase
+) -> Optional[int]:
     """Compute partial-case item value when a return covers a subset of items."""
     case_items = list(case.items or [])
     order_items = list(order.items or [])
@@ -201,9 +203,7 @@ async def list_order_cases_and_refunds_admin(
             exc,
         )
 
-    cases_sorted = sorted(
-        order.cases or [], key=lambda c: c.created_at, reverse=True
-    )
+    cases_sorted = sorted(order.cases or [], key=lambda c: c.created_at, reverse=True)
     return {
         "cases": [_serialize_case(c, order) for c in cases_sorted],
         "refunds": [
@@ -233,7 +233,7 @@ async def review_store_case_admin(
     current_user: AuthUser = Depends(require_admin),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Approve or decline a customer post-purchase case (ADR-023)."""
+    """Approve or decline a customer post-purchase case (ADR-024)."""
     case = (
         await db.execute(
             select(StoreOrderCase)
@@ -297,13 +297,14 @@ async def review_store_case_admin(
         or case.preferred_resolution
         or (
             OrderCaseResolution.FULL_REFUND_ORIGINAL_METHOD
-            if case.case_type in (OrderCaseType.CANCEL_REQUEST, OrderCaseType.DEFECT_CLAIM)
+            if case.case_type
+            in (OrderCaseType.CANCEL_REQUEST, OrderCaseType.DEFECT_CLAIM)
             else OrderCaseResolution.STORE_CREDIT
         )
     )
     case.approved_resolution = resolution
 
-    # Enforce ADR-023 change-of-mind policy unless explicit policy override is recorded.
+    # Enforce ADR-024 change-of-mind policy unless explicit policy override is recorded.
     if (
         case.case_type == OrderCaseType.RETURN_EXCHANGE
         and resolution
@@ -375,7 +376,9 @@ async def review_store_case_admin(
         await db.commit()
         await db.refresh(case)
         await emit_order_cancelled_or_refunded_event(
-            order, event_type="store.order_cancelled", idempotency_suffix=case.case_number
+            order,
+            event_type="store.order_cancelled",
+            idempotency_suffix=case.case_number,
         )
         await notify_order_case_update(
             order,
@@ -410,7 +413,9 @@ async def review_store_case_admin(
 
     # Immediate resolution without waiting for physical return (e.g., clear defect photo)
     include_delivery = (
-        True if case.case_type == OrderCaseType.DEFECT_CLAIM else payload.include_delivery_fee
+        True
+        if case.case_type == OrderCaseType.DEFECT_CLAIM
+        else payload.include_delivery_fee
     )
     target_kobo = _compute_case_items_target_kobo(order, case)
     await execute_case_financial_resolution(
@@ -509,7 +514,9 @@ async def receive_return_admin(
         or OrderCaseResolution.STORE_CREDIT
     )
     include_delivery = (
-        True if case.case_type == OrderCaseType.DEFECT_CLAIM else payload.include_delivery_fee
+        True
+        if case.case_type == OrderCaseType.DEFECT_CLAIM
+        else payload.include_delivery_fee
     )
     target_kobo = _compute_case_items_target_kobo(order, case)
 

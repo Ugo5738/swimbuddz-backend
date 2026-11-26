@@ -84,7 +84,7 @@ class RecurringPayoutStatus(str, enum.Enum):
 
 
 class RefundStatus(str, enum.Enum):
-    """Lifecycle of a shared refund record (ADR-023)."""
+    """Lifecycle of a shared refund record (ADR-024)."""
 
     REQUESTED = "requested"
     APPROVED = "approved"
@@ -95,7 +95,7 @@ class RefundStatus(str, enum.Enum):
 
 
 class RefundMethod(str, enum.Enum):
-    """Disbursement channel for a refund (ADR-023)."""
+    """Disbursement channel for a refund (ADR-024)."""
 
     PAYSTACK_REFUND = "paystack_refund"
     MANUAL_BANK_TRANSFER = "manual_bank_transfer"

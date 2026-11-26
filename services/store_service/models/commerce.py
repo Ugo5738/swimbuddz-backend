@@ -208,7 +208,7 @@ class Order(Base):
         default=OrderStatus.PENDING_PAYMENT,
         server_default="pending_payment",
     )
-    # Separated status dimensions (ADR-023)
+    # Separated status dimensions (ADR-024)
     payment_status: Mapped[Optional[OrderPaymentStatus]] = mapped_column(
         SAEnum(
             OrderPaymentStatus,
@@ -412,7 +412,7 @@ class OrderItem(Base):
     unit_price_ngn: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     line_total_ngn: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
-    # For pre-order / sourcing & return-policy snapshots (ADR-023)
+    # For pre-order / sourcing & return-policy snapshots (ADR-024)
     is_preorder: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
     )

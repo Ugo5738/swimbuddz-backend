@@ -127,7 +127,9 @@ class OrderResponse(BaseModel):
                 OrderStatus.PAYMENT_FAILED: OrderPaymentStatus.FAILED,
                 OrderStatus.REFUNDED: OrderPaymentStatus.REFUNDED,
                 OrderStatus.CANCELLED: (
-                    OrderPaymentStatus.PAID if self.paid_at else OrderPaymentStatus.UNPAID
+                    OrderPaymentStatus.PAID
+                    if self.paid_at
+                    else OrderPaymentStatus.UNPAID
                 ),
             }
             self.payment_status = payment_map.get(self.status, OrderPaymentStatus.PAID)

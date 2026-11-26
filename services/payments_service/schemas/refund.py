@@ -1,4 +1,4 @@
-"""Pydantic v2 schemas for the shared Refund subsystem (ADR-023)."""
+"""Pydantic v2 schemas for the shared Refund subsystem (ADR-024)."""
 
 import uuid
 from datetime import datetime

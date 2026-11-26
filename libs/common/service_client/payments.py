@@ -303,7 +303,7 @@ async def paystack_create_recipient(
 
 
 # ---------------------------------------------------------------------------
-# Shared refunds & store payment closure (ADR-023)
+# Shared refunds & store payment closure (ADR-024)
 # ---------------------------------------------------------------------------
 
 

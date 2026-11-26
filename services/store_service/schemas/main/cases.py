@@ -1,4 +1,4 @@
-"""Pydantic v2 schemas for Store post-purchase cases and order actions (ADR-023)."""
+"""Pydantic v2 schemas for Store post-purchase cases and order actions (ADR-024)."""
 
 import uuid
 from datetime import datetime
@@ -192,7 +192,7 @@ class OrderRefundPreview(BaseModel):
 
 
 class OrderActionEligibilityResponse(BaseModel):
-    """Server-computed post-purchase actions available for an order (ADR-023)."""
+    """Server-computed post-purchase actions available for an order (ADR-024)."""
 
     order_number: str
     payment_status: str

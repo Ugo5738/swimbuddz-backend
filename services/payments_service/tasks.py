@@ -678,7 +678,7 @@ async def ingest_paystack_settlements(
             # Paystack: effective_amount/total_amount is NET settled to bank;
             # total_fees is Paystack's transaction fee cut; total_processed (or
             # explicit deductions) lets us separate refund/chargeback deductions
-            # from PSP fee expense (ADR-023).
+            # from PSP fee expense (ADR-024).
             fees = int(s.get("total_fees") or 0)
             net = (
                 int(s["effective_amount"])

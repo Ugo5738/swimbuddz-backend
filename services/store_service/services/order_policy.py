@@ -1,4 +1,4 @@
-"""Pure Store post-purchase policy engine (ADR-023).
+"""Pure Store post-purchase policy engine (ADR-024).
 
 Deterministic, DB-free rules for:
 - Separating payment_status and fulfillment_status while keeping legacy status synced
@@ -170,7 +170,7 @@ def compute_order_refund_tenders(
     resolution: OrderCaseResolution = OrderCaseResolution.FULL_REFUND_ORIGINAL_METHOD,
     target_refund_kobo: Optional[int] = None,
 ) -> TenderRefundCalculation:
-    """Compute exact refund split across cash, Bubbles, and Store Credit (ADR-023).
+    """Compute exact refund split across cash, Bubbles, and Store Credit (ADR-024).
 
     Invariants:
     - Promotional discounts are never refunded as cash.
@@ -339,10 +339,14 @@ def get_order_action_eligibility(
     )
 
     # Terminal cancelled / refunded orders have no customer actions left.
-    if fulfillment_status in (
-        OrderFulfillmentStatus.CANCELLED,
-        OrderFulfillmentStatus.RETURNED,
-    ) or payment_status == OrderPaymentStatus.REFUNDED:
+    if (
+        fulfillment_status
+        in (
+            OrderFulfillmentStatus.CANCELLED,
+            OrderFulfillmentStatus.RETURNED,
+        )
+        or payment_status == OrderPaymentStatus.REFUNDED
+    ):
         return elig
 
     # 1. Unpaid / payment failed / bank-proof pending review
@@ -398,9 +402,7 @@ def get_order_action_eligibility(
 
     # 4. Shipped / in transit
     if fulfillment_status == OrderFulfillmentStatus.SHIPPED:
-        elig.cancel_block_reason = (
-            "Your order has already been dispatched. Once delivered, you can request a 7-day exchange/return or report a defect."
-        )
+        elig.cancel_block_reason = "Your order has already been dispatched. Once delivered, you can request a 7-day exchange/return or report a defect."
         elig.policy_notes.append(elig.cancel_block_reason)
         return elig
 

@@ -1,4 +1,4 @@
-"""Shared refund domain logic (ADR-023).
+"""Shared refund domain logic (ADR-024).
 
 Enforces:
 - Row-locked over-refund protection: SUM(active refunds.cash_refund_kobo) <= paid_kobo.
@@ -105,9 +105,7 @@ def resolve_refund_method(
     return method, provider, age_fallback
 
 
-async def get_active_refunded_cash_kobo(
-    db: AsyncSession, payment_id
-) -> int:
+async def get_active_refunded_cash_kobo(db: AsyncSession, payment_id) -> int:
     """Return total active (non-failed, non-cancelled) cash kobo already allocated to refunds."""
     result = await db.execute(
         select(func.coalesce(func.sum(Refund.cash_refund_kobo), 0)).where(
@@ -267,10 +265,14 @@ async def create_refund_record(
         wallet_refund_transaction_id=payload.wallet_refund_transaction_id,
         store_credit_id=payload.store_credit_id,
         requested_by_auth_id=payload.requested_by_auth_id,
-        approved_by_auth_id=payload.approved_by_auth_id if payload.auto_approve else None,
+        approved_by_auth_id=payload.approved_by_auth_id
+        if payload.auto_approve
+        else None,
         approved_at=approved_at,
         completed_by_auth_id=(
-            payload.approved_by_auth_id if initial_status == RefundStatus.COMPLETED else None
+            payload.approved_by_auth_id
+            if initial_status == RefundStatus.COMPLETED
+            else None
         ),
         completed_at=completed_at,
         refund_metadata=meta or None,
@@ -369,7 +371,8 @@ async def approve_refund(
             refund,
             actor_auth_id=actor_auth_id,
             customer_note=refund.reason or f"Refund {refund.refund_reference}",
-            merchant_note=admin_note or f"{refund.source_service}:{refund.source_entity_id}",
+            merchant_note=admin_note
+            or f"{refund.source_service}:{refund.source_entity_id}",
         )
 
     return refund
@@ -451,7 +454,10 @@ async def initiate_paystack_refund(
     await db.commit()
     await db.refresh(refund)
 
-    if refund.status == RefundStatus.COMPLETED and not refund.ledger_disbursement_posted:
+    if (
+        refund.status == RefundStatus.COMPLETED
+        and not refund.ledger_disbursement_posted
+    ):
         posted = await emit_refund_completed_to_ledger(db, refund)
         if posted:
             refund.ledger_disbursement_posted = True
@@ -546,7 +552,10 @@ async def apply_paystack_refund_event(
     await db.commit()
     await db.refresh(refund)
 
-    if refund.status == RefundStatus.COMPLETED and not refund.ledger_disbursement_posted:
+    if (
+        refund.status == RefundStatus.COMPLETED
+        and not refund.ledger_disbursement_posted
+    ):
         if not refund.ledger_accrual_posted:
             accrued = await emit_refund_approved_to_ledger(db, refund)
             if accrued:

@@ -59,13 +59,64 @@ class RecoveryResult:
     near_wrist_conf: float
     peaks_s: tuple[float, ...] = ()  # absolute time of each recovery peak — the
     # segmentation the pose_recovery component turns into near-arm recovery instances
+    engine: str = "yolov8"  # "rtmpose" (Apache-2.0) | "yolov8" (Ultralytics)
 
     @property
     def refused(self) -> bool:
         return self.count is None
 
 
-def _pose_keypoints(frames) -> list:
+def _resolve_pose_engine(engine: str = "auto") -> str:
+    """Resolve ``auto | rtmpose | yolov8`` to an available pose engine.
+
+    ``auto`` prefers the Apache-2.0 ``rtmlib`` (RTMPose via ONNX Runtime) stack
+    when installed so commercial deployments avoid Ultralytics AGPL obligations,
+    and falls back cleanly to ``yolov8`` when only ultralytics is installed.
+    """
+    choice = (engine or "auto").strip().lower()
+    if choice == "rtmpose":
+        return "rtmpose"
+    if choice == "yolov8":
+        return "yolov8"
+    try:
+        import importlib.util
+
+        if importlib.util.find_spec("rtmlib") is not None:
+            return "rtmpose"
+    except Exception:
+        pass
+    return "yolov8"
+
+
+def _pose_keypoints_rtmpose(frames) -> list:
+    """Run Apache-2.0 RTMPose (via ``rtmlib`` + ``onnxruntime``) over frames.
+
+    Emits the exact same per-frame COCO-17 ``(17, 3)`` array ``(x, y, conf)``
+    as ``_pose_keypoints_yolo`` so downstream wrist-trajectory peak finding is
+    engine-agnostic without needing PyTorch or AGPL ultralytics.
+    """
+    import numpy as np
+    from rtmlib import Body
+
+    body = Body(mode="balanced", backend="onnxruntime", device="cpu")
+    out = []
+    for frame in frames:
+        kps, scores = body(frame)
+        if kps is None or len(kps) == 0:
+            out.append(None)
+            continue
+        kps_arr = np.asarray(kps, dtype=float)
+        scores_arr = np.asarray(scores, dtype=float)
+        if kps_arr.ndim != 3 or kps_arr.shape[0] == 0:
+            out.append(None)
+            continue
+        # Pick the person with highest mean upper-body/overall keypoint confidence.
+        bi = int(np.argmax(np.mean(scores_arr, axis=1)))
+        out.append(np.concatenate([kps_arr[bi], scores_arr[bi][:, None]], axis=-1))
+    return out
+
+
+def _pose_keypoints_yolo(frames) -> list:
     """Run yolov8-pose over the frames → per-frame (17,3) keypoint array (x,y,conf)
     for the highest-confidence person, or None when no swimmer is found.
 
@@ -90,6 +141,14 @@ def _pose_keypoints(frames) -> list:
             bi = int(np.argmax(r.boxes.conf.cpu().numpy()))
         out.append(kp.data[bi].cpu().numpy())
     return out
+
+
+def _pose_keypoints(frames, *, engine: str = "auto") -> tuple[list, str]:
+    """Extract COCO-17 keypoints with the selected pose engine."""
+    resolved = _resolve_pose_engine(engine)
+    if resolved == "rtmpose":
+        return _pose_keypoints_rtmpose(frames), "rtmpose"
+    return _pose_keypoints_yolo(frames), "yolov8"
 
 
 def _interp_nan(a):
@@ -152,10 +211,10 @@ def _signal_for_arm(keypoints, wri_idx, sho_idx):
     return shy - wy
 
 
-def count_recoveries(frames, timestamps) -> RecoveryResult:
+def count_recoveries(frames, timestamps, *, engine: str = "auto") -> RecoveryResult:
     """Count over-water recoveries (== freestyle stroke cycles, near-arm 1:1) from
-    a clip's frames via the pose wrist signal. Deterministic; needs torch (worker
-    only).
+    a clip's frames via the pose wrist signal. Deterministic; runs via Apache-2.0
+    RTMPose (``rtmlib`` + ``onnxruntime``) or ``yolov8-pose`` (worker only).
 
     Applies the detection gate: returns ``RecoveryResult(count=None, ...)`` when
     pose detection is too sparse / too weak to count reliably (the drilldown is
@@ -166,7 +225,7 @@ def count_recoveries(frames, timestamps) -> RecoveryResult:
 
     from services.ai_service.pipeline.segment import _prominent_peaks
 
-    keypoints = _pose_keypoints(frames)
+    keypoints, resolved_engine = _pose_keypoints(frames, engine=engine)
     n_frames = len(keypoints) or 1
     det_rate = sum(1 for kp in keypoints if kp is not None) / n_frames
     near_wri, near_sho = _near_arm(keypoints)
@@ -174,9 +233,13 @@ def count_recoveries(frames, timestamps) -> RecoveryResult:
 
     sig = _signal_for_arm(keypoints, near_wri, near_sho)
     if sig is None or len(sig) < 3:
-        return RecoveryResult(None, "unreadable", det_rate, near_conf)
+        return RecoveryResult(
+            None, "unreadable", det_rate, near_conf, engine=resolved_engine
+        )
     if det_rate < _GATE_DET_RATE or near_conf < _GATE_WRIST_CONF:
-        return RecoveryResult(None, "low_detection", det_rate, near_conf)
+        return RecoveryResult(
+            None, "low_detection", det_rate, near_conf, engine=resolved_engine
+        )
 
     if _SMOOTH > 1 and len(sig) >= _SMOOTH:
         sig = np.convolve(sig, np.ones(_SMOOTH) / _SMOOTH, mode="same")
@@ -187,4 +250,6 @@ def count_recoveries(frames, timestamps) -> RecoveryResult:
     peaks_s = tuple(
         round(float(timestamps[i]), 3) for i in peak_idxs if 0 <= i < len(timestamps)
     )
-    return RecoveryResult(len(peaks_s), "ok", det_rate, near_conf, peaks_s)
+    return RecoveryResult(
+        len(peaks_s), "ok", det_rate, near_conf, peaks_s, engine=resolved_engine
+    )

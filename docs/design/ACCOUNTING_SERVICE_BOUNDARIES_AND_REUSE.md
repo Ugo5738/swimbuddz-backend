@@ -1,63 +1,37 @@
-# Accounting service boundaries and reusable accounting product
+# Accounting Service Boundaries and Detachable Multi-Tenant Architecture (ADR-023)
 
-## Decision (November 2026)
+## Decision (November 2026 — Updated 25 Nov 2026)
 
-**Do not create a second Finance/Accounting service now.** The existing `ledger_service` *is* the accounting engine. Its operational functions currently include journal posting, reversals, trial balance, statements, account mappings, Finance users, Treasury budgets and approvals. Splitting them into a second source of truth now would create inconsistency and another failure surface.
+**Do not create a second Finance/Accounting service.** The existing `ledger_service` *is* the standalone, detachable multi-tenant accounting engine. SwimBuddz Ltd is **Tenant #1**; other companies can be onboarded as Tenants `#2..N` via data and configuration without introducing domain-specific code into `ledger_service`.
 
-Distinguish:
-- **Accounting core / Ledger** — owns immutable double-entry postings, periods, chart of accounts, organization, balances and statement semantics.
-- **Finance operations** — application workflows for budgets, spending requests, bank verification and staff approvals. They can be modules using Ledger contracts; do not duplicate journals.
-- **Business source systems** — Store, Academy, Members, Payments and Wallet own products, classes, orders, providers and receipts.
-- **Finance Intelligence** — a read-only reporting projection, not the accounting ledger. It presently queries shared SwimBuddz database tables through raw SQL and therefore is **not detachable**.
+### Strict Four-Layer Separation
 
-## Current strengths
+1. **Accounting Core & Treasury (`ledger_service` — 100% Detachable):**
+   - Owns `ledger_organizations`, `chart_of_accounts`, `cost_centers`, `ledger_periods`, `journal_entries`, `journal_lines`, `account_balances`, `revenue_recognition_schedules`, `external_transactions`, `reconciliation_breaks`, `invoices`, `ledger_users`, `ledger_audit_log`, and `treasury_*` workflows (`expense`, `funding`, `liability_settlement`).
+   - **Zero domain coupling:** `ledger_service` MUST NEVER import another service's Python package AND MUST NEVER query non-ledger database tables via raw SQL or ORM (`test_service_runtime_boundaries.py` enforces both in CI).
+   - **Tenant isolation & standalone DB support:**
+     - Requests resolve tenant context via `X-Ledger-Org-Id` header (verified active + active `LedgerUser` membership in that org), falling back to `LEDGER_DEFAULT_ORG_ID` or sole-org fallback only when `count(orgs) == 1`.
+     - Optional `LEDGER_DATABASE_URL` routes `ledger_service` (and its Alembic migrations) to a dedicated `NOBYPASSRLS` role (`ledger_app`) or standalone Postgres database without touching other services.
+     - All 22 org-keyed ledger + treasury tables enforce `FORCE ROW LEVEL SECURITY` (`test_ledger_rls_and_org.py`).
+   - **Vertical-agnostic configuration:**
+     - Ships both `generic_smb.yaml` (zero swimming terminology) and `sports_club.yaml` CoA templates.
+     - Organization onboarding (`POST /internal/ledger/organizations`) seeds any chosen CoA template, opens the current fiscal period, and creates the initial `OWNER`.
+     - `GET /admin/finance/organizations` and `GET/PATCH /admin/finance/organizations/current` support multi-org listing and org-level configuration (`base_currency`, tax IDs, `protected_expense_categories`).
+     - Bank cash position (`cash_position()`), deferred-revenue recognition (`recognition.py`), Treasury currency, and N-bank cash projection (`cash_projection()`) are all data/metadata-driven rather than hardcoded to Stanbic/Moniepoint/NGN.
+2. **Domain Source Systems (`payments`, `academy`, `members`, `store`, `wallet`, `sessions`):**
+   - Own their operational state machines and emit balanced, idempotent journal entries to `ledger_service` via `libs.common.ledger_client.post_journal_entry` (with `X-Ledger-Org-Id` support).
+   - Expose authenticated `require_service_role` internal read summaries (`/internal/<service>/finance-summary`).
+3. **SwimBuddz Cross-Business Read Aggregator (`gateway_service`):**
+   - `GET /api/v1/admin/finance/intelligence` lives in `services/gateway_service/app/routers/finance_intelligence.py` (registered before `/api/v1/admin/finance/{path:path}`).
+   - Fails closed against `ledger_service` (`GET /admin/finance/users/me` forwarding caller bearer token + `X-Ledger-Org-Id`), then aggregates service-owned HTTP summaries concurrently with partial-outage transparency (`degraded_domains`).
+4. **Private Evidence Storage (`media_service`):**
+   - Stores PDF/image finance receipts under private S3 (`purpose="finance_document"`, max 15 MB), accessible strictly to uploader, admins, and active `ledger_service` members verified over HTTP.
+   - `ledger_service` stores only opaque `evidence_media_id` UUID references—keeping zero coupling to `media_service`.
 
-- Ledger has `ledger_organizations` with `org_id` foreign keys throughout accounting models.
-- Journal entries and lines use minor currency units, idempotency keys, reversals, periods and accounting classifications.
-- Ledger exposes role-based permissions separate from platform-wide admin roles.
-- Isolated Docker images can deploy Ledger separately from Store.
+## Pre-B2B Production Cutover Checklist (Infra Only)
 
-## Current blockers to multi-business reuse
-
-1. **Multi-tenant access is not enabled safely end-to-end.** The Ledger dependency currently selects a single default organization, and RLS is bypassed under the shared privileged PostgreSQL role. Never onboard a second legal business with this setup.
-2. **Reporting is coupled to SwimBuddz business tables.** Finance Intelligence SQL reads `payments`, `enrollments`, `store_orders`, `club_enrollments`, etc. Other businesses don't have those tables, and a change to any source schema can break the report.
-3. **Treasury policy contains SwimBuddz specifics.** Stanbic, Moniepoint, programme dimensions, and current source categories are defaults for SwimBuddz, not a generic accounting engine.
-4. **Operational permissions span services.** Store approves selected requests by verifying Finance Owner membership over an authenticated Ledger API. Those access semantics need a stable versioned authorization contract for a product.
-5. **Multi-organization data migration, billing and account lifecycle are incomplete.** Organization provisioning, isolation tests under a non-bypass DB role, automated migrations, secret management, user isolation and reconciliation controls are required.
-6. **Accounting controls are not equivalent to audited statutory reporting.** Tax, multi-currency posting, deferred revenue, opening balances, refunds, inventory, revenue recognition and Nigerian compliance require jurisdiction-specific rules and professional review.
-
-## Recommended future architecture
-
-```
-SwimBuddz Academy / Store / Members / Payments   Other business systems
-                    |                                        |
-           versioned validated business events / APIs
-                    |                                        |
-                    +--> Integration adapters <--+----------+
-                                  |
-                       Idempotent posting contract
-                                  |
-                           Accounting Ledger
-              (org-isolated journals, COA, periods, policies)
-                                  |
-                    Ledger reports / balances API
-                                  |
-               Finance Intelligence read model by tenant
-                                  |
-                 Treasury / Procurement frontends
-```
-
-- Start with **one Ledger core** and separately packaged integration adapters.
-- Publish schemas/versioned events such as `PaymentSettled`, `GoodsReceived`, `ClassDelivered`, `RefundConfirmed`, and dedupe by `org_id + source_event_id`.
-- Move SwimBuddz-specific operational projections out of Ledger's runtime. Ideally the relevant source service publishes read-model snapshots; at minimum use explicit versioned SQL views and integration tests, not model imports or undeclared shared-table dependencies.
-- Move business-specific UI terminology and policy defaults behind tenant configuration.
-- Design truly independent organization provisioning and use non-BYPASSRLS credentials. Prove tenant A cannot see or alter B at the database and API layers, including report, logs and exports.
-- Preserve accounting boundaries: one journal posting engine; other modules submit approved events, not independent balance mutations.
-
-## Service image rule (enforced by tests)
-
-Production Store and Ledger Dockerfiles copy `libs/` and their own `services/<service>/`, **not the full monorepo**. They must never import Python modules from one another (including imports hidden in functions). Shared Pydantic schemas/interfaces may go under independently packaged `libs/`; for runtime authorization or data, use a versioned authenticated HTTP contract or asynchronous event. Both startup isolation tests and a static AST import boundary check are required for guarded services.
-
-## Release checks for future extraction
-
-Do not sell or enable the Ledger as third-party accounting SaaS until multi-org isolation, audited posting invariants, tax/jurisdiction support, background settlement reconciliation, source-event delivery semantics, access revocation and operational monitoring have passed independent tests. The current Ledger is **reusable in concept**; it is **not yet a safe detachable product**.
+The application architecture is now detachable. Before onboarding external paying companies onto a shared Postgres cluster:
+1. Create a `NOBYPASSRLS` Postgres role (e.g. `ledger_app`) granted access ONLY to `ledger_service` tables & sequences (or provision a standalone Ledger database).
+2. Point `LEDGER_DATABASE_URL` in production env to that role/database (keeping `DATABASE_URL` unchanged for other SwimBuddz services).
+3. Run cross-tenant RLS isolation integration tests under `ledger_app` proving Org A cannot read or write Org B rows at either API or DB layer.
+4. Configure per-tenant auth/SSO identity binding and billing/metering outside the accounting core.

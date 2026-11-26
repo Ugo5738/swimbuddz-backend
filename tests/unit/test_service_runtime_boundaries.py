@@ -16,7 +16,27 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-PROTECTED = ("store_service", "ledger_service")
+PROTECTED = ("store_service", "ledger_service", "media_service", "gateway_service")
+
+# Tables owned by SwimBuddz business services that the detachable ledger_service
+# must NEVER query via raw SQL or ORM (ADR-023).
+FORBIDDEN_LEDGER_SQL_TABLES = (
+    "payments",
+    "paystack_settlements",
+    "enrollments",
+    "academy_class_plans",
+    "academy_class_allocations",
+    "enrollment_installments",
+    "club_enrollments",
+    "store_orders",
+    "store_order_items",
+    "store_inventory_items",
+    "store_inventory_valuations",
+    "store_supplier_invoices",
+    "store_trade_receivables",
+    "members",
+    "sessions",
+)
 
 
 def _forbidden_imports(source: str, owner: str) -> list[tuple[int, str]]:
@@ -99,3 +119,31 @@ def later():
     assert "services.academy_service" in names
     assert "services.members_service.models" in names
     assert "services.store_service.models" not in names
+
+
+def test_ledger_service_never_queries_non_ledger_domain_tables() -> None:
+    """ADR-023: ledger_service must stay 100% detachable with zero raw SQL against SwimBuddz tables."""
+    import re
+
+    folder = ROOT / "services" / "ledger_service"
+    table_pattern = re.compile(
+        r"\b(?:FROM|JOIN|INTO|UPDATE)\s+(?:public\.)?("
+        + "|".join(re.escape(t) for t in FORBIDDEN_LEDGER_SQL_TABLES)
+        + r")\b",
+        re.IGNORECASE,
+    )
+    violations: list[str] = []
+    for path in sorted(folder.rglob("*.py")):
+        if "__pycache__" in path.parts or "alembic" in path.parts:
+            continue
+        text = path.read_text("utf-8")
+        for match in table_pattern.finditer(text):
+            lineno = text.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"{path.relative_to(ROOT)}:{lineno} references non-ledger table {match.group(1)!r}"
+            )
+    assert not violations, (
+        "ledger_service must remain strictly detachable (ADR-023). "
+        "Move cross-domain projections into gateway_service calling service-owned HTTP endpoints.\n"
+        + "\n".join(violations)
+    )
