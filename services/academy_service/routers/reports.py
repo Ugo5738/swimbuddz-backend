@@ -173,76 +173,22 @@ async def download_certificate(
         )
 
     # An issued certificate must not remain downloadable after a later admin
-    # override reverses a skill. Compute eligibility from current authoritative
-    # milestone decisions, not from the old issuance timestamp alone.
-    from services.academy_service.models import ProgressStatus
-    from services.academy_service.models.quizzes import (
-        AcademyQuizAssignment,
-        AcademyQuizAttempt,
+    # override reverses a skill (or after a V2 safety gate expires/is revoked
+    # under ACADEMY_V2_GRADUATION_MODE=v2_enforced). Compute eligibility from
+    # current authoritative decisions, not from the old issuance timestamp alone.
+    from services.academy_service.services.parity import (
+        evaluate_enrollment_certificate_eligibility,
     )
 
-    expected_milestones = set(
-        (
-            await db.execute(
-                select(Milestone.id).where(
-                    Milestone.program_id == enrollment.program_id
-                )
-            )
-        )
-        .scalars()
-        .all()
+    eligibility = await evaluate_enrollment_certificate_eligibility(
+        db, enrollment, check_quizzes=True
     )
-    achieved_milestones = set(
-        (
-            await db.execute(
-                select(StudentProgress.milestone_id).where(
-                    StudentProgress.enrollment_id == enrollment_id,
-                    StudentProgress.status == ProgressStatus.ACHIEVED,
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    if not expected_milestones or not expected_milestones.issubset(achieved_milestones):
+    if not eligibility["eligible"]:
         raise HTTPException(
             status_code=409,
-            detail="Certificate eligibility suspended: a practical milestone is not verified",
+            detail=eligibility["reason"]
+            or "Certificate eligibility suspended: requirements are incomplete",
         )
-
-    # Required cohort quizzes form a separate knowledge requirement.
-    if enrollment.cohort_id:
-        required_quizzes = set(
-            (
-                await db.execute(
-                    select(AcademyQuizAssignment.id).where(
-                        AcademyQuizAssignment.cohort_id == enrollment.cohort_id,
-                        AcademyQuizAssignment.required.is_(True),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if required_quizzes:
-            passed_quizzes = set(
-                (
-                    await db.execute(
-                        select(AcademyQuizAttempt.assignment_id).where(
-                            AcademyQuizAttempt.enrollment_id == enrollment_id,
-                            AcademyQuizAttempt.passed.is_(True),
-                            AcademyQuizAttempt.assignment_id.in_(required_quizzes),
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            if not required_quizzes.issubset(passed_quizzes):
-                raise HTTPException(
-                    status_code=409,
-                    detail="Certificate eligibility suspended: knowledge quizzes are incomplete",
-                )
 
     # Get member name via members-service
     member = await get_member_by_id(

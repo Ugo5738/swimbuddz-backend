@@ -94,7 +94,7 @@ async def evaluate_session_access_for_member(
 
     Dispatches independent cross-service lookups (cohort, pod, club, event)
     concurrently via ``asyncio.gather`` to avoid serial network latency on
-    single-session checkout reads (ADR-024).
+    single-session checkout reads (ADR-025).
     """
     member_id = str(member_payload["member_id"])
 

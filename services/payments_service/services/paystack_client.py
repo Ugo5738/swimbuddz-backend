@@ -64,6 +64,18 @@ class TransferResult:
     currency: str
 
 
+@dataclass
+class RefundResult:
+    """Result of creating or fetching a Paystack refund."""
+
+    refund_id: str
+    transaction_reference: str
+    status: str  # pending, processing, processed, failed, needs-attention
+    amount_kobo: int
+    currency: str
+    raw_payload: dict
+
+
 class PaystackError(Exception):
     """Base exception for Paystack API errors."""
 
@@ -403,6 +415,97 @@ class PaystackClient:
                 break
             page += 1
 
+        return results
+
+    # =========================================================================
+    # Refund Methods (ADR-024)
+    # =========================================================================
+
+    async def create_refund(
+        self,
+        transaction_reference: str,
+        *,
+        amount_kobo: int | None = None,
+        currency: str = "NGN",
+        customer_note: str | None = None,
+        merchant_note: str | None = None,
+    ) -> RefundResult:
+        """Initiate a full or partial Paystack refund via POST /refund."""
+        payload: dict = {
+            "transaction": transaction_reference,
+            "currency": currency,
+        }
+        if amount_kobo is not None:
+            payload["amount"] = int(amount_kobo)
+        if customer_note:
+            payload["customer_note"] = customer_note[:500]
+        if merchant_note:
+            payload["merchant_note"] = merchant_note[:500]
+
+        data = await self._request("POST", "/refund", json_data=payload)
+        refund_data = data.get("data") or {}
+        txn_obj = refund_data.get("transaction") or {}
+        txn_ref = (
+            refund_data.get("transaction_reference")
+            or (txn_obj.get("reference") if isinstance(txn_obj, dict) else None)
+            or transaction_reference
+        )
+        return RefundResult(
+            refund_id=str(refund_data.get("id") or ""),
+            transaction_reference=str(txn_ref),
+            status=str(refund_data.get("status") or "pending").lower(),
+            amount_kobo=int(refund_data.get("amount") or amount_kobo or 0),
+            currency=str(refund_data.get("currency") or currency),
+            raw_payload=refund_data,
+        )
+
+    async def get_refund(self, refund_id: str) -> RefundResult:
+        """Fetch current status of a Paystack refund via GET /refund/{id}."""
+        data = await self._request("GET", f"/refund/{refund_id}")
+        refund_data = data.get("data") or {}
+        txn_obj = refund_data.get("transaction") or {}
+        txn_ref = (
+            refund_data.get("transaction_reference")
+            or (txn_obj.get("reference") if isinstance(txn_obj, dict) else None)
+            or ""
+        )
+        return RefundResult(
+            refund_id=str(refund_data.get("id") or refund_id),
+            transaction_reference=str(txn_ref),
+            status=str(refund_data.get("status") or "pending").lower(),
+            amount_kobo=int(refund_data.get("amount") or 0),
+            currency=str(refund_data.get("currency") or "NGN"),
+            raw_payload=refund_data,
+        )
+
+    async def list_refunds(
+        self,
+        transaction_reference: str | None = None,
+        per_page: int = 50,
+    ) -> List[RefundResult]:
+        """List Paystack refunds, optionally filtered by transaction reference."""
+        params: dict = {"perPage": per_page}
+        if transaction_reference:
+            params["reference"] = transaction_reference
+        data = await self._request("GET", "/refund", params=params)
+        results: List[RefundResult] = []
+        for item in data.get("data") or []:
+            txn_obj = item.get("transaction") or {}
+            txn_ref = (
+                item.get("transaction_reference")
+                or (txn_obj.get("reference") if isinstance(txn_obj, dict) else None)
+                or ""
+            )
+            results.append(
+                RefundResult(
+                    refund_id=str(item.get("id") or ""),
+                    transaction_reference=str(txn_ref),
+                    status=str(item.get("status") or "pending").lower(),
+                    amount_kobo=int(item.get("amount") or 0),
+                    currency=str(item.get("currency") or "NGN"),
+                    raw_payload=item,
+                )
+            )
         return results
 
 

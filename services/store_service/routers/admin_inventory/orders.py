@@ -25,11 +25,13 @@ from libs.db.session import get_async_db
 from services.store_service.models import (
     AuditEntityType,
     Order,
+    OrderPaymentStatus,
     OrderStatus,
     StoreCredit,
     StoreCreditSourceType,
 )
 from services.store_service.routers._helpers import log_audit
+from services.store_service.services.order_policy import sync_order_status_dimensions
 from services.store_service.schemas import (
     OrderListResponse,
     OrderResponse,
@@ -248,7 +250,7 @@ async def confirm_verified_order_payment(
         return order
 
     old_status = order.status
-    order.status = OrderStatus.PAID
+    sync_order_status_dimensions(order, legacy_status=OrderStatus.PAID)
     order.paid_at = paid_at or utc_now()
     if wallet_transaction_id:
         order.wallet_transaction_id = wallet_transaction_id
@@ -404,10 +406,11 @@ async def issue_refund(
             detail="Cannot issue credit to guest order",
         )
 
-    if amount_ngn > order.total_ngn:
+    effective_total = order.effective_order_total_ngn
+    if amount_ngn > effective_total:
         raise HTTPException(
             status_code=400,
-            detail=f"Refund amount cannot exceed order total ({order.total_ngn})",
+            detail=f"Refund amount cannot exceed order total ({effective_total})",
         )
 
     # Create store credit
@@ -422,9 +425,19 @@ async def issue_refund(
     )
     db.add(credit)
 
-    # Update order status if full refund
-    if amount_ngn >= order.total_ngn:
-        order.status = OrderStatus.REFUNDED
+    # Update order payment status
+    if amount_ngn >= effective_total:
+        order.refunded_at = utc_now()
+        sync_order_status_dimensions(
+            order,
+            legacy_status=OrderStatus.REFUNDED,
+            payment_status=OrderPaymentStatus.REFUNDED,
+        )
+    else:
+        sync_order_status_dimensions(
+            order,
+            payment_status=OrderPaymentStatus.PARTIALLY_REFUNDED,
+        )
 
     await log_audit(
         db,

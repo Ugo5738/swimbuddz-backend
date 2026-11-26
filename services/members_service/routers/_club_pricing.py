@@ -117,6 +117,9 @@ async def application_response(
         },
         plan=plan_response(plan, club) if plan and club else None,
         selected_plans=selected_plans,
+        member_auth_id=(
+            member.auth_id if (member and include_internal_notes) else None
+        ),
         member_name=(f"{member.first_name} {member.last_name}" if member else None),
         member_email=(member.email if member else None),
         assessment=(

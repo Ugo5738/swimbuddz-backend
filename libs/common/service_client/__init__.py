@@ -58,9 +58,13 @@ from .members import (
 from .payments import (
     PaystackProxyError,
     _proxy_error_from,
+    close_unpaid_store_payment,
     complete_makeup_obligation,
+    create_internal_refund,
     extend_recurring_payouts_for_cohort,
+    get_payment_reference_status,
     initialize_store_payment,
+    list_internal_refunds_by_source,
     paystack_create_recipient,
     paystack_list_banks,
     paystack_resolve_account,
@@ -193,6 +197,10 @@ __all__ = [
     "paystack_list_banks",
     "paystack_resolve_account",
     "paystack_create_recipient",
+    "create_internal_refund",
+    "list_internal_refunds_by_source",
+    "get_payment_reference_status",
+    "close_unpaid_store_payment",
     # Communications
     "dispatch_notification",
 ]

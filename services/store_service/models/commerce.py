@@ -29,6 +29,8 @@ from libs.db.base import Base
 from services.store_service.models.enums import (
     CartStatus,
     FulfillmentType,
+    OrderFulfillmentStatus,
+    OrderPaymentStatus,
     OrderStatus,
     StoreCreditSourceType,
     enum_values,
@@ -182,6 +184,12 @@ class Order(Base):
     delivery_fee_ngn: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), default=0, server_default="0"
     )
+    # True net order value before tenders (subtotal - discount + delivery).
+    # Nullable for legacy rows; use effective_order_total_ngn for reads.
+    order_total_ngn: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    # Legacy cash-payable remainder (after store_credit_applied_ngn and bubbles_applied).
     total_ngn: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
     # Discounts applied
@@ -190,7 +198,7 @@ class Order(Base):
         JSONB, nullable=True
     )  # {"code": "SWIM10", "member_tier": "club", "total_saved": 2500}
 
-    # Status
+    # Legacy combined status (kept synced with payment_status + fulfillment_status)
     status: Mapped[OrderStatus] = mapped_column(
         SAEnum(
             OrderStatus,
@@ -199,6 +207,25 @@ class Order(Base):
         ),
         default=OrderStatus.PENDING_PAYMENT,
         server_default="pending_payment",
+    )
+    # Separated status dimensions (ADR-024)
+    payment_status: Mapped[Optional[OrderPaymentStatus]] = mapped_column(
+        SAEnum(
+            OrderPaymentStatus,
+            values_callable=enum_values,
+            name="store_order_payment_status_enum",
+        ),
+        nullable=True,
+        index=True,
+    )
+    fulfillment_status: Mapped[Optional[OrderFulfillmentStatus]] = mapped_column(
+        SAEnum(
+            OrderFulfillmentStatus,
+            values_callable=enum_values,
+            name="store_order_fulfillment_status_enum",
+        ),
+        nullable=True,
+        index=True,
     )
 
     # Payment reference (links to payments_service)
@@ -250,10 +277,19 @@ class Order(Base):
     paid_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    shipped_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     fulfilled_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     cancelled_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    refunded_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -270,6 +306,70 @@ class Order(Base):
     pickup_location = relationship(
         "services.store_service.models.commerce.PickupLocation"
     )
+    cases = relationship(
+        "StoreOrderCase", back_populates="order", cascade="all, delete-orphan"
+    )
+
+    @property
+    def effective_order_total_ngn(self) -> Decimal:
+        """True net order value before store credit, Bubbles, and cash splits."""
+        if self.order_total_ngn is not None:
+            return Decimal(self.order_total_ngn)
+        return max(
+            Decimal("0"),
+            Decimal(self.subtotal_ngn or 0)
+            - Decimal(self.discount_amount_ngn or 0)
+            + Decimal(self.delivery_fee_ngn or 0),
+        )
+
+    @property
+    def cash_payable_ngn(self) -> Decimal:
+        """Cash portion settled via Paystack or manual bank transfer."""
+        return Decimal(self.total_ngn or 0)
+
+    @property
+    def effective_payment_status(self) -> OrderPaymentStatus:
+        """Resolved payment status, deriving safely for legacy rows."""
+        if self.payment_status is not None:
+            return self.payment_status
+        mapping = {
+            OrderStatus.PENDING_PAYMENT: OrderPaymentStatus.UNPAID,
+            OrderStatus.PAYMENT_FAILED: OrderPaymentStatus.FAILED,
+            OrderStatus.PAID: OrderPaymentStatus.PAID,
+            OrderStatus.PROCESSING: OrderPaymentStatus.PAID,
+            OrderStatus.READY_FOR_PICKUP: OrderPaymentStatus.PAID,
+            OrderStatus.PICKED_UP: OrderPaymentStatus.PAID,
+            OrderStatus.SHIPPED: OrderPaymentStatus.PAID,
+            OrderStatus.DELIVERED: OrderPaymentStatus.PAID,
+            OrderStatus.REFUNDED: OrderPaymentStatus.REFUNDED,
+            OrderStatus.CANCELLED: (
+                OrderPaymentStatus.PAID if self.paid_at else OrderPaymentStatus.UNPAID
+            ),
+        }
+        return mapping.get(self.status, OrderPaymentStatus.UNPAID)
+
+    @property
+    def effective_fulfillment_status(self) -> OrderFulfillmentStatus:
+        """Resolved fulfillment status, deriving safely for legacy rows."""
+        if self.fulfillment_status is not None:
+            return self.fulfillment_status
+        mapping = {
+            OrderStatus.PENDING_PAYMENT: OrderFulfillmentStatus.NOT_STARTED,
+            OrderStatus.PAYMENT_FAILED: OrderFulfillmentStatus.NOT_STARTED,
+            OrderStatus.PAID: OrderFulfillmentStatus.AWAITING_PREPARATION,
+            OrderStatus.PROCESSING: OrderFulfillmentStatus.PROCESSING,
+            OrderStatus.READY_FOR_PICKUP: OrderFulfillmentStatus.READY_FOR_PICKUP,
+            OrderStatus.PICKED_UP: OrderFulfillmentStatus.PICKED_UP,
+            OrderStatus.SHIPPED: OrderFulfillmentStatus.SHIPPED,
+            OrderStatus.DELIVERED: OrderFulfillmentStatus.DELIVERED,
+            OrderStatus.CANCELLED: OrderFulfillmentStatus.CANCELLED,
+            OrderStatus.REFUNDED: (
+                OrderFulfillmentStatus.RETURNED
+                if self.fulfilled_at
+                else OrderFulfillmentStatus.CANCELLED
+            ),
+        }
+        return mapping.get(self.status, OrderFulfillmentStatus.NOT_STARTED)
 
     @staticmethod
     def generate_order_number() -> str:
@@ -312,9 +412,21 @@ class OrderItem(Base):
     unit_price_ngn: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     line_total_ngn: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
-    # For pre-order items
+    # For pre-order / sourcing & return-policy snapshots (ADR-024)
     is_preorder: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
+    )
+    sourcing_type: Mapped[str] = mapped_column(
+        String(24), default="stocked", server_default="stocked", nullable=False
+    )
+    net_line_total_ngn: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    requires_size_chart_ack: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    supplier_committed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     estimated_ship_date: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -460,6 +572,9 @@ class StoreCreditTransaction(Base):
     )
 
     amount_ngn: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    transaction_type: Mapped[str] = mapped_column(
+        String(16), default="debit", server_default="debit", nullable=False
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now

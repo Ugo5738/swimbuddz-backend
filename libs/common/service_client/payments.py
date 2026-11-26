@@ -300,3 +300,81 @@ async def paystack_create_recipient(
     if resp.status_code != 200:
         raise _proxy_error_from(resp)
     return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# Shared refunds & store payment closure (ADR-024)
+# ---------------------------------------------------------------------------
+
+
+async def create_internal_refund(
+    payload: dict,
+    *,
+    calling_service: str,
+) -> dict:
+    """Create a shared refund record in payments_service.
+
+    Raises httpx.HTTPStatusError on 4xx/5xx so callers can surface domain conflicts.
+    """
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path="/internal/payments/refunds",
+        calling_service=calling_service,
+        json=payload,
+        timeout=30.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def list_internal_refunds_by_source(
+    source_service: str,
+    source_entity_id: str,
+    *,
+    calling_service: str,
+) -> list[dict]:
+    """Fetch refunds associated with a source domain entity (best-effort)."""
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path=f"/internal/payments/refunds/by-source/{source_service}/{source_entity_id}",
+        calling_service=calling_service,
+        timeout=15.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def get_payment_reference_status(
+    reference: str,
+    *,
+    calling_service: str,
+) -> dict:
+    """Fetch authoritative payment status, proof state, and refundable balance."""
+    settings = get_settings()
+    resp = await internal_get(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path=f"/internal/payments/by-reference/{reference}/status",
+        calling_service=calling_service,
+        timeout=15.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def close_unpaid_store_payment(
+    reference: str,
+    *,
+    calling_service: str,
+) -> dict:
+    """Close an unpaid store payment intent after live Paystack verification under lock."""
+    settings = get_settings()
+    resp = await internal_post(
+        service_url=settings.PAYMENTS_SERVICE_URL,
+        path=f"/internal/payments/by-reference/{reference}/close-unpaid",
+        calling_service=calling_service,
+        timeout=20.0,
+    )
+    resp.raise_for_status()
+    return resp.json()

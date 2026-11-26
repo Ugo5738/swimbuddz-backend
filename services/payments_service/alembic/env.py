@@ -24,6 +24,7 @@ from services.payments_service.models import (  # noqa: F401
     PaymentAdminEmailLog,
     PaystackSettlement,
     RecurringPayoutConfig,
+    Refund,
 )
 
 settings = get_settings()

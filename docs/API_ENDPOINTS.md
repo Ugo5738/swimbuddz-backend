@@ -2155,9 +2155,9 @@ Companion worker: `swimbuddz_pools_worker` (ARQ on Redis queue `arq:pools`) — 
 - `POST /internal/sessions/club-reservations` (service role): idempotently confirms zero-fee future reservations for the exact purchased prepaid quarter inclusions. Locks sessions before capacity checks; canceled attendance stays canceled. After commit, attendance synchronization is retried through paid-entitlement fulfillment.
 - `POST /clubs/admin/plans/{plan_id}/sync-prepaid-reservations` (admin): `dry_run=true` previews candidate enrollments and included sessions without mutation. The default `false` backfills active prepaid purchasers of a published quarter, returning successful and failed enrollment IDs; transition members are excluded.
 - `GET /sessions/bookings/me/club-quarter` (member): own upcoming prepaid bookings, including canceled attendance.
-- `GET /sessions/bookings/me` and `GET /sessions/bookings/me/unpaid` (member): accept optional `session_id` UUID query param for fast single-session booking checks during checkout (`ADR-024`).
-- `GET /internal/members/by-auth/{auth_id}/membership` (service role): single-hop auth-ID → member ID + normalized membership lookup (zero `media_service` photo calls, `ADR-024`); `GET /internal/members/by-auth/{auth_id}` also accepts `include_photo=false` for ID-only lookups.
-- `GET /transport/sessions/{session_id}/ride-configs` (member): short-circuits to `[]` with zero cross-service HTTP calls when no ride configs exist for the session and batches area/location/booking-count/route lookups into constant SQL queries (`ADR-024`).
+- `GET /sessions/bookings/me` and `GET /sessions/bookings/me/unpaid` (member): accept optional `session_id` UUID query param for fast single-session booking checks during checkout (`ADR-025`).
+- `GET /internal/members/by-auth/{auth_id}/membership` (service role): single-hop auth-ID → member ID + normalized membership lookup (zero `media_service` photo calls, `ADR-025`); `GET /internal/members/by-auth/{auth_id}` also accepts `include_photo=false` for ID-only lookups.
+- `GET /transport/sessions/{session_id}/ride-configs` (member): short-circuits to `[]` with zero cross-service HTTP calls when no ride configs exist for the session and batches area/location/booking-count/route lookups into constant SQL queries (`ADR-025`).
 - `GET /clubs/admin/members/{member_id}/enrollments` (admin): location-specific Club enrollment history used by the Admin member profile.
 - `POST /clubs/admin/enrollments/{source_enrollment_id}/location-transfer/preview` (admin): preview a permanent home-Club move, including remaining source/target swim value. Transition-per-session moves can execute immediately; quarterly-prepaid moves require financial reconciliation.
 - `POST /clubs/admin/enrollments/{source_enrollment_id}/location-transfer` (admin): execute a safe immediate home-Club move. Reuses Club readiness, validates target plan/Pod capacity, ends the source enrollment, creates the target transition enrollment, reconciles Pod membership, and writes a `ClubEnrollmentTransfer` audit row. Prepaid-quarter transfers return 409 until their value difference is explicitly reconciled.
@@ -2222,3 +2222,38 @@ request. No new public endpoint or schema change is introduced.
 ### Reviewed stock preparation and pickup correction (24 November 2026)
 
 The scoped stock preparation script described in `STORE_STOCK_RECONCILIATION_20261124.md` creates audited counts and Fatima’s explicit reservations without changing payments or historical preorder snapshots. Complete her confirmed collection through the existing admin order-status endpoint (`picked_up`). No new API is added.
+
+
+### Store Post-Purchase Order Lifecycle, Cases & Shared Refunds (ADR-024, 25 November 2026)
+
+See [ADR-024](./DECISIONS.md) and [STORE_OPERATIONS.md](../../docs/store/STORE_OPERATIONS.md) for the full policy rules, multi-tender refund ordering, and accounting invariants.
+
+#### Customer Store Order Actions (`store_service`)
+- `GET /api/v1/store/orders/{order_number}/actions` (Member): Server-evaluated post-purchase action eligibility (`can_self_cancel`, `can_request_cancel`, `can_swap_variant`, `can_request_partial_cancel`, `can_request_return`, `can_report_defect`), live payment-lock check, open cases, and linked refunds.
+- `POST /api/v1/store/orders/{order_number}/cancel` (Member): Instant self-cancel for unpaid orders (when Paystack live-check is not succeeded and bank proof is not pending review) or paid `stocked` orders in `awaiting_preparation`. Releases inventory, restores Store Credit & Bubbles, and creates/auto-initiates cash refund via `payments_service`.
+- `POST /api/v1/store/orders/{order_number}/swap-variant` (Member): Atomic same-price variant swap before preparation on `stocked` items.
+- `POST /api/v1/store/orders/{order_number}/cases` (Member): Submit `cancel_request`, `partial_cancel`, `modify_request`, `return_exchange`, or `defect_claim` with line quantities, resolution preference, and optional evidence media IDs.
+- `GET /api/v1/store/orders/{order_number}/cases` (Member): List post-purchase cases for an order.
+- `POST /api/v1/store/orders/{order_number}/cases/{case_id}/withdraw` (Member): Withdraw a `submitted` case.
+
+#### Admin Store Cases & Audited Cancellation (`store_service`)
+- `GET /api/v1/admin/store/cases/open-count` (Admin): Badge count of `submitted` / `under_review` / `awaiting_return` cases.
+- `GET /api/v1/admin/store/cases` and `GET /api/v1/admin/store/cases/{case_id}` (Admin): Filterable post-purchase case queue and case detail.
+- `GET /api/v1/admin/store/orders/{order_id}/cases` (Admin): Order-scoped cases and linked `payments_service` refunds.
+- `POST /api/v1/admin/store/cases/{case_id}/review` (Admin): Approve (`awaiting_return` or immediate settlement) or Decline a case; requires `policy_override_reason` whenever overriding policy.
+- `POST /api/v1/admin/store/cases/{case_id}/receive-return` (Admin): Record return inspection (`restockable` / `damaged` / `hygiene_unsellable`), reverse weighted-average COGS on `restockable` units, and execute financial settlement.
+- `POST /api/v1/admin/store/orders/{order_id}/cancel-and-refund` (Admin): Audited cancellation and refund initiation for paid orders (raw `PATCH /admin/store/orders/{order_id}` rejects `status=cancelled` on paid orders with `409 Conflict`).
+- `POST /internal/store/orders/refund-status-callback` (Service Role): Receives refund settlement completion callbacks from `payments_service` to transition order `payment_status` (`partially_refunded` / `refunded`) and case status (`completed`).
+
+#### Shared Refund Engine (`payments_service`)
+- `GET /api/v1/payments/admin/refunds` & `GET /api/v1/payments/admin/refunds/{refund_id}` (Admin): Filterable cross-service refund ledger and detail.
+- `GET /api/v1/payments/admin/refunds/banks` (Admin): Paystack Nigerian bank directory for manual bank-transfer refunds.
+- `POST /api/v1/payments/admin/refunds/{refund_id}/approve` (Admin): Approve a refund and post ledger accrual (`DR <purpose> / CR refunds_payable`).
+- `POST /api/v1/payments/admin/refunds/{refund_id}/initiate-paystack` (Admin): Call Paystack `POST /refund` (falls back to manual bank transfer when transaction age ≥ 365 days).
+- `POST /api/v1/payments/admin/refunds/{refund_id}/sync-paystack` (Admin): Poll Paystack `GET /refund/{id}` and reconcile settlement status.
+- `POST /api/v1/payments/admin/refunds/{refund_id}/verify-bank-account` (Admin): Live NUBAN resolution via Paystack `resolve_account` before manual bank payout.
+- `POST /api/v1/payments/admin/refunds/{refund_id}/complete-manual` (Admin): Record verified corporate bank payout reference, post ledger disbursement (`DR refunds_payable / CR bank_operating_ngn`), and notify the source service.
+- `POST /api/v1/payments/admin/refunds/{refund_id}/fail-or-cancel` (Admin): Mark failed or cancel an unexecuted refund.
+- `GET /api/v1/payments/me/refunds` (Member): Member's own refunds across SwimBuddz services.
+- `POST /internal/payments/refunds`, `GET /internal/payments/refunds/by-source/{source_service}/{source_entity_id}`, `GET /internal/payments/by-reference/{reference}/status`, `POST /internal/payments/by-reference/{reference}/close-unpaid` (Service Role): Cross-service refund creation/lookup and live unpaid payment-lock verification/closure.
+- `POST /api/v1/payments/webhook/paystack`: Now handles `refund.pending`, `refund.processing`, `refund.processed`, and `refund.failed` events.

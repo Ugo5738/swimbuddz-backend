@@ -361,7 +361,7 @@ async def get_session_ride_configs(
     Short-circuits immediately when the session has no ride configurations
     (zero cross-service HTTP calls) and batches RideArea, PickupLocation,
     RideBooking counts, and RouteInfo lookups into constant SQL queries
-    (ADR-024).
+    (ADR-025).
     """
     # 1. Check SessionRideConfig rows first so sessions without ride share
     # return [] immediately without an extra HTTP hop to sessions_service.

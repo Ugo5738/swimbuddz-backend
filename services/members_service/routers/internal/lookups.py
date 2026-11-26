@@ -75,7 +75,7 @@ async def get_member_membership_by_auth_id(
     _: AuthUser = Depends(require_service_role),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Single-hop auth_id → member_id + normalized membership lookup (ADR-024).
+    """Single-hop auth_id → member_id + normalized membership lookup (ADR-025).
 
     Replaces the 2-step `/by-auth/{auth_id}` (which also called media_service
     for profile photos) + `/{member_id}/membership` chain used on hot session

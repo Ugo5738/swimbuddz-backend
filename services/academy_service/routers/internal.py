@@ -981,6 +981,61 @@ async def member_academy_financial_obligations(
     ]
 
 
+@router.get("/competencies/members/{member_auth_id}/club-readiness-advisory")
+async def internal_member_club_readiness_advisory(
+    member_auth_id: str,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Service-role read-only Club-readiness advisory from V2 competency passport.
+
+    Strictly advisory evidence (ADR-005 / ADR-010); never auto-approves Club admission.
+    """
+    from services.academy_service.services.parity import (
+        compute_club_readiness_advisory,
+    )
+
+    return await compute_club_readiness_advisory(db, member_auth_id)
+
+
+class InternalStrokeLabDrillPrescription(_BaseModel):
+    member_auth_id: str = _Field(min_length=1, max_length=160)
+    member_id: uuid.UUID | None = None
+    academy_ref: str = _Field(min_length=5, max_length=120)
+    strokelab_job_id: str | None = _Field(default=None, max_length=120)
+    focal_cue_note: str | None = _Field(default=None, max_length=1000)
+    sets: int = _Field(default=3, ge=1, le=20)
+
+
+@router.post(
+    "/competencies/drills/prescribe-from-strokelab",
+    status_code=201,
+)
+async def internal_prescribe_strokelab_drill(
+    payload: InternalStrokeLabDrillPrescription,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Service-role advisory hook linking a Stroke Lab TI drill to Academy V2 drills.
+
+    Deterministic curated mapping only; never issues practical competency credentials
+    (ADR-010 / ADR-013).
+    """
+    from services.academy_service.routers.drill_assignments import (
+        prescribe_strokelab_drill_for_member,
+    )
+
+    return await prescribe_strokelab_drill_for_member(
+        db,
+        member_auth_id=payload.member_auth_id,
+        member_id=payload.member_id,
+        academy_ref=payload.academy_ref,
+        strokelab_job_id=payload.strokelab_job_id,
+        focal_cue_note=payload.focal_cue_note,
+        sets=payload.sets,
+    )
+
+
 @router.get("/finance-summary", dependencies=[Depends(require_service_role)])
 async def academy_finance_summary(db: AsyncSession = Depends(get_async_db)):
     """Service-owned Academy operational finance summary for gateway aggregation.

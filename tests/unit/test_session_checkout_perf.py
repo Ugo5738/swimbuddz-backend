@@ -1,4 +1,4 @@
-"""Unit tests for ADR-024 session booking & checkout latency optimizations."""
+"""Unit tests for ADR-025 session booking & checkout latency optimizations."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from libs.auth.models import AuthUser
 
 @pytest.mark.asyncio
 async def test_access_member_payload_uses_single_hop_membership_lookup(monkeypatch):
-    """sessions_service resolves member_id + membership in one HTTP call (ADR-024)."""
+    """sessions_service resolves member_id + membership in one HTTP call (ADR-025)."""
     from services.sessions_service.routers import member as member_router
 
     member_id = uuid.uuid4()
@@ -47,7 +47,7 @@ async def test_access_member_payload_uses_single_hop_membership_lookup(monkeypat
 async def test_evaluate_session_access_runs_pod_and_club_checks_concurrently(
     monkeypatch,
 ):
-    """Single-session club+pod checks execute concurrently via asyncio.gather (ADR-024)."""
+    """Single-session club+pod checks execute concurrently via asyncio.gather (ADR-025)."""
     from services.sessions_service.services import session_access
 
     pod_started = asyncio.Event()
@@ -231,7 +231,7 @@ async def test_ride_configs_batches_queries_and_computes_availability(monkeypatc
 async def test_get_member_by_auth_skips_media_service_when_include_photo_false(
     monkeypatch,
 ):
-    """include_photo=False skips media_service photo URL resolution (ADR-024)."""
+    """include_photo=False skips media_service photo URL resolution (ADR-025)."""
     from services.members_service.routers.internal import lookups
 
     resolve_mock = AsyncMock(return_value={})

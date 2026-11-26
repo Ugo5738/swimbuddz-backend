@@ -9214,7 +9214,7 @@
           "internal"
         ],
         "summary": "Get Member Membership By Auth Id",
-        "description": "Single-hop auth_id \u2192 member_id + normalized membership lookup (ADR-024).\n\nReplaces the 2-step `/by-auth/{auth_id}` (which also called media_service\nfor profile photos) + `/{member_id}/membership` chain used on hot session\nread paths.",
+        "description": "Single-hop auth_id \u2192 member_id + normalized membership lookup (ADR-025).\n\nReplaces the 2-step `/by-auth/{auth_id}` (which also called media_service\nfor profile photos) + `/{member_id}/membership` chain used on hot session\nread paths.",
         "operationId": "get_member_membership_by_auth_id_internal_members_by_auth__auth_id__membership_get",
         "security": [
           {
@@ -22358,6 +22358,134 @@
         ]
       }
     },
+    "/api/v1/academy/competencies/admin/graduation-mode": {
+      "get": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Get Admin Graduation Mode",
+        "description": "Read-only Phase 5B status showing the active ACADEMY_V2_GRADUATION_MODE flag.",
+        "operationId": "get_admin_graduation_mode_academy_competencies_admin_graduation_mode_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/competencies/admin/cohorts/{cohort_id}/graduation-parity": {
+      "get": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Get Cohort Graduation Parity",
+        "description": "Read-only Phase 5A dual-read shadow comparison: legacy vs. V2 graduation eligibility.",
+        "operationId": "get_cohort_graduation_parity_academy_competencies_admin_cohorts__cohort_id__graduation_parity_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inactive"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/competencies/admin/members/{member_auth_id}/club-readiness-advisory": {
+      "get": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Member Club Readiness Advisory",
+        "description": "Read-only Phase 5A advisory Club-readiness summary from V2 verified credentials.",
+        "operationId": "member_club_readiness_advisory_academy_competencies_admin_members__member_auth_id__club_readiness_advisory_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/competencies/admin/members/{member_auth_id}": {
       "get": {
         "tags": [
@@ -22401,6 +22529,51 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/academy/competencies/me/drills/from-strokelab": {
+      "post": {
+        "tags": [
+          "academy-drill-prescriptions"
+        ],
+        "summary": "Save Strokelab Drill To My Plan",
+        "description": "Member saves a vetted Stroke Lab TI drill recommendation into their Academy drill list.",
+        "operationId": "save_strokelab_drill_to_my_plan_academy_competencies_me_drills_from_strokelab_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StrokeLabDrillInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/academy/competencies/drills/published": {
@@ -24893,6 +25066,97 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/internal/academy/competencies/members/{member_auth_id}/club-readiness-advisory": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Internal Member Club Readiness Advisory",
+        "description": "Service-role read-only Club-readiness advisory from V2 competency passport.\n\nStrictly advisory evidence (ADR-005 / ADR-010); never auto-approves Club admission.",
+        "operationId": "internal_member_club_readiness_advisory_internal_academy_competencies_members__member_auth_id__club_readiness_advisory_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/academy/competencies/drills/prescribe-from-strokelab": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Internal Prescribe Strokelab Drill",
+        "description": "Service-role advisory hook linking a Stroke Lab TI drill to Academy V2 drills.\n\nDeterministic curated mapping only; never issues practical competency credentials\n(ADR-010 / ADR-013).",
+        "operationId": "internal_prescribe_strokelab_drill_internal_academy_competencies_drills_prescribe_from_strokelab_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalStrokeLabDrillPrescription"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/internal/academy/finance-summary": {
@@ -31595,6 +31859,581 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/payments/admin/refunds/banks": {
+      "get": {
+        "tags": [
+          "admin-refunds"
+        ],
+        "summary": "List Refund Banks",
+        "description": "List Nigerian banks from Paystack for manual bank-transfer refund verification.",
+        "operationId": "list_refund_banks_payments_admin_refunds_banks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/payments/admin/refunds": {
+      "get": {
+        "tags": [
+          "admin-refunds"
+        ],
+        "summary": "List Refunds Admin",
+        "description": "List shared refunds with filterable queue and cash summary totals.",
+        "operationId": "list_refunds_admin_payments_admin_refunds_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RefundStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "source_service",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Service"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "payment_reference",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payment Reference"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/refunds/{refund_id}": {
+      "get": {
+        "tags": [
+          "admin-refunds"
+        ],
+        "summary": "Get Refund Admin",
+        "description": "Fetch a single refund record (admin).",
+        "operationId": "get_refund_admin_payments_admin_refunds__refund_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "refund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Refund Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/refunds/{refund_id}/approve": {
+      "post": {
+        "tags": [
+          "admin-refunds"
+        ],
+        "summary": "Approve Refund Admin",
+        "description": "Approve a requested refund (accrues Refunds Payable in the ledger).",
+        "operationId": "approve_refund_admin_payments_admin_refunds__refund_id__approve_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "refund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Refund Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundApproveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/refunds/{refund_id}/initiate-paystack": {
+      "post": {
+        "tags": [
+          "admin-refunds"
+        ],
+        "summary": "Initiate Paystack Refund Admin",
+        "description": "Initiate (or idempotently return) a Paystack API refund.",
+        "operationId": "initiate_paystack_refund_admin_payments_admin_refunds__refund_id__initiate_paystack_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "refund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Refund Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundInitiatePaystackRequest",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/refunds/{refund_id}/sync-paystack": {
+      "post": {
+        "tags": [
+          "admin-refunds"
+        ],
+        "summary": "Sync Paystack Refund Admin",
+        "description": "Poll Paystack GET /refund/{id} to reconcile refund status.",
+        "operationId": "sync_paystack_refund_admin_payments_admin_refunds__refund_id__sync_paystack_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "refund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Refund Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/refunds/{refund_id}/verify-bank-account": {
+      "post": {
+        "tags": [
+          "admin-refunds"
+        ],
+        "summary": "Verify Refund Bank Account Admin",
+        "description": "Verify recipient NUBAN via Paystack resolve_account before bank-transfer refund.",
+        "operationId": "verify_refund_bank_account_admin_payments_admin_refunds__refund_id__verify_bank_account_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "refund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Refund Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundVerifyBankRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/refunds/{refund_id}/complete-manual": {
+      "post": {
+        "tags": [
+          "admin-refunds"
+        ],
+        "summary": "Complete Manual Refund Admin",
+        "description": "Confirm manual bank-transfer refund disbursement with a verified bank reference.",
+        "operationId": "complete_manual_refund_admin_payments_admin_refunds__refund_id__complete_manual_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "refund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Refund Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundCompleteManualRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/admin/refunds/{refund_id}/fail-or-cancel": {
+      "post": {
+        "tags": [
+          "admin-refunds"
+        ],
+        "summary": "Fail Or Cancel Refund Admin",
+        "description": "Cancel an uninitiated refund or mark a disbursement failed.",
+        "operationId": "fail_or_cancel_refund_admin_payments_admin_refunds__refund_id__fail_or_cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "refund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Refund Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundFailOrCancelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/me/refunds": {
+      "get": {
+        "tags": [
+          "member-refunds"
+        ],
+        "summary": "List My Refunds",
+        "description": "List the authenticated member's own refunds with live status tracking.",
+        "operationId": "list_my_refunds_payments_me_refunds_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RefundResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List My Refunds Payments Me Refunds Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/payments/admin/payouts/": {
@@ -42464,7 +43303,7 @@
           "transport"
         ],
         "summary": "Get Session Ride Configs",
-        "description": "Get ride configurations for a session with route info and pickup location\navailability.\n\nShort-circuits immediately when the session has no ride configurations\n(zero cross-service HTTP calls) and batches RideArea, PickupLocation,\nRideBooking counts, and RouteInfo lookups into constant SQL queries\n(ADR-024).",
+        "description": "Get ride configurations for a session with route info and pickup location\navailability.\n\nShort-circuits immediately when the session has no ride configurations\n(zero cross-service HTTP calls) and batches RideArea, PickupLocation,\nRideBooking counts, and RouteInfo lookups into constant SQL queries\n(ADR-025).",
         "operationId": "get_session_ride_configs_transport_sessions__session_id__ride_configs_get",
         "security": [
           {
@@ -53467,6 +54306,338 @@
         ]
       }
     },
+    "/api/v1/store/orders/{order_number}/actions": {
+      "get": {
+        "tags": [
+          "store-order-actions"
+        ],
+        "summary": "Get Order Actions",
+        "description": "Return allowed post-purchase actions, refund preview, cases, and live refund status.",
+        "operationId": "get_order_actions_store_orders__order_number__actions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderActionEligibilityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/store/orders/{order_number}/cancel": {
+      "post": {
+        "tags": [
+          "store-order-actions"
+        ],
+        "summary": "Self Cancel Order",
+        "description": "Self-cancel an unpaid order or a paid stocked order awaiting preparation (ADR-024).",
+        "operationId": "self_cancel_order_store_orders__order_number__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Number"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderSelfCancelRequest",
+                "default": {
+                  "reason_code": "wrong_item_ordered"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCancelResultResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/store/orders/{order_number}/swap-variant": {
+      "post": {
+        "tags": [
+          "store-order-actions"
+        ],
+        "summary": "Self Swap Order Variant",
+        "description": "Perform an instant same-price variant swap before preparation starts.",
+        "operationId": "self_swap_order_variant_store_orders__order_number__swap_variant_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderVariantSwapRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCaseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/store/orders/{order_number}/cases": {
+      "post": {
+        "tags": [
+          "store-order-actions"
+        ],
+        "summary": "Create Order Case",
+        "description": "Submit a post-purchase request (cancel_request, return_exchange, or defect_claim).",
+        "operationId": "create_order_case_store_orders__order_number__cases_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCaseCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCaseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "store-order-actions"
+        ],
+        "summary": "List My Order Cases",
+        "description": "List post-purchase cases submitted for a member's order.",
+        "operationId": "list_my_order_cases_store_orders__order_number__cases_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderCaseResponse"
+                  },
+                  "title": "Response List My Order Cases Store Orders  Order Number  Cases Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/store/orders/{order_number}/cases/{case_id}/withdraw": {
+      "post": {
+        "tags": [
+          "store-order-actions"
+        ],
+        "summary": "Withdraw Order Case",
+        "description": "Withdraw a submitted case before admin review.",
+        "operationId": "withdraw_order_case_store_orders__order_number__cases__case_id__withdraw_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Number"
+            }
+          },
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCaseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/store/categories": {
       "get": {
         "tags": [
@@ -55245,6 +56416,415 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StoreCreditResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/cases/open-count": {
+      "get": {
+        "tags": [
+          "admin-store-cases"
+        ],
+        "summary": "Get Open Cases Count",
+        "description": "Count open store post-purchase cases needing admin action.",
+        "operationId": "get_open_cases_count_admin_store_cases_open_count_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/store/cases": {
+      "get": {
+        "tags": [
+          "admin-store-cases"
+        ],
+        "summary": "List Store Cases Admin",
+        "description": "List post-purchase order cases for Store operations review.",
+        "operationId": "list_store_cases_admin_admin_store_cases_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OrderCaseStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "case_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OrderCaseType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Case Type"
+            }
+          },
+          {
+            "name": "order_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCaseListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/cases/{case_id}": {
+      "get": {
+        "tags": [
+          "admin-store-cases"
+        ],
+        "summary": "Get Store Case Admin",
+        "description": "Fetch a single StoreOrderCase with order & item details.",
+        "operationId": "get_store_case_admin_admin_store_cases__case_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCaseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/orders/{order_id}/cases": {
+      "get": {
+        "tags": [
+          "admin-store-cases"
+        ],
+        "summary": "List Order Cases And Refunds Admin",
+        "description": "Fetch all post-purchase cases and live payments_service refunds for an admin order.",
+        "operationId": "list_order_cases_and_refunds_admin_admin_store_orders__order_id__cases_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/cases/{case_id}/review": {
+      "post": {
+        "tags": [
+          "admin-store-cases"
+        ],
+        "summary": "Review Store Case Admin",
+        "description": "Approve or decline a customer post-purchase case (ADR-024).",
+        "operationId": "review_store_case_admin_admin_store_cases__case_id__review_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCaseReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCaseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/cases/{case_id}/receive-return": {
+      "post": {
+        "tags": [
+          "admin-store-cases"
+        ],
+        "summary": "Receive Return Admin",
+        "description": "Record receipt & physical inspection of returned items, restock if eligible, and execute remedy.",
+        "operationId": "receive_return_admin_admin_store_cases__case_id__receive_return_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminReceiveReturnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCaseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/store/orders/{order_id}/cancel-and-refund": {
+      "post": {
+        "tags": [
+          "admin-store-cases"
+        ],
+        "summary": "Admin Cancel And Refund Order",
+        "description": "Audited admin cancellation for paid orders that guarantees refund & tender restoration.",
+        "operationId": "admin_cancel_and_refund_order_admin_store_orders__order_id__cancel_and_refund_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCancelAndRefundRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCancelResultResponse"
                 }
               }
             }
@@ -74946,6 +76526,17 @@
             "type": "string",
             "format": "uuid",
             "title": "Member Id"
+          },
+          "member_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Auth Id"
           },
           "member_name": {
             "anyOf": [
@@ -101516,6 +103107,71 @@
         ],
         "title": "InstallmentStatus"
       },
+      "InternalStrokeLabDrillPrescription": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "academy_ref": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 5,
+            "title": "Academy Ref"
+          },
+          "strokelab_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strokelab Job Id"
+          },
+          "focal_cue_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Cue Note"
+          },
+          "sets": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Sets",
+            "default": 3
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "academy_ref"
+        ],
+        "title": "InternalStrokeLabDrillPrescription"
+      },
       "LearnerQuizResponse": {
         "properties": {
           "id": {
@@ -104262,6 +105918,70 @@
         "type": "object",
         "title": "SkillUpdate",
         "description": "Update an existing skill."
+      },
+      "StrokeLabDrillInput": {
+        "properties": {
+          "academy_ref": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 5,
+            "title": "Academy Ref"
+          },
+          "strokelab_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strokelab Job Id"
+          },
+          "focal_cue_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Cue Note"
+          },
+          "sets": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Sets",
+            "default": 3
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M",
+            "default": "25"
+          }
+        },
+        "type": "object",
+        "required": [
+          "academy_ref"
+        ],
+        "title": "StrokeLabDrillInput"
       },
       "StudentProgressResponse": {
         "properties": {
@@ -109109,6 +110829,182 @@
         "title": "RecurringPayoutStatus",
         "description": "Lifecycle of a recurring payout configuration."
       },
+      "RefundApproveRequest": {
+        "properties": {
+          "admin_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Note"
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          },
+          "auto_initiate_paystack": {
+            "type": "boolean",
+            "title": "Auto Initiate Paystack",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "RefundApproveRequest",
+        "description": "Admin approves a requested refund."
+      },
+      "RefundCompleteManualRequest": {
+        "properties": {
+          "external_bank_reference": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 3,
+            "title": "External Bank Reference"
+          },
+          "admin_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "external_bank_reference"
+        ],
+        "title": "RefundCompleteManualRequest",
+        "description": "Admin confirms manual bank-transfer refund disbursement with bank reference."
+      },
+      "RefundFailOrCancelRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "pattern": "^(cancel|fail)$",
+            "title": "Action"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "reason"
+        ],
+        "title": "RefundFailOrCancelRequest",
+        "description": "Admin marks a refund failed or cancels an uninitiated request."
+      },
+      "RefundInitiatePaystackRequest": {
+        "properties": {
+          "customer_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Note"
+          },
+          "merchant_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Note"
+          }
+        },
+        "type": "object",
+        "title": "RefundInitiatePaystackRequest",
+        "description": "Admin initiates Paystack API refund for an approved refund."
+      },
+      "RefundListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RefundResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "pending_cash_kobo": {
+            "type": "integer",
+            "title": "Pending Cash Kobo",
+            "default": 0
+          },
+          "initiated_cash_kobo": {
+            "type": "integer",
+            "title": "Initiated Cash Kobo",
+            "default": 0
+          },
+          "completed_cash_kobo": {
+            "type": "integer",
+            "title": "Completed Cash Kobo",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "RefundListResponse",
+        "description": "Paginated admin refund queue with summary totals."
+      },
+      "RefundMethod": {
+        "type": "string",
+        "enum": [
+          "paystack_refund",
+          "manual_bank_transfer",
+          "wallet_bubbles",
+          "store_credit",
+          "mixed"
+        ],
+        "title": "RefundMethod",
+        "description": "Disbursement channel for a refund (ADR-024)."
+      },
       "RefundOwedItem": {
         "properties": {
           "payment_reference": {
@@ -109237,6 +111133,444 @@
         ],
         "title": "RefundQueueResponse",
         "description": "Outstanding refund obligations across all payments."
+      },
+      "RefundResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "refund_reference": {
+            "type": "string",
+            "title": "Refund Reference"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "title": "Idempotency Key"
+          },
+          "payment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Id"
+          },
+          "payment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Reference"
+          },
+          "member_auth_id": {
+            "type": "string",
+            "title": "Member Auth Id"
+          },
+          "payer_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payer Email"
+          },
+          "source_service": {
+            "type": "string",
+            "title": "Source Service"
+          },
+          "source_entity_type": {
+            "type": "string",
+            "title": "Source Entity Type"
+          },
+          "source_entity_id": {
+            "type": "string",
+            "title": "Source Entity Id"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "requested_total_kobo": {
+            "type": "integer",
+            "title": "Requested Total Kobo"
+          },
+          "cash_refund_kobo": {
+            "type": "integer",
+            "title": "Cash Refund Kobo"
+          },
+          "bubbles_refund": {
+            "type": "integer",
+            "title": "Bubbles Refund"
+          },
+          "store_credit_refund_kobo": {
+            "type": "integer",
+            "title": "Store Credit Refund Kobo"
+          },
+          "refund_method": {
+            "$ref": "#/components/schemas/RefundMethod"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RefundStatus"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "admin_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Note"
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "provider_refund_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Refund Id"
+          },
+          "provider_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Status"
+          },
+          "external_bank_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Bank Reference"
+          },
+          "recipient_bank_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Bank Code"
+          },
+          "recipient_bank_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Bank Name"
+          },
+          "recipient_account_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Account Number"
+          },
+          "recipient_account_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Account Name"
+          },
+          "recipient_account_verified": {
+            "type": "boolean",
+            "title": "Recipient Account Verified",
+            "default": false
+          },
+          "wallet_refund_transaction_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wallet Refund Transaction Id"
+          },
+          "store_credit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Credit Id"
+          },
+          "ledger_accrual_posted": {
+            "type": "boolean",
+            "title": "Ledger Accrual Posted",
+            "default": false
+          },
+          "ledger_disbursement_posted": {
+            "type": "boolean",
+            "title": "Ledger Disbursement Posted",
+            "default": false
+          },
+          "requested_by_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By Auth Id"
+          },
+          "approved_by_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By Auth Id"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "initiated_by_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initiated By Auth Id"
+          },
+          "initiated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initiated At"
+          },
+          "completed_by_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed By Auth Id"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed At"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "refund_reference",
+          "idempotency_key",
+          "member_auth_id",
+          "source_service",
+          "source_entity_type",
+          "source_entity_id",
+          "purpose",
+          "currency",
+          "requested_total_kobo",
+          "cash_refund_kobo",
+          "bubbles_refund",
+          "store_credit_refund_kobo",
+          "refund_method",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RefundResponse",
+        "description": "Canonical refund representation."
+      },
+      "RefundStatus": {
+        "type": "string",
+        "enum": [
+          "requested",
+          "approved",
+          "initiated",
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "title": "RefundStatus",
+        "description": "Lifecycle of a shared refund record (ADR-024)."
+      },
+      "RefundVerifyBankRequest": {
+        "properties": {
+          "bank_code": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 2,
+            "title": "Bank Code"
+          },
+          "bank_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Name"
+          },
+          "account_number": {
+            "type": "string",
+            "maxLength": 10,
+            "minLength": 10,
+            "title": "Account Number"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bank_code",
+          "account_number"
+        ],
+        "title": "RefundVerifyBankRequest",
+        "description": "Verify recipient NUBAN via Paystack resolve_account before manual refund."
       },
       "RidePassengerManifestEntry": {
         "properties": {
@@ -132590,6 +134924,125 @@
         "title": "WeatherWindowSummaryResponse",
         "description": "Canonical provider-independent weather summary for a requested window."
       },
+      "AdminCancelAndRefundRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Reason"
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/OrderCaseResolution",
+            "default": "full_refund_original_method"
+          },
+          "include_delivery_fee": {
+            "type": "boolean",
+            "title": "Include Delivery Fee",
+            "default": true
+          },
+          "auto_initiate_paystack": {
+            "type": "boolean",
+            "title": "Auto Initiate Paystack",
+            "default": true
+          },
+          "is_policy_override": {
+            "type": "boolean",
+            "title": "Is Policy Override",
+            "default": false
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "AdminCancelAndRefundRequest",
+        "description": "Admin audited cancellation + refund initiation for a paid (or unpaid) order."
+      },
+      "AdminCaseReviewRequest": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "decline"
+            ],
+            "title": "Decision"
+          },
+          "approved_resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderCaseResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "require_return_before_resolution": {
+            "type": "boolean",
+            "title": "Require Return Before Resolution",
+            "default": false
+          },
+          "include_delivery_fee": {
+            "type": "boolean",
+            "title": "Include Delivery Fee",
+            "default": false
+          },
+          "auto_initiate_paystack": {
+            "type": "boolean",
+            "title": "Auto Initiate Paystack",
+            "default": true
+          },
+          "is_policy_override": {
+            "type": "boolean",
+            "title": "Is Policy Override",
+            "default": false
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          },
+          "admin_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "AdminCaseReviewRequest",
+        "description": "Admin approves or declines a post-purchase case."
+      },
       "AdminProductVariantResponse": {
         "properties": {
           "sku": {
@@ -132686,6 +135139,51 @@
         ],
         "title": "AdminProductVariantResponse",
         "description": "Admin variant response including internal unit cost."
+      },
+      "AdminReceiveReturnRequest": {
+        "properties": {
+          "return_condition": {
+            "$ref": "#/components/schemas/ReturnInspectionCondition"
+          },
+          "admin_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Notes"
+          },
+          "include_delivery_fee": {
+            "type": "boolean",
+            "title": "Include Delivery Fee",
+            "default": false
+          },
+          "auto_initiate_paystack": {
+            "type": "boolean",
+            "title": "Auto Initiate Paystack",
+            "default": true
+          },
+          "override_resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderCaseResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "return_condition"
+        ],
+        "title": "AdminReceiveReturnRequest",
+        "description": "Admin records receipt & physical inspection of returned goods."
       },
       "ApplyDiscountRequest": {
         "properties": {
@@ -134209,6 +136707,852 @@
         ],
         "title": "OpeningRequest"
       },
+      "OrderActionEligibilityResponse": {
+        "properties": {
+          "order_number": {
+            "type": "string",
+            "title": "Order Number"
+          },
+          "payment_status": {
+            "type": "string",
+            "title": "Payment Status"
+          },
+          "fulfillment_status": {
+            "type": "string",
+            "title": "Fulfillment Status"
+          },
+          "can_self_cancel_unpaid": {
+            "type": "boolean",
+            "title": "Can Self Cancel Unpaid",
+            "default": false
+          },
+          "can_self_cancel_paid": {
+            "type": "boolean",
+            "title": "Can Self Cancel Paid",
+            "default": false
+          },
+          "can_request_cancel": {
+            "type": "boolean",
+            "title": "Can Request Cancel",
+            "default": false
+          },
+          "can_swap_variant": {
+            "type": "boolean",
+            "title": "Can Swap Variant",
+            "default": false
+          },
+          "can_request_return_exchange": {
+            "type": "boolean",
+            "title": "Can Request Return Exchange",
+            "default": false
+          },
+          "can_report_defect": {
+            "type": "boolean",
+            "title": "Can Report Defect",
+            "default": false
+          },
+          "has_preorder_or_dropship": {
+            "type": "boolean",
+            "title": "Has Preorder Or Dropship",
+            "default": false
+          },
+          "has_swimwear_items": {
+            "type": "boolean",
+            "title": "Has Swimwear Items",
+            "default": false
+          },
+          "has_open_case": {
+            "type": "boolean",
+            "title": "Has Open Case",
+            "default": false
+          },
+          "payment_pending_review": {
+            "type": "boolean",
+            "title": "Payment Pending Review",
+            "default": false
+          },
+          "return_window_ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Window Ends At"
+          },
+          "cancel_block_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Block Reason"
+          },
+          "policy_notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Policy Notes"
+          },
+          "full_cancel_refund_preview": {
+            "$ref": "#/components/schemas/OrderRefundPreview"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/OrderCaseResponse"
+            },
+            "type": "array",
+            "title": "Cases"
+          },
+          "refunds": {
+            "items": {
+              "$ref": "#/components/schemas/OrderRefundSummaryItem"
+            },
+            "type": "array",
+            "title": "Refunds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_number",
+          "payment_status",
+          "fulfillment_status"
+        ],
+        "title": "OrderActionEligibilityResponse",
+        "description": "Server-computed post-purchase actions available for an order (ADR-024)."
+      },
+      "OrderCancelResultResponse": {
+        "properties": {
+          "order_number": {
+            "type": "string",
+            "title": "Order Number"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "payment_status": {
+            "type": "string",
+            "title": "Payment Status"
+          },
+          "fulfillment_status": {
+            "type": "string",
+            "title": "Fulfillment Status"
+          },
+          "case": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderCaseResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refund_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refund Reference"
+          },
+          "refund_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refund Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_number",
+          "status",
+          "payment_status",
+          "fulfillment_status",
+          "message"
+        ],
+        "title": "OrderCancelResultResponse"
+      },
+      "OrderCaseCreateRequest": {
+        "properties": {
+          "case_type": {
+            "$ref": "#/components/schemas/OrderCaseType"
+          },
+          "reason_code": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Reason Code"
+          },
+          "customer_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Notes"
+          },
+          "evidence_media_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 6,
+            "title": "Evidence Media Ids"
+          },
+          "preferred_resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderCaseResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested_variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Variant Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderCaseItemInput"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "recipient_bank_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Bank Code"
+          },
+          "recipient_bank_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Bank Name"
+          },
+          "recipient_account_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Account Number"
+          },
+          "recipient_account_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Account Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "case_type",
+          "reason_code"
+        ],
+        "title": "OrderCaseCreateRequest",
+        "description": "Customer submission for a cancellation request, return/exchange, or defect claim."
+      },
+      "OrderCaseItemInput": {
+        "properties": {
+          "order_item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Order Item Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Quantity",
+            "default": 1
+          },
+          "replacement_variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replacement Variant Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_item_id"
+        ],
+        "title": "OrderCaseItemInput",
+        "description": "Order line item reference when submitting a return, exchange, or defect claim."
+      },
+      "OrderCaseItemResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "order_item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Order Item Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "replacement_variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replacement Variant Id"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "variant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Name"
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku"
+          },
+          "unit_price_ngn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price Ngn"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "order_item_id",
+          "quantity"
+        ],
+        "title": "OrderCaseItemResponse"
+      },
+      "OrderCaseListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderCaseResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "OrderCaseListResponse"
+      },
+      "OrderCaseResolution": {
+        "type": "string",
+        "enum": [
+          "full_refund_original_method",
+          "partial_refund_original_method",
+          "variant_exchange",
+          "store_credit",
+          "wallet_bubbles",
+          "replacement_shipment",
+          "no_refund"
+        ],
+        "title": "OrderCaseResolution",
+        "description": "Approved or requested remedy for a post-purchase case."
+      },
+      "OrderCaseResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "case_number": {
+            "type": "string",
+            "title": "Case Number"
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Order Id"
+          },
+          "order_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Number"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "customer_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Email"
+          },
+          "member_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Auth Id"
+          },
+          "case_type": {
+            "$ref": "#/components/schemas/OrderCaseType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderCaseStatus"
+          },
+          "reason_code": {
+            "type": "string",
+            "title": "Reason Code"
+          },
+          "customer_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Notes"
+          },
+          "evidence_media_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Media Ids"
+          },
+          "preferred_resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderCaseResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approved_resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderCaseResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested_variant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Variant Id"
+          },
+          "approved_refund_cash_ngn": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Approved Refund Cash Ngn",
+            "default": "0"
+          },
+          "approved_refund_bubbles": {
+            "type": "integer",
+            "title": "Approved Refund Bubbles",
+            "default": 0
+          },
+          "approved_refund_store_credit_ngn": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Approved Refund Store Credit Ngn",
+            "default": "0"
+          },
+          "delivery_fee_refunded": {
+            "type": "boolean",
+            "title": "Delivery Fee Refunded",
+            "default": false
+          },
+          "refund_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refund Reference"
+          },
+          "refund_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refund Status"
+          },
+          "recipient_bank_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Bank Code"
+          },
+          "recipient_bank_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Bank Name"
+          },
+          "recipient_account_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Account Number"
+          },
+          "recipient_account_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Account Name"
+          },
+          "return_condition": {
+            "$ref": "#/components/schemas/ReturnInspectionCondition",
+            "default": "pending"
+          },
+          "return_received_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Received At"
+          },
+          "restocked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restocked At"
+          },
+          "is_policy_override": {
+            "type": "boolean",
+            "title": "Is Policy Override",
+            "default": false
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          },
+          "admin_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Notes"
+          },
+          "reviewed_by_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By Auth Id"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "resolved_by_auth_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By Auth Id"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderCaseItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "case_number",
+          "order_id",
+          "case_type",
+          "status",
+          "reason_code",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OrderCaseResponse"
+      },
+      "OrderCaseStatus": {
+        "type": "string",
+        "enum": [
+          "submitted",
+          "under_review",
+          "approved",
+          "declined",
+          "awaiting_return",
+          "return_received",
+          "completed",
+          "cancelled"
+        ],
+        "title": "OrderCaseStatus",
+        "description": "Lifecycle of a post-purchase order case."
+      },
+      "OrderCaseType": {
+        "type": "string",
+        "enum": [
+          "cancel_request",
+          "variant_swap",
+          "return_exchange",
+          "defect_claim"
+        ],
+        "title": "OrderCaseType",
+        "description": "Kind of post-purchase customer request or remedy (ADR-024)."
+      },
+      "OrderFulfillmentStatus": {
+        "type": "string",
+        "enum": [
+          "not_started",
+          "awaiting_preparation",
+          "processing",
+          "ready_for_pickup",
+          "picked_up",
+          "shipped",
+          "delivered",
+          "cancelled",
+          "returned"
+        ],
+        "title": "OrderFulfillmentStatus",
+        "description": "Physical fulfillment dimension of a store order (ADR-024)."
+      },
       "OrderItemImageInfo": {
         "properties": {
           "url": {
@@ -134304,9 +137648,43 @@
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Line Total Ngn"
           },
+          "net_line_total_ngn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Line Total Ngn"
+          },
           "is_preorder": {
             "type": "boolean",
             "title": "Is Preorder"
+          },
+          "sourcing_type": {
+            "type": "string",
+            "title": "Sourcing Type",
+            "default": "stocked"
+          },
+          "requires_size_chart_ack": {
+            "type": "boolean",
+            "title": "Requires Size Chart Ack",
+            "default": false
+          },
+          "supplier_committed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Committed At"
           },
           "estimated_ship_date": {
             "anyOf": [
@@ -134446,6 +137824,170 @@
         "title": "OrderListResponse",
         "description": "Paginated order list."
       },
+      "OrderPaymentStatus": {
+        "type": "string",
+        "enum": [
+          "unpaid",
+          "pending_review",
+          "paid",
+          "partially_refunded",
+          "refunded",
+          "failed"
+        ],
+        "title": "OrderPaymentStatus",
+        "description": "Payment dimension of a store order, independent of fulfillment (ADR-024)."
+      },
+      "OrderRefundPreview": {
+        "properties": {
+          "cash_refund_ngn": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cash Refund Ngn",
+            "default": "0"
+          },
+          "bubbles_refund": {
+            "type": "integer",
+            "title": "Bubbles Refund",
+            "default": 0
+          },
+          "store_credit_refund_ngn": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Store Credit Refund Ngn",
+            "default": "0"
+          },
+          "total_refund_value_ngn": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Refund Value Ngn",
+            "default": "0"
+          },
+          "delivery_fee_included": {
+            "type": "boolean",
+            "title": "Delivery Fee Included",
+            "default": true
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method"
+          }
+        },
+        "type": "object",
+        "title": "OrderRefundPreview",
+        "description": "Exact tender preview shown to customer/admin before cancellation."
+      },
+      "OrderRefundSummaryItem": {
+        "properties": {
+          "refund_reference": {
+            "type": "string",
+            "title": "Refund Reference"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "refund_method": {
+            "type": "string",
+            "title": "Refund Method"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "cash_refund_kobo": {
+            "type": "integer",
+            "title": "Cash Refund Kobo",
+            "default": 0
+          },
+          "bubbles_refund": {
+            "type": "integer",
+            "title": "Bubbles Refund",
+            "default": 0
+          },
+          "store_credit_refund_kobo": {
+            "type": "integer",
+            "title": "Store Credit Refund Kobo",
+            "default": 0
+          },
+          "provider_refund_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Refund Id"
+          },
+          "external_bank_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Bank Reference"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "refund_reference",
+          "status",
+          "refund_method"
+        ],
+        "title": "OrderRefundSummaryItem",
+        "description": "Live refund status snapshot fetched from payments_service."
+      },
       "OrderResponse": {
         "properties": {
           "id": {
@@ -134459,6 +138001,26 @@
           },
           "status": {
             "$ref": "#/components/schemas/OrderStatus"
+          },
+          "payment_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderPaymentStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fulfillment_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderFulfillmentStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "fulfillment_type": {
             "$ref": "#/components/schemas/FulfillmentType"
@@ -134501,6 +138063,30 @@
             "type": "string",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Delivery Fee Ngn"
+          },
+          "order_total_ngn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Total Ngn"
+          },
+          "cash_payable_ngn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash Payable Ngn"
           },
           "total_ngn": {
             "type": "string",
@@ -134576,6 +138162,17 @@
             ],
             "title": "Customer Notes"
           },
+          "admin_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Notes"
+          },
           "payment_reference": {
             "anyOf": [
               {
@@ -134632,6 +138229,30 @@
             ],
             "title": "Paid At"
           },
+          "shipped_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipped At"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
           "fulfilled_at": {
             "anyOf": [
               {
@@ -134655,6 +138276,18 @@
               }
             ],
             "title": "Cancelled At"
+          },
+          "refunded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refunded At"
           },
           "created_at": {
             "type": "string",
@@ -134746,6 +138379,80 @@
         ],
         "title": "OrderReturnRequest"
       },
+      "OrderSelfCancelRequest": {
+        "properties": {
+          "reason_code": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Reason Code",
+            "default": "wrong_item_ordered"
+          },
+          "customer_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Notes"
+          },
+          "recipient_bank_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Bank Code"
+          },
+          "recipient_bank_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Bank Name"
+          },
+          "recipient_account_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Account Number"
+          },
+          "recipient_account_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Account Name"
+          }
+        },
+        "type": "object",
+        "title": "OrderSelfCancelRequest",
+        "description": "Customer self-cancellation payload for unpaid or pre-prep stocked orders."
+      },
       "OrderStatus": {
         "type": "string",
         "enum": [
@@ -134824,6 +138531,39 @@
         "type": "object",
         "title": "OrderUpdate",
         "description": "Partial admin update for an order."
+      },
+      "OrderVariantSwapRequest": {
+        "properties": {
+          "order_item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Order Item Id"
+          },
+          "new_variant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "New Variant Id"
+          },
+          "customer_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_item_id",
+          "new_variant_id"
+        ],
+        "title": "OrderVariantSwapRequest",
+        "description": "Customer same-price variant swap before preparation."
       },
       "PaymentInitRequest": {
         "properties": {
@@ -136970,6 +140710,17 @@
           "quantity"
         ],
         "title": "ReceiveLineRequest"
+      },
+      "ReturnInspectionCondition": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "restockable",
+          "damaged",
+          "hygiene_unsellable"
+        ],
+        "title": "ReturnInspectionCondition",
+        "description": "Physical condition recorded when a returned item is received."
       },
       "ReturnLineRequest": {
         "properties": {

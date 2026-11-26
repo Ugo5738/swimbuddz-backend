@@ -1,6 +1,6 @@
 # SwimBuddz Academy — Competency Architecture V2
 
-**Status:** Accepted & Enforced via [`ADR-010`](../DECISIONS.md#adr-010-modular-academy-curriculum-versioned-catalog--evidence-backed-competency-passport-v2) (Phases 1–4 Implemented: Versioned Catalog, Frozen Snapshots, Evidence-Backed Passport, Native Cohort & Diagnostic V2 Assessments, Prior-Credit Cohort Plan, and TI Remedial/Personalized Drill Prescriptions; Phase 5 Graduation/Club Switch Pending Dual-Read Parity). Supersedes the V1 schema and auto-backfill clauses in `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`.  
+**Status:** Accepted & Enforced via [`ADR-010`](../DECISIONS.md#adr-010-modular-academy-curriculum-versioned-catalog--evidence-backed-competency-passport-v2) (Phases 1–5B Implemented: Versioned Catalog, Frozen Snapshots, Evidence-Backed Passport, Native Cohort & Diagnostic V2 Assessments, Prior-Credit Cohort Plan, TI Remedial/Personalized Drill Prescriptions, Dual-Read Graduation Parity Engine, Club-Readiness Advisory Bridge, Default-OFF `ACADEMY_V2_GRADUATION_MODE` Certificate Cutover Switch, and Stroke Lab AI TI Drill Bridge; Production Cutover Flag Remains `legacy` Pending Owner Parity Sign-Off). Supersedes the V1 schema and auto-backfill clauses in `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`.  
 **Date:** 18 November 2026 (Updated 26 November 2026)  
 **Scope:** Academy curriculum, evidence, assessment, progression and their interfaces to Club and Stroke Lab.  
 **Related:** ADR-004, ADR-009, ADR-010, ADR-013, ADR-016.  
@@ -161,7 +161,13 @@ Release Curriculum Studio for admins, coach session deck and learner workspace b
 
 ### Phase 5 — credentials, Club, AI and retirement
 
-Switch graduation and certificate consumers, then Club readiness, then optional Stroke Lab recommendations. Decommission legacy paths only once there are zero old-client consumers, dual-read parity holds and retention requirements are satisfied.
+- **Phase 5A (Implemented — Read-Only Shadow Parity & Advisory Bridge):**
+  - Cohort graduation dual-read parity (`GET /academy/competencies/admin/cohorts/{cohort_id}/graduation-parity`) shadow-compares legacy graduation eligibility (`tasks/reporting.py`: all program `Milestone` rows achieved in `StudentProgress`) against fail-closed V2 eligibility (every required milestone and `safety_gate` in the SHA-256-verified frozen cohort snapshot satisfied by live non-expired, non-revoked credentials in `academy_competency_verifications`), reporting batched parity KPIs and per-learner discrepancies (`aligned_eligible`, `aligned_ineligible`, `legacy_only_eligible`, `v2_only_eligible`, `no_frozen_snapshot`, `snapshot_integrity_error`) without mutating enrollments, certificates, or rewards.
+  - Club-readiness competency advisory (`GET /academy/competencies/admin/members/{member_auth_id}/club-readiness-advisory` and internal `GET /internal/academy/competencies/members/{member_auth_id}/club-readiness-advisory`) surfaces verified safety-gate credentials, core Club checklist mapping (`MS-S1-FREE-25M`, `MS-A1-TREAD-60S`, `MS-F3-BACK-FLOAT-30S`, `MS-F1-SAFE-ENTRY`), and expired/revoked alerts inside `/admin/club-applications` as advisory evidence while preserving mandatory human reviewer approval (`ADR-005`).
+- **Phase 5B (Implemented Behind Default-OFF Feature Flag — Ready for Operator-Gated Cutover):**
+  - `ACADEMY_V2_GRADUATION_MODE` (`"legacy"` default | `"shadow_log"` | `"v2_enforced"`) gates both `tasks/reporting.py:check_and_issue_certificates()` and `routers/reports.py:download_certificate()` via one authoritative evaluator (`evaluate_enrollment_certificate_eligibility`). Unfrozen historical cohorts automatically preserve legacy milestone semantics; frozen cohorts in `v2_enforced` fail closed on snapshot tampering, missing/expired/revoked safety gates, or incomplete required cohort quizzes.
+  - Stroke Lab AI TI Drill Bridge (`POST /academy/competencies/me/drills/from-strokelab` and internal `POST /internal/academy/competencies/drills/prescribe-from-strokelab`) deterministically maps the six vetted `academy:ti:*` drill refs to canonical published `AcademyDrillVersion` rows (`assigned_by_role = "strokelab_ai"`), surfacing them in `/account/academy/passport` and coach session decks without ever granting practical credentials.
+  - Legacy table retirement remains deferred until zero legacy consumers remain and statutory audit/retention requirements are satisfied (see `docs/operations/ACADEMY_V2_ROLLOUT_AND_CUTOVER_RUNBOOK.md`).
 
 ## 6. Acceptance tests (release blocking)
 
