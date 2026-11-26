@@ -17231,6 +17231,63 @@
         }
       }
     },
+    "/api/v1/attendance/me/ytd-summary": {
+      "get": {
+        "tags": [
+          "attendance"
+        ],
+        "summary": "Get My Ytd Attendance Summary",
+        "description": "Return a single-request all-swim YTD attendance summary for the member dashboard.\n\nCounts all recorded swimmer sessions across Club, Academy, and Community in\nLagos time and computes true cross-quarter weekly streaks (ADR-022).",
+        "operationId": "get_my_ytd_attendance_summary_attendance_me_ytd_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2035,
+                  "minimum": 2024
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberYtdAttendanceSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/attendance/sessions/{session_id}/pool-list": {
       "get": {
         "tags": [
@@ -21741,6 +21798,180 @@
         }
       }
     },
+    "/api/v1/academy/competencies/admin/legacy-candidates": {
+      "get": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "List Legacy Promotion Candidates",
+        "description": "List achieved legacy StudentProgress records with V2 promotion readiness.",
+        "operationId": "list_legacy_promotion_candidates_academy_competencies_admin_legacy_candidates_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cohort Id"
+            }
+          },
+          {
+            "name": "member_auth_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Member Auth Id"
+            }
+          },
+          {
+            "name": "include_credited",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Credited"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/competencies/admin/verifications": {
+      "get": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "List Admin Verifications",
+        "description": "List issued competency verifications with live status for admin review.",
+        "operationId": "list_admin_verifications_academy_competencies_admin_verifications_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cohort Id"
+            }
+          },
+          {
+            "name": "member_auth_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Member Auth Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/competencies/admin/verify-legacy": {
       "post": {
         "tags": [
@@ -25168,6 +25399,743 @@
         }
       }
     },
+    "/api/v1/academy/admin/curriculum-library/skills": {
+      "get": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "List Catalog Skills",
+        "operationId": "list_catalog_skills_academy_admin_curriculum_library_skills_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/lessons/{lesson_version_id}/drills": {
+      "get": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "List Lesson Drills",
+        "operationId": "list_lesson_drills_academy_admin_curriculum_library_lessons__lesson_version_id__drills_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Lesson Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Attach Lesson Drill",
+        "operationId": "attach_lesson_drill_academy_admin_curriculum_library_lessons__lesson_version_id__drills_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Lesson Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonDrillInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/lessons/{lesson_version_id}/drills/{link_id}": {
+      "delete": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Remove Lesson Drill",
+        "operationId": "remove_lesson_drill_academy_admin_curriculum_library_lessons__lesson_version_id__drills__link_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Lesson Version Id"
+            }
+          },
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Link Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/modules/{module_version_id}/composition": {
+      "get": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Get Module Composition",
+        "operationId": "get_module_composition_academy_admin_curriculum_library_modules__module_version_id__composition_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "module_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Module Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/modules/{module_version_id}/lessons": {
+      "post": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Attach Module Lesson",
+        "operationId": "attach_module_lesson_academy_admin_curriculum_library_modules__module_version_id__lessons_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "module_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Module Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleLessonInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/modules/{module_version_id}/lessons/{link_id}": {
+      "delete": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Remove Module Lesson",
+        "operationId": "remove_module_lesson_academy_admin_curriculum_library_modules__module_version_id__lessons__link_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "module_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Module Version Id"
+            }
+          },
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Link Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/modules/{module_version_id}/quizzes": {
+      "post": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Attach Module Quiz",
+        "operationId": "attach_module_quiz_academy_admin_curriculum_library_modules__module_version_id__quizzes_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "module_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Module Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleQuizInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/modules/{module_version_id}/quizzes/{link_id}": {
+      "delete": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Remove Module Quiz",
+        "operationId": "remove_module_quiz_academy_admin_curriculum_library_modules__module_version_id__quizzes__link_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "module_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Module Version Id"
+            }
+          },
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Link Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/milestones/{definition_id}/skills": {
+      "get": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "List Milestone Skills",
+        "operationId": "list_milestone_skills_academy_admin_curriculum_library_milestones__definition_id__skills_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "definition_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Definition Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Attach Milestone Skill",
+        "operationId": "attach_milestone_skill_academy_admin_curriculum_library_milestones__definition_id__skills_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "definition_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Definition Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillLinkInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/milestones/{definition_id}/skills/{link_id}": {
+      "delete": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Remove Milestone Skill",
+        "operationId": "remove_milestone_skill_academy_admin_curriculum_library_milestones__definition_id__skills__link_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "definition_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Definition Id"
+            }
+          },
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Link Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/drills/{definition_id}/skills": {
+      "get": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "List Drill Skills",
+        "operationId": "list_drill_skills_academy_admin_curriculum_library_drills__definition_id__skills_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "definition_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Definition Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Attach Drill Skill",
+        "operationId": "attach_drill_skill_academy_admin_curriculum_library_drills__definition_id__skills_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "definition_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Definition Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillLinkInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/drills/{definition_id}/skills/{link_id}": {
+      "delete": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Remove Drill Skill",
+        "operationId": "remove_drill_skill_academy_admin_curriculum_library_drills__definition_id__skills__link_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "definition_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Definition Id"
+            }
+          },
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Link Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/admin/curriculum-library/{kind}": {
       "get": {
         "tags": [
@@ -25260,6 +26228,68 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/{kind}/{definition_id}/retire": {
+      "post": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Retire Definition",
+        "operationId": "retire_definition_academy_admin_curriculum_library__kind___definition_id__retire_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "milestone",
+                "drill",
+                "lesson",
+                "quiz",
+                "module"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "definition_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Definition Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -25412,6 +26442,88 @@
         }
       }
     },
+    "/api/v1/academy/admin/curriculum-library/{kind}/{definition_id}/versions/{version_id}": {
+      "patch": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Update Draft Version",
+        "operationId": "update_draft_version_academy_admin_curriculum_library__kind___definition_id__versions__version_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "milestone",
+                "drill",
+                "lesson",
+                "quiz",
+                "module"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "definition_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Definition Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogVersionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/admin/curriculum-library/{kind}/{definition_id}/versions/{version_id}/publish": {
       "post": {
         "tags": [
@@ -25540,6 +26652,103 @@
         }
       }
     },
+    "/api/v1/academy/admin/modules/{module_version_id}/curriculum/milestones/{assignment_id}": {
+      "delete": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "Remove Module Milestone",
+        "operationId": "remove_module_milestone_academy_admin_modules__module_version_id__curriculum_milestones__assignment_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "module_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Module Version Id"
+            }
+          },
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/programs/{program_id}/curriculum/assignments": {
+      "get": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "List Program Assignments",
+        "operationId": "list_program_assignments_academy_admin_programs__program_id__curriculum_assignments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/admin/programs/{program_id}/curriculum/modules": {
       "post": {
         "tags": [
@@ -25582,6 +26791,57 @@
                 "schema": {}
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/programs/{program_id}/curriculum/modules/{assignment_id}": {
+      "delete": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "Remove Program Module",
+        "operationId": "remove_program_module_academy_admin_programs__program_id__curriculum_modules__assignment_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          },
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -25652,6 +26912,103 @@
         }
       }
     },
+    "/api/v1/academy/admin/programs/{program_id}/curriculum/milestones/{assignment_id}": {
+      "delete": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "Remove Program Milestone",
+        "operationId": "remove_program_milestone_academy_admin_programs__program_id__curriculum_milestones__assignment_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Program Id"
+            }
+          },
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/cohorts/{cohort_id}/curriculum/assignments": {
+      "get": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "List Cohort Assignments",
+        "operationId": "list_cohort_assignments_academy_admin_cohorts__cohort_id__curriculum_assignments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/admin/cohorts/{cohort_id}/curriculum/milestones": {
       "post": {
         "tags": [
@@ -25694,6 +27051,57 @@
                 "schema": {}
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/cohorts/{cohort_id}/curriculum/milestones/{assignment_id}": {
+      "delete": {
+        "tags": [
+          "academy-requirements"
+        ],
+        "summary": "Remove Cohort Milestone",
+        "operationId": "remove_cohort_milestone_academy_admin_cohorts__cohort_id__curriculum_milestones__assignment_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cohort_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Cohort Id"
+            }
+          },
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -94277,6 +95685,65 @@
         "title": "MemberSwimMilestones",
         "description": "All-time attended swimming milestones for a member (Lagos calendar weeks)."
       },
+      "MemberYtdAttendanceSummary": {
+        "properties": {
+          "year": {
+            "type": "integer",
+            "title": "Year"
+          },
+          "sessions_attended": {
+            "type": "integer",
+            "title": "Sessions Attended",
+            "default": 0
+          },
+          "sessions_recorded": {
+            "type": "integer",
+            "title": "Sessions Recorded",
+            "default": 0
+          },
+          "sessions_absent": {
+            "type": "integer",
+            "title": "Sessions Absent",
+            "default": 0
+          },
+          "sessions_excused": {
+            "type": "integer",
+            "title": "Sessions Excused",
+            "default": 0
+          },
+          "attendance_rate": {
+            "type": "number",
+            "title": "Attendance Rate",
+            "default": 0.0
+          },
+          "pool_hours": {
+            "type": "number",
+            "title": "Pool Hours",
+            "default": 0.0
+          },
+          "streak_current": {
+            "type": "integer",
+            "title": "Streak Current",
+            "default": 0
+          },
+          "streak_longest": {
+            "type": "integer",
+            "title": "Streak Longest",
+            "default": 0
+          },
+          "active_weeks": {
+            "type": "integer",
+            "title": "Active Weeks",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "year"
+        ],
+        "title": "MemberYtdAttendanceSummary",
+        "description": "Lightweight all-swim YTD attendance summary for the member dashboard."
+      },
       "ParticipantAttendanceCreate": {
         "properties": {
           "participant_id": {
@@ -99254,6 +100721,60 @@
         ],
         "title": "LearnerQuizResponse"
       },
+      "LessonDrillInput": {
+        "properties": {
+          "drill_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Drill Version Id"
+          },
+          "order_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Order Index",
+            "default": 0
+          },
+          "sets": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sets",
+            "default": 1
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M"
+          },
+          "focal_cue_override": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Cue Override"
+          }
+        },
+        "type": "object",
+        "required": [
+          "drill_version_id"
+        ],
+        "title": "LessonDrillInput"
+      },
       "LocationType": {
         "type": "string",
         "enum": [
@@ -99963,6 +101484,26 @@
         ],
         "title": "MilestoneType"
       },
+      "ModuleLessonInput": {
+        "properties": {
+          "lesson_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Lesson Version Id"
+          },
+          "order_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Order Index",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "lesson_version_id"
+        ],
+        "title": "ModuleLessonInput"
+      },
       "ModuleMilestoneInput": {
         "properties": {
           "milestone_version_id": {
@@ -99987,6 +101528,25 @@
           "milestone_version_id"
         ],
         "title": "ModuleMilestoneInput"
+      },
+      "ModuleQuizInput": {
+        "properties": {
+          "quiz_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Quiz Version Id"
+          },
+          "required_for_completion": {
+            "type": "boolean",
+            "title": "Required For Completion",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "quiz_version_id"
+        ],
+        "title": "ModuleQuizInput"
       },
       "NextSessionInfo": {
         "properties": {
@@ -101658,6 +103218,20 @@
         ],
         "title": "SkillCreate",
         "description": "Create a new skill in the global skills library."
+      },
+      "SkillLinkInput": {
+        "properties": {
+          "skill_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Skill Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "skill_id"
+        ],
+        "title": "SkillLinkInput"
       },
       "SkillResponse": {
         "properties": {

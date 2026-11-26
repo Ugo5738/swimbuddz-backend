@@ -130,3 +130,18 @@ class CoachAttendanceMarkResponse(BaseModel):
     upserted: int
     deleted: int  # PRESENT entries that removed an existing exception row
     records: List[AttendanceResponse]
+
+
+class MemberYtdAttendanceSummary(BaseModel):
+    """Lightweight all-swim YTD attendance summary for the member dashboard."""
+
+    year: int
+    sessions_attended: int = 0
+    sessions_recorded: int = 0
+    sessions_absent: int = 0
+    sessions_excused: int = 0
+    attendance_rate: float = 0.0
+    pool_hours: float = 0.0
+    streak_current: int = 0
+    streak_longest: int = 0
+    active_weeks: int = 0

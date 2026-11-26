@@ -23,12 +23,14 @@ from libs.common.service_client import (
 from libs.db.session import get_async_db
 from services.attendance_service.models import (
     AttendanceRecord,
+    AttendanceRole,
     AttendanceStatus,
     MemberRef,
 )
 from services.attendance_service.schemas import (
     AttendanceResponse,
     CohortAttendanceSummary,
+    MemberYtdAttendanceSummary,
     StudentAttendanceSummary,
 )
 
@@ -302,3 +304,163 @@ async def get_my_attendance_history(
         },
     )
     return enriched
+
+
+def compute_ytd_attendance_summary(
+    records: list,
+    sessions_by_id: dict[str, dict],
+    *,
+    year: int,
+    now,
+) -> MemberYtdAttendanceSummary:
+    """Compute all-swim YTD attendance metrics with true cross-quarter Lagos streaks."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    lagos = ZoneInfo("Africa/Lagos")
+    attended_statuses = {"present", "late"}
+    status_by_session: dict[str, str] = {}
+
+    for record in records:
+        role_val = (
+            record.role.value if hasattr(record.role, "value") else str(record.role)
+        ).lower()
+        if role_val not in {"swimmer", "guest"}:
+            continue
+        sid = str(record.session_id)
+        status_val = (
+            record.status.value
+            if hasattr(record.status, "value")
+            else str(record.status)
+        ).lower()
+        existing = status_by_session.get(sid)
+        if status_val in attended_statuses:
+            status_by_session[sid] = status_val
+        elif existing not in attended_statuses and status_val == "absent":
+            status_by_session[sid] = status_val
+        elif existing is None:
+            status_by_session[sid] = status_val
+
+    sessions_attended = 0
+    sessions_absent = 0
+    sessions_excused = 0
+    pool_hours = 0.0
+    attended_dates = []
+
+    for sid, status_val in status_by_session.items():
+        session = sessions_by_id.get(sid)
+        if not session:
+            continue
+        if session.get("status") not in {"scheduled", "in_progress", "completed"}:
+            continue
+        raw_start = session.get("starts_at")
+        if not raw_start:
+            continue
+        starts_at = datetime.fromisoformat(raw_start.replace("Z", "+00:00"))
+        if starts_at > now:
+            continue
+        local_start = starts_at.astimezone(lagos)
+        if local_start.year != year:
+            continue
+
+        if status_val in attended_statuses:
+            sessions_attended += 1
+            attended_dates.append(local_start.date())
+            raw_end = session.get("ends_at")
+            if raw_end:
+                ends_at = datetime.fromisoformat(raw_end.replace("Z", "+00:00"))
+                if ends_at > starts_at:
+                    pool_hours += (ends_at - starts_at).total_seconds() / 3600.0
+        elif status_val == "absent":
+            sessions_absent += 1
+        elif status_val == "excused":
+            sessions_excused += 1
+
+    sessions_recorded = sessions_attended + sessions_absent
+    attendance_rate = (
+        round(sessions_attended / sessions_recorded, 4)
+        if sessions_recorded > 0
+        else 0.0
+    )
+
+    week_mondays = sorted({d - timedelta(days=d.weekday()) for d in attended_dates})
+    week_set = set(week_mondays)
+    one_week = timedelta(weeks=1)
+
+    streak_longest = 0
+    run = 0
+    prev = None
+    for wk in week_mondays:
+        if prev is not None and wk == prev + one_week:
+            run += 1
+        else:
+            run = 1
+        if run > streak_longest:
+            streak_longest = run
+        prev = wk
+
+    today_lagos = now.astimezone(lagos).date()
+    streak_current = 0
+    if today_lagos.year == year:
+        this_monday = today_lagos - timedelta(days=today_lagos.weekday())
+        cursor = this_monday if this_monday in week_set else this_monday - one_week
+        while cursor in week_set:
+            streak_current += 1
+            cursor -= one_week
+
+    return MemberYtdAttendanceSummary(
+        year=year,
+        sessions_attended=sessions_attended,
+        sessions_recorded=sessions_recorded,
+        sessions_absent=sessions_absent,
+        sessions_excused=sessions_excused,
+        attendance_rate=attendance_rate,
+        pool_hours=round(pool_hours, 1),
+        streak_current=streak_current,
+        streak_longest=streak_longest,
+        active_weeks=len(week_mondays),
+    )
+
+
+@router.get("/me/ytd-summary", response_model=MemberYtdAttendanceSummary)
+async def get_my_ytd_attendance_summary(
+    year: int | None = Query(default=None, ge=2024, le=2035),
+    current_member: MemberRef = Depends(get_current_member),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Return a single-request all-swim YTD attendance summary for the member dashboard.
+
+    Counts all recorded swimmer sessions across Club, Academy, and Community in
+    Lagos time and computes true cross-quarter weekly streaks (ADR-022).
+    """
+    from zoneinfo import ZoneInfo
+
+    from libs.common.datetime_utils import utc_now
+
+    now = utc_now()
+    target_year = year or now.astimezone(ZoneInfo("Africa/Lagos")).year
+
+    result = await db.execute(
+        select(AttendanceRecord).where(
+            AttendanceRecord.member_id == current_member.id,
+            AttendanceRecord.role.in_([AttendanceRole.SWIMMER, AttendanceRole.GUEST]),
+        )
+    )
+    records = list(result.scalars().all())
+    if not records:
+        return MemberYtdAttendanceSummary(year=target_year)
+
+    unique_ids = list(dict.fromkeys(str(r.session_id) for r in records))
+    sessions_by_id: dict[str, dict] = {}
+    for offset in range(0, len(unique_ids), 200):
+        batch = await get_sessions_by_ids(
+            unique_ids[offset : offset + 200],
+            calling_service="attendance",
+        )
+        for item in batch:
+            if item.get("id"):
+                sessions_by_id[str(item["id"])] = item
+
+    return compute_ytd_attendance_summary(
+        records, sessions_by_id, year=target_year, now=now
+    )
