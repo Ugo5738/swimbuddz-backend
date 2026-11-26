@@ -6,7 +6,7 @@ or Club eligibility. The immutable manifest is a sidecar until parity is proven.
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -19,7 +19,9 @@ from libs.db.session import get_async_db
 from services.academy_service.models import (
     AcademyCohortMilestoneAssignment,
     AcademyCohortRequirementsSnapshot,
+    AcademyMilestoneDefinition,
     AcademyMilestoneVersion,
+    AcademyModule,
     AcademyModuleMilestone,
     AcademyModuleVersion,
     AcademyProgramMilestoneAssignment,
@@ -140,6 +142,212 @@ async def assign_module_milestone(
     )
 
 
+@router.delete(
+    "/modules/{module_version_id}/curriculum/milestones/{assignment_id}",
+    status_code=204,
+)
+async def remove_module_milestone(
+    module_version_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    module = (
+        await db.execute(
+            select(AcademyModuleVersion)
+            .where(AcademyModuleVersion.id == module_version_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if module is None:
+        raise HTTPException(status_code=404, detail="Module version not found")
+    if module.state != "draft":
+        raise HTTPException(
+            status_code=409, detail="Published module requirements cannot be changed"
+        )
+    row = (
+        await db.execute(
+            select(AcademyModuleMilestone).where(
+                AcademyModuleMilestone.id == assignment_id,
+                AcademyModuleMilestone.module_version_id == module_version_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Module milestone link not found")
+    await db.delete(row)
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/programs/{program_id}/curriculum/assignments")
+async def list_program_assignments(
+    program_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    if await db.get(Program, program_id) is None:
+        raise HTTPException(status_code=404, detail="Program not found")
+
+    program_modules = (
+        (
+            await db.execute(
+                select(AcademyProgramModule)
+                .where(AcademyProgramModule.program_id == program_id)
+                .order_by(AcademyProgramModule.order_index, AcademyProgramModule.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    program_milestones = (
+        (
+            await db.execute(
+                select(AcademyProgramMilestoneAssignment)
+                .where(AcademyProgramMilestoneAssignment.program_id == program_id)
+                .order_by(
+                    AcademyProgramMilestoneAssignment.target_week.asc().nullslast(),
+                    AcademyProgramMilestoneAssignment.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    module_versions = (
+        (
+            await db.execute(
+                select(AcademyModuleVersion).where(
+                    AcademyModuleVersion.id.in_(
+                        {item.module_version_id for item in program_modules}
+                    )
+                )
+            )
+        )
+        .scalars()
+        .all()
+        if program_modules
+        else []
+    )
+    mv_by_id = {item.id: item for item in module_versions}
+    modules_map = (
+        {
+            item.id: item
+            for item in (
+                await db.execute(
+                    select(AcademyModule).where(
+                        AcademyModule.id.in_({mv.module_id for mv in module_versions})
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        }
+        if module_versions
+        else {}
+    )
+
+    milestone_versions = (
+        (
+            await db.execute(
+                select(AcademyMilestoneVersion).where(
+                    AcademyMilestoneVersion.id.in_(
+                        {item.milestone_version_id for item in program_milestones}
+                    )
+                )
+            )
+        )
+        .scalars()
+        .all()
+        if program_milestones
+        else []
+    )
+    msv_by_id = {item.id: item for item in milestone_versions}
+    milestones_map = (
+        {
+            item.id: item
+            for item in (
+                await db.execute(
+                    select(AcademyMilestoneDefinition).where(
+                        AcademyMilestoneDefinition.id.in_(
+                            {msv.definition_id for msv in milestone_versions}
+                        )
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        }
+        if milestone_versions
+        else {}
+    )
+
+    return {
+        "program_id": str(program_id),
+        "modules": [
+            {
+                "id": str(row.id),
+                "module_version_id": str(row.module_version_id),
+                "code": (
+                    modules_map[mv_by_id[row.module_version_id].module_id].code
+                    if row.module_version_id in mv_by_id
+                    and mv_by_id[row.module_version_id].module_id in modules_map
+                    else None
+                ),
+                "title": (
+                    modules_map[mv_by_id[row.module_version_id].module_id].title
+                    if row.module_version_id in mv_by_id
+                    and mv_by_id[row.module_version_id].module_id in modules_map
+                    else None
+                ),
+                "version": (
+                    mv_by_id[row.module_version_id].version
+                    if row.module_version_id in mv_by_id
+                    else None
+                ),
+                "order_index": row.order_index,
+            }
+            for row in program_modules
+        ],
+        "milestones": [
+            {
+                "id": str(row.id),
+                "milestone_version_id": str(row.milestone_version_id),
+                "code": (
+                    milestones_map[
+                        msv_by_id[row.milestone_version_id].definition_id
+                    ].code
+                    if row.milestone_version_id in msv_by_id
+                    and msv_by_id[row.milestone_version_id].definition_id
+                    in milestones_map
+                    else None
+                ),
+                "title": (
+                    milestones_map[
+                        msv_by_id[row.milestone_version_id].definition_id
+                    ].title
+                    if row.milestone_version_id in msv_by_id
+                    and msv_by_id[row.milestone_version_id].definition_id
+                    in milestones_map
+                    else None
+                ),
+                "version": (
+                    msv_by_id[row.milestone_version_id].version
+                    if row.milestone_version_id in msv_by_id
+                    else None
+                ),
+                "safety_gate": (
+                    bool(msv_by_id[row.milestone_version_id].safety_gate)
+                    if row.milestone_version_id in msv_by_id
+                    else False
+                ),
+                "required_for_completion": row.required_for_completion,
+                "target_week": row.target_week,
+            }
+            for row in program_milestones
+        ],
+    }
+
+
 @router.post("/programs/{program_id}/curriculum/modules", status_code=201)
 async def assign_program_module(
     program_id: uuid.UUID,
@@ -158,6 +366,31 @@ async def assign_program_module(
             order_index=payload.order_index,
         ),
     )
+
+
+@router.delete(
+    "/programs/{program_id}/curriculum/modules/{assignment_id}",
+    status_code=204,
+)
+async def remove_program_module(
+    program_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    await _program_for_update(db, program_id)
+    row = (
+        await db.execute(
+            select(AcademyProgramModule).where(
+                AcademyProgramModule.id == assignment_id,
+                AcademyProgramModule.program_id == program_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Program module link not found")
+    await db.delete(row)
+    await db.commit()
+    return Response(status_code=204)
 
 
 @router.post("/programs/{program_id}/curriculum/milestones", status_code=201)
@@ -181,6 +414,136 @@ async def assign_program_milestone(
             required_for_completion=payload.required_for_completion,
         ),
     )
+
+
+@router.delete(
+    "/programs/{program_id}/curriculum/milestones/{assignment_id}",
+    status_code=204,
+)
+async def remove_program_milestone(
+    program_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    await _program_for_update(db, program_id)
+    row = (
+        await db.execute(
+            select(AcademyProgramMilestoneAssignment).where(
+                AcademyProgramMilestoneAssignment.id == assignment_id,
+                AcademyProgramMilestoneAssignment.program_id == program_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Program milestone link not found")
+    await db.delete(row)
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/cohorts/{cohort_id}/curriculum/assignments")
+async def list_cohort_assignments(
+    cohort_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await db.get(Cohort, cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    is_frozen = (
+        await db.scalar(
+            select(AcademyCohortRequirementsSnapshot.id).where(
+                AcademyCohortRequirementsSnapshot.cohort_id == cohort_id
+            )
+        )
+        is not None
+    )
+    rows = (
+        (
+            await db.execute(
+                select(AcademyCohortMilestoneAssignment)
+                .where(AcademyCohortMilestoneAssignment.cohort_id == cohort_id)
+                .order_by(
+                    AcademyCohortMilestoneAssignment.target_week.asc().nullslast(),
+                    AcademyCohortMilestoneAssignment.created_at.asc(),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    versions = (
+        (
+            await db.execute(
+                select(AcademyMilestoneVersion).where(
+                    AcademyMilestoneVersion.id.in_(
+                        {row.milestone_version_id for row in rows}
+                    )
+                )
+            )
+        )
+        .scalars()
+        .all()
+        if rows
+        else []
+    )
+    v_by_id = {v.id: v for v in versions}
+    definitions = (
+        {
+            item.id: item
+            for item in (
+                await db.execute(
+                    select(AcademyMilestoneDefinition).where(
+                        AcademyMilestoneDefinition.id.in_(
+                            {v.definition_id for v in versions}
+                        )
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        }
+        if versions
+        else {}
+    )
+
+    return {
+        "cohort_id": str(cohort_id),
+        "is_frozen": is_frozen,
+        "milestones": [
+            {
+                "id": str(row.id),
+                "milestone_version_id": str(row.milestone_version_id),
+                "code": (
+                    definitions[v_by_id[row.milestone_version_id].definition_id].code
+                    if row.milestone_version_id in v_by_id
+                    and v_by_id[row.milestone_version_id].definition_id in definitions
+                    else None
+                ),
+                "title": (
+                    definitions[v_by_id[row.milestone_version_id].definition_id].title
+                    if row.milestone_version_id in v_by_id
+                    and v_by_id[row.milestone_version_id].definition_id in definitions
+                    else None
+                ),
+                "version": (
+                    v_by_id[row.milestone_version_id].version
+                    if row.milestone_version_id in v_by_id
+                    else None
+                ),
+                "safety_gate": (
+                    bool(v_by_id[row.milestone_version_id].safety_gate)
+                    if row.milestone_version_id in v_by_id
+                    else False
+                ),
+                "target_week": row.target_week,
+                "override_reason": row.override_reason,
+                "assigned_by_auth_id": row.assigned_by_auth_id,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ],
+    }
 
 
 @router.post("/cohorts/{cohort_id}/curriculum/milestones", status_code=201)
@@ -213,6 +576,38 @@ async def assign_cohort_milestone(
             assigned_by_auth_id=str(current_user.user_id),
         ),
     )
+
+
+@router.delete(
+    "/cohorts/{cohort_id}/curriculum/milestones/{assignment_id}",
+    status_code=204,
+)
+async def remove_cohort_milestone(
+    cohort_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    cohort = await db.get(Cohort, cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+
+    await _program_for_update(db, cohort.program_id)
+    await db.execute(select(Cohort).where(Cohort.id == cohort_id).with_for_update())
+    await _assert_not_frozen(db, cohort_id)
+
+    row = (
+        await db.execute(
+            select(AcademyCohortMilestoneAssignment).where(
+                AcademyCohortMilestoneAssignment.id == assignment_id,
+                AcademyCohortMilestoneAssignment.cohort_id == cohort_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Cohort milestone link not found")
+    await db.delete(row)
+    await db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/cohorts/{cohort_id}/curriculum/requirements/preview")
