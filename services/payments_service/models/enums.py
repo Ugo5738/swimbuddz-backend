@@ -81,3 +81,24 @@ class RecurringPayoutStatus(str, enum.Enum):
     PAUSED = "paused"  # Admin temporarily paused; no new payouts created
     COMPLETED = "completed"  # All blocks paid out
     CANCELLED = "cancelled"  # Admin cancelled mid-cohort
+
+
+class RefundStatus(str, enum.Enum):
+    """Lifecycle of a shared refund record (ADR-023)."""
+
+    REQUESTED = "requested"
+    APPROVED = "approved"
+    INITIATED = "initiated"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class RefundMethod(str, enum.Enum):
+    """Disbursement channel for a refund (ADR-023)."""
+
+    PAYSTACK_REFUND = "paystack_refund"
+    MANUAL_BANK_TRANSFER = "manual_bank_transfer"
+    WALLET_BUBBLES = "wallet_bubbles"
+    STORE_CREDIT = "store_credit"
+    MIXED = "mixed"

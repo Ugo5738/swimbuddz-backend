@@ -305,6 +305,158 @@ async def emit_refund_disbursed_to_ledger(
     )
 
 
+async def emit_refund_approved_to_ledger(db: AsyncSession, refund) -> bool:
+    """Accrue an approved cash refund (ADR-023):
+
+        DR <purpose revenue/deferred account>   (cash_refund_kobo)
+        CR refunds_payable (2130)               (cash_refund_kobo)
+
+    Idempotent per ``refund.refund_reference``. Returns True if posted, False if
+    dead-lettered or skipped.
+    """
+    amount = int(getattr(refund, "cash_refund_kobo", 0) or 0)
+    if amount <= 0:
+        return True
+    try:
+        purpose_enum = PaymentPurpose(str(refund.purpose).lower())
+    except ValueError:
+        purpose_enum = None
+    debit_ref = (
+        PURPOSE_TO_CREDIT_REF.get(purpose_enum) if purpose_enum is not None else None
+    )
+    if debit_ref is None:
+        debit_ref = "revenue_store"
+    domain = (
+        PURPOSE_TO_DOMAIN.get(purpose_enum)
+        if purpose_enum is not None
+        else (refund.source_service or "store")
+    )
+    settings = get_settings()
+    currency = refund.currency or "NGN"
+    ref = refund.refund_reference
+    kwargs = {
+        "entry_date": (getattr(refund, "approved_at", None) or utc_now())
+        .date()
+        .isoformat(),
+        "description": f"Refund approved {ref} — {refund.purpose}",
+        "source_service": SOURCE_SERVICE,
+        "source_type": "refund_approved",
+        "source_id": ref,
+        "org_id": settings.LEDGER_DEFAULT_ORG_ID or None,
+        "metadata": {
+            "refund_reference": ref,
+            "payment_reference": refund.payment_reference,
+            "source_service": refund.source_service,
+            "source_entity_id": refund.source_entity_id,
+        },
+        "lines": [
+            {
+                "account_ref": debit_ref,
+                "debit": amount,
+                "currency": currency,
+                "member_ref": refund.member_auth_id,
+                "dimension_1": domain,
+                "external_ref": ref,
+                "description": f"Refund reversal ({refund.purpose})",
+            },
+            {
+                "account_ref": "refunds_payable",
+                "credit": amount,
+                "currency": currency,
+                "member_ref": refund.member_auth_id,
+                "dimension_1": domain,
+                "external_ref": ref,
+                "description": f"Refunds payable for {ref}",
+            },
+        ],
+    }
+    idempotency_key = f"{SOURCE_SERVICE}:refund_approved:{ref}"
+    try:
+        await post_journal_entry(calling_service=SOURCE_SERVICE, **kwargs)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Ledger refund-approved post failed (%s); dead-lettering: %s",
+            idempotency_key,
+            exc,
+            exc_info=True,
+        )
+        await _dead_letter(db, idempotency_key, ref, kwargs, str(exc))
+        return False
+
+
+async def emit_refund_completed_to_ledger(db: AsyncSession, refund) -> bool:
+    """Clear Refunds Payable on cash refund completion (ADR-023):
+
+        DR refunds_payable (2130)                               (cash_refund_kobo)
+        CR paystack_clearing (Paystack) / bank_operating_ngn    (cash_refund_kobo)
+
+    Idempotent per ``refund.refund_reference``. Returns True if posted, False if
+    dead-lettered.
+    """
+    amount = int(getattr(refund, "cash_refund_kobo", 0) or 0)
+    if amount <= 0:
+        return True
+    provider = (getattr(refund, "provider", None) or "").lower()
+    credit_ref = (
+        "paystack_clearing" if provider == "paystack" else "bank_operating_ngn"
+    )
+    settings = get_settings()
+    currency = refund.currency or "NGN"
+    ref = refund.refund_reference
+    domain = refund.source_service or "store"
+    kwargs = {
+        "entry_date": (getattr(refund, "completed_at", None) or utc_now())
+        .date()
+        .isoformat(),
+        "description": f"Refund disbursed {ref} ({provider or 'manual'})",
+        "source_service": SOURCE_SERVICE,
+        "source_type": "refund_completed",
+        "source_id": ref,
+        "org_id": settings.LEDGER_DEFAULT_ORG_ID or None,
+        "metadata": {
+            "refund_reference": ref,
+            "payment_reference": refund.payment_reference,
+            "provider": provider,
+            "provider_refund_id": refund.provider_refund_id,
+            "external_bank_reference": refund.external_bank_reference,
+        },
+        "lines": [
+            {
+                "account_ref": "refunds_payable",
+                "debit": amount,
+                "currency": currency,
+                "member_ref": refund.member_auth_id,
+                "dimension_1": domain,
+                "external_ref": ref,
+            },
+            {
+                "account_ref": credit_ref,
+                "credit": amount,
+                "currency": currency,
+                "member_ref": refund.member_auth_id,
+                "dimension_1": domain,
+                "external_ref": (
+                    refund.external_bank_reference or refund.provider_refund_id or ref
+                ),
+            },
+        ],
+    }
+    idempotency_key = f"{SOURCE_SERVICE}:refund_completed:{ref}"
+    try:
+        await post_journal_entry(calling_service=SOURCE_SERVICE, **kwargs)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Ledger refund-completed post failed (%s); dead-lettering: %s",
+            idempotency_key,
+            exc,
+            exc_info=True,
+        )
+        await _dead_letter(db, idempotency_key, ref, kwargs, str(exc))
+        return False
+
+
 async def emit_payout_accrual_to_ledger(db: AsyncSession, payout) -> None:
     """Accrue coach pay at block end: DR cogs_coach_academy / CR coach_payouts_payable.
 
@@ -391,41 +543,54 @@ async def emit_payout_paid_to_ledger(db: AsyncSession, payout) -> None:
 
 
 async def emit_settlement_to_ledger(db: AsyncSession, settlement) -> bool:
-    """Drain clearing for a Paystack settlement:
+    """Drain clearing for a Paystack settlement (ADR-023 deduction-safe):
 
-        DR bank_operating_ngn (net) + DR expense_psp_fees (gross - net)
-        CR paystack_clearing       (gross)
+        DR bank_operating_ngn (net) + DR expense_psp_fees (fees)
+        CR paystack_clearing       (net + fees = gross - deductions)
 
-    ``gross`` is what we debited to ``paystack_clearing`` at cash-in, so crediting
-    it by ``gross`` drains exactly what went in; ``net`` is what hit the bank;
-    ``gross - net`` is the PSP fee (folding any Paystack deductions for v1 — PR2
-    reconciles those precisely). Idempotent per settlement id
-    (key payments:settlement:<id>). Returns True if posted (incl. idempotent
-    replay), False if it dead-lettered.
+    When Paystack nets API refunds out of a settlement, ``refund_completed`` has
+    already credited ``paystack_clearing`` for each refunded transaction. Using
+    ``fees_minor`` strictly for ``expense_psp_fees`` and draining ``net + fees``
+    from ``paystack_clearing`` prevents double-counting refunds as PSP fees.
     """
     gross = int(settlement.gross_minor or 0)
     net = int(settlement.net_minor or 0)
-    if gross <= 0:
+    fees_recorded = int(getattr(settlement, "fees_minor", 0) or 0)
+    deductions_recorded = int(getattr(settlement, "deductions_minor", 0) or 0)
+    if gross <= 0 and net <= 0:
         return True  # nothing to drain
-    cost = gross - net  # PSP fees (+ folded deductions)
+
+    if fees_recorded > 0 or deductions_recorded > 0:
+        fee_expense = max(0, fees_recorded)
+        deductions = max(deductions_recorded, max(0, gross - net - fee_expense))
+    else:
+        # Legacy settlement rows without explicit fees_minor/deductions_minor
+        fee_expense = max(0, gross - net)
+        deductions = 0
+
+    clearing_drain = net + fee_expense
+    if clearing_drain <= 0:
+        return True
     currency = settlement.currency or "NGN"
     sid = str(settlement.paystack_settlement_id)
     entry_date: date = settlement.settlement_date or utc_now().date()
     settings = get_settings()
 
-    lines: list[dict] = [
-        {
-            "account_ref": "bank_operating_ngn",
-            "debit": net,
-            "currency": currency,
-            "external_ref": sid,
-        }
-    ]
-    if cost > 0:
+    lines: list[dict] = []
+    if net > 0:
+        lines.append(
+            {
+                "account_ref": "bank_operating_ngn",
+                "debit": net,
+                "currency": currency,
+                "external_ref": sid,
+            }
+        )
+    if fee_expense > 0:
         lines.append(
             {
                 "account_ref": "expense_psp_fees",
-                "debit": cost,
+                "debit": fee_expense,
                 "currency": currency,
                 "external_ref": sid,
             }
@@ -433,7 +598,7 @@ async def emit_settlement_to_ledger(db: AsyncSession, settlement) -> bool:
     lines.append(
         {
             "account_ref": "paystack_clearing",
-            "credit": gross,
+            "credit": clearing_drain,
             "currency": currency,
             "external_ref": sid,
         }
@@ -450,7 +615,9 @@ async def emit_settlement_to_ledger(db: AsyncSession, settlement) -> bool:
             "paystack_settlement_id": sid,
             "gross": gross,
             "net": net,
-            "fees": int(settlement.fees_minor or 0),
+            "fees": fee_expense,
+            "deductions": deductions,
+            "clearing_drain": clearing_drain,
         },
         "lines": lines,
     }

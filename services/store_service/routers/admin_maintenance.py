@@ -26,6 +26,8 @@ from services.store_service.models import (
 from services.store_service.routers.admin_inventory._helpers import (
     _release_order_inventory,
 )
+from services.store_service.services.order_lifecycle import restore_order_store_credits
+from services.store_service.services.order_policy import sync_order_status_dimensions
 
 router = APIRouter(tags=["admin-store"])
 logger = get_logger(__name__)
@@ -127,8 +129,15 @@ async def run_cleanup(
 
     stale_order_count = 0
     for order in stale_orders:
-        order.status = OrderStatus.PAYMENT_FAILED
+        sync_order_status_dimensions(order, legacy_status=OrderStatus.PAYMENT_FAILED)
         await _release_order_inventory(db, order, "system")
+        if getattr(order, "store_credit_applied_ngn", 0):
+            await restore_order_store_credits(
+                db,
+                order,
+                "system",
+                reason=f"Restored after stale unpaid order {order.order_number} expired",
+            )
         if order.wallet_hold_id and not order.wallet_transaction_id:
             try:
                 await release_wallet_hold(order.wallet_hold_id, calling_service="store")

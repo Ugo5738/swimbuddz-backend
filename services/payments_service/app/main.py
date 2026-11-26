@@ -9,6 +9,9 @@ from services.payments_service.routers import (
     intents_router,
     internal_router,
     manual_router,
+    refunds_admin_router,
+    refunds_internal_router,
+    refunds_member_router,
     webhooks_router,
 )
 from services.payments_service.routers.payout import admin_router as payout_admin_router
@@ -52,6 +55,9 @@ def create_app() -> FastAPI:
     app.include_router(internal_router)
     app.include_router(manual_router)
     app.include_router(manual_recording_router)
+    app.include_router(refunds_internal_router)
+    app.include_router(refunds_admin_router, prefix="/payments")
+    app.include_router(refunds_member_router, prefix="/payments")
 
     # Include payout routers for coach payout management
     # Mount under /payments prefix to match gateway routing (/api/v1/payments/{path} → /payments/{path})

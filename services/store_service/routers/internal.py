@@ -50,6 +50,118 @@ async def confirm_store_payment(
     )
 
 
+@router.post("/orders/refund-status-callback", include_in_schema=False)
+async def handle_refund_status_callback(
+    payload: dict,
+    current_user: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Receive trusted refund lifecycle updates from payments_service (ADR-023)."""
+    from libs.common.datetime_utils import utc_now
+    from services.store_service.models import (
+        AuditEntityType,
+        Order,
+        OrderCaseStatus,
+        OrderFulfillmentStatus,
+        OrderPaymentStatus,
+        OrderStatus,
+        StoreOrderCase,
+    )
+    from services.store_service.routers._helpers import log_audit
+    from services.store_service.schemas.main.cases import StoreRefundStatusCallback
+    from services.store_service.services.order_lifecycle import (
+        emit_order_cancelled_or_refunded_event,
+        notify_order_case_update,
+    )
+    from services.store_service.services.order_policy import (
+        sync_order_status_dimensions,
+    )
+
+    data = StoreRefundStatusCallback.model_validate(payload)
+    try:
+        order_uuid = uuid.UUID(data.source_entity_id)
+    except ValueError:
+        return {"updated": False, "reason": "invalid_order_id"}
+
+    order = (
+        await db.execute(
+            select(Order).where(Order.id == order_uuid).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if not order:
+        return {"updated": False, "reason": "order_not_found"}
+
+    case = (
+        await db.execute(
+            select(StoreOrderCase)
+            .where(StoreOrderCase.refund_reference == data.refund_reference)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+
+    now = utc_now()
+    if case is not None:
+        case.refund_status = data.status
+        if data.status == "completed":
+            case.status = OrderCaseStatus.COMPLETED
+            case.resolved_at = case.resolved_at or data.completed_at or now
+            case.resolved_by_auth_id = case.resolved_by_auth_id or "payments_service"
+        elif data.status == "failed" and data.failure_reason:
+            case.admin_notes = (
+                f"{case.admin_notes}\n[Refund failed] {data.failure_reason}".strip()
+                if case.admin_notes
+                else f"[Refund failed] {data.failure_reason}"
+            )
+
+    if data.status == "completed":
+        cash_paid_kobo = int(round(float(order.total_ngn or 0) * 100))
+        is_full = data.cash_refund_kobo >= cash_paid_kobo
+        order.refunded_at = order.refunded_at or data.completed_at or now
+        sync_order_status_dimensions(
+            order,
+            payment_status=(
+                OrderPaymentStatus.REFUNDED
+                if is_full
+                else OrderPaymentStatus.PARTIALLY_REFUNDED
+            ),
+        )
+        if is_full and order.effective_fulfillment_status in (
+            OrderFulfillmentStatus.CANCELLED,
+            OrderFulfillmentStatus.RETURNED,
+        ):
+            order.status = OrderStatus.REFUNDED
+
+    await log_audit(
+        db,
+        AuditEntityType.ORDER,
+        order.id,
+        f"refund_{data.status}",
+        "payments_service",
+        new_value={
+            "refund_reference": data.refund_reference,
+            "status": data.status,
+            "provider_refund_id": data.provider_refund_id,
+            "external_bank_reference": data.external_bank_reference,
+        },
+        notes=data.failure_reason,
+    )
+    await db.commit()
+
+    if data.status == "completed":
+        await emit_order_cancelled_or_refunded_event(
+            order,
+            event_type="store.order_refunded",
+            idempotency_suffix=data.refund_reference,
+        )
+        await notify_order_case_update(
+            order,
+            title="Refund Completed",
+            body=f"Your refund ({data.refund_reference}) for order #{order.order_number} has been completed.",
+            notif_type="order_refunded",
+        )
+    return {"updated": True, "order_number": order.order_number, "status": data.status}
+
+
 class MemberStoreSummary(BaseModel):
     orders_placed: int = 0
     total_spent: int = 0

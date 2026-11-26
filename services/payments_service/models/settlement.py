@@ -48,6 +48,9 @@ class PaystackSettlement(Base):
     # Paystack netted off) — reconciled precisely in PR2.
     gross_minor: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     fees_minor: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    deductions_minor: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
     net_minor: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     settlement_date: Mapped[Optional[date]] = mapped_column(
         Date, nullable=True, index=True

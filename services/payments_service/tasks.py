@@ -675,18 +675,20 @@ async def ingest_paystack_settlements(
             sid = str(s.get("id") or "")
             if not sid:
                 continue
-            # Paystack: total_amount / effective_amount is the NET settled to the
-            # bank; total_fees is charged ON TOP (not included). Gross — what we
-            # debited to paystack_clearing at cash-in — is net + fees, so the
-            # drain ties out and the PSP fee is expensed. (gross - net = fees
-            # keeps the drain entry balanced; verified against the live API.)
+            # Paystack: effective_amount/total_amount is NET settled to bank;
+            # total_fees is Paystack's transaction fee cut; total_processed (or
+            # explicit deductions) lets us separate refund/chargeback deductions
+            # from PSP fee expense (ADR-023).
             fees = int(s.get("total_fees") or 0)
             net = (
                 int(s["effective_amount"])
                 if s.get("effective_amount") is not None
                 else int(s.get("total_amount") or 0)
             )
-            gross = net + fees
+            deductions = int(s.get("deductions") or 0)
+            if deductions <= 0 and s.get("total_processed") is not None:
+                deductions = max(0, int(s["total_processed"]) - net - fees)
+            gross = net + fees + deductions
 
             existing = (
                 await db.execute(
@@ -703,7 +705,7 @@ async def ingest_paystack_settlements(
             if not commit:
                 if existing is None:
                     summary["new"] += 1
-                summary["would_drain_minor"] += gross
+                summary["would_drain_minor"] += net + fees
                 continue
 
             if existing is None:
@@ -714,6 +716,7 @@ async def ingest_paystack_settlements(
                     gross_minor=gross,
                     net_minor=net,
                     fees_minor=fees,
+                    deductions_minor=deductions,
                     settlement_date=_parse_settlement_date(s),
                     raw_payload=s,
                 )

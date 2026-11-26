@@ -36,6 +36,8 @@ from services.store_service.models.procurement import (
     StoreCostEvent,
 )
 from services.store_service.services.inventory_costing import consumption_cost_minor
+from services.store_service.services.order_lifecycle import restore_order_store_credits
+from services.store_service.services.order_policy import sync_order_status_dimensions
 from services.store_service.routers._helpers import log_audit
 
 logger = get_logger(__name__)
@@ -210,6 +212,24 @@ async def _apply_order_status_change(
             status_code=409,
             detail="Order must have a verified payment before fulfillment",
         )
+    # Paid orders must NOT be silently cancelled through the raw status dropdown
+    # without creating a refund obligation (ADR-023).
+    paid_statuses = {
+        OrderStatus.PAID,
+        OrderStatus.PROCESSING,
+        OrderStatus.READY_FOR_PICKUP,
+        OrderStatus.PICKED_UP,
+        OrderStatus.SHIPPED,
+        OrderStatus.DELIVERED,
+    }
+    if old_status in paid_statuses and new_status == OrderStatus.CANCELLED:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Paid orders cannot be cancelled through the raw status selector. "
+                "Use 'Cancel & Issue Refund' or approve a cancellation case so funds and tenders are refunded."
+            ),
+        )
     # Physical departure is separate from payment verification. Consume once,
     # not on PAID or READY status. The order row is locked by the caller.
     if new_status in {
@@ -217,20 +237,34 @@ async def _apply_order_status_change(
         OrderStatus.DELIVERED,
     } and old_status not in {OrderStatus.PICKED_UP, OrderStatus.DELIVERED}:
         await _consume_fulfilled_order_stock(db, order, current_user.user_id)
-    order.status = new_status
+    sync_order_status_dimensions(order, legacy_status=new_status)
 
     if admin_notes:
         order.admin_notes = admin_notes
 
     # Set timestamps based on status
+    now = datetime.utcnow()
+    if new_status == OrderStatus.SHIPPED and not getattr(order, "shipped_at", None):
+        order.shipped_at = now
+    if new_status == OrderStatus.DELIVERED and not getattr(order, "delivered_at", None):
+        order.delivered_at = now
     if new_status in [OrderStatus.PICKED_UP, OrderStatus.DELIVERED]:
-        order.fulfilled_at = datetime.utcnow()
+        order.fulfilled_at = now
     elif new_status in (OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED):
         if new_status == OrderStatus.CANCELLED:
-            order.cancelled_at = datetime.utcnow()
+            order.cancelled_at = now
 
         # Release inventory reservations for each order item
         await _release_order_inventory(db, order, current_user.user_id)
+
+        # Restore any applied Store Credit idempotently (fixes legacy silent credit loss)
+        if getattr(order, "store_credit_applied_ngn", 0):
+            await restore_order_store_credits(
+                db,
+                order,
+                current_user.user_id,
+                reason=f"Restored for {new_status.value} order {order.order_number}",
+            )
 
         # A pending hold is released. Only captured Bubbles are refunded.
         if order.wallet_hold_id and not order.wallet_transaction_id:

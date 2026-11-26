@@ -462,6 +462,51 @@
 
 ---
 
+## ADR-023: Store Post-Purchase Order Lifecycle, Returns/Exchanges & Shared Refund Infrastructure
+- **Status:** Settled & Enforced (25 November 2026; supersedes the legacy Store "All sales are final / store credit only" policy)
+- **Context & Why:**
+  - The Store previously lacked any customer-initiated cancellation, modification, return, exchange, or cash refund workflow. Worse, `OrderStatus` conflated payment, fulfillment, cancellation, and refund into a single enum; `Order.total_ngn` stored the post-credit/post-Bubbles cash remainder (breaking refund validation on Bubbles/Store-Credit orders); `StoreCreditTransaction` rows were never written and store credit was silently lost on cancellation; cancelling a paid order in Admin created no refund obligation; and `emit_settlement_to_ledger` folded all `gross - net` Paystack settlement differences into `expense_psp_fees`, which would double-count Paystack API refunds.
+  - Meanwhile, Nigeria's FCCPA grants statutory remedies for defective, damaged, or misdescribed goods regardless of voluntary store policies, and SwimBuddz sells a mix of `stocked`, `preorder`, `dropship`, and `consignment` items across Paystack, manual bank transfers, Bubbles, and Store Credit.
+- **Decision & Non-Negotiable Invariants:**
+  - **Four Separated Concepts (Order, Fulfillment, Payment, Case/Refund):**
+    - `store_orders` tracks `payment_status` (`unpaid`, `pending_review`, `paid`, `partially_refunded`, `refunded`, `failed`) and `fulfillment_status` (`not_started`, `awaiting_preparation`, `processing`, `ready_for_pickup`, `picked_up`, `shipped`, `delivered`, `cancelled`, `returned`) independently while keeping legacy `status` synchronized for backward compatibility.
+    - `order_total_ngn` preserves the true net order value (`subtotal - discount + delivery_fee`), while `cash_payable_ngn` / `total_ngn` preserves the cash remainder after `store_credit_applied_ngn` and `bubbles_applied`.
+    - `StoreOrderCase` (`store_order_cases` + `store_order_case_items`) tracks every customer post-purchase case (`cancel_request`, `variant_swap`, `return_exchange`, `defect_claim`) with reason codes, photo evidence, inspection outcome, policy overrides (`override_reason` required), and linked refund status.
+  - **Fulfillment-State & Sourcing-Aware Cancellation/Swap Policy:**
+    - **Unpaid orders (`pending_payment` / `payment_failed`):** Customers may self-cancel after a live payment check under lock with `payments_service`. If a Paystack charge already succeeded, cancellation fails closed; if a manual bank-transfer receipt is staged (`pending_review`), self-cancel is blocked and routed to admin review (`ADR-003`).
+    - **Paid, `awaiting_preparation` (`stocked` items only):** Customers may **self-cancel immediately** (releasing reserved stock, restoring `StoreCredit` via idempotent `StoreCreditTransaction` records, refunding captured Bubbles, and auto-creating + initiating a Paystack refund or queueing a verified bank-transfer refund in `payments_service`).
+    - **Paid `preorder`, `dropship`, or `consignment` items — and any order in `processing` or `ready_for_pickup`:** Cancellation is **request-only** (`cancel_request`) so admins can check supplier PO commitment and pool-bag packing before approving.
+    - **Same-price variant swap (`variant_swap`):** Allowed while unpaid or `awaiting_preparation` for active, in-stock variants of the same product at the exact same unit price, performing an atomic inventory reservation swap with zero payment mutation. Priced edits/upgrades continue to follow the audited difference-payment pattern (`ADR-008`).
+    - **`shipped` orders:** Cancellation is disabled; orders move to post-delivery return/exchange.
+  - **Post-Handover Returns, Exchanges & FCCPA Statutory Floor:**
+    - **Change-of-mind / wrong size after pickup or delivery (non-defective):** Allowed within **7 calendar days** of `delivered_at` / `fulfilled_at` for unused, unopened items (swimwear strictly requires unworn condition with hygiene seals and tags intact). Approved remedies are **size/color exchange**, **Store Credit**, or **Bubbles** (never defaulting to cash refund); the original delivery fee is non-refundable and customers drop off at a pool session (free) or cover return dispatch.
+    - **Defective, damaged, misdescribed, or wrong item supplied (`defect_claim`):** Always eligible regardless of voluntary return restrictions or swimwear hygiene rules (FCCPA statutory compliance), entitling the customer to **full refund to the original payment method (including delivery fee)** or **free replacement**.
+    - **Return Inventory Inspection & COGS Conservation:** Receiving a physical return requires an explicit inspection condition (`restockable`, `damaged`, `hygiene_unsellable`). Only `restockable` items increment `InventoryItem.quantity_on_hand` (`InventoryMovementType.RETURN`) and reverse their proportional weighted-average cost into `StoreInventoryValuation` + `StoreCostEvent`; damaged or hygiene-unsellable returns are never added back to sellable stock.
+  - **Shared Refund Infrastructure (`payments_service.refunds`), Paystack API & Ledger Invariants:**
+    - `payments_service` owns a first-class `refunds` table shared across Store, Academy, Club, and Sessions (while domain policies remain owned by each service).
+    - Every cash refund runs under `SELECT ... FOR UPDATE` on `Payment` enforcing `SUM(active_refunds.cash_refund_kobo) <= paid_kobo`, unique `idempotency_key`, and multi-tender pro-rata preservation (promotional discounts are never cashed out; cash returns to cash, Bubbles to Bubbles, Store Credit to Store Credit).
+    - **Paystack API refunds enabled from Release 1:** Paid Paystack transactions refund via `POST /refund` with webhook reconciliation (`refund.pending`, `refund.processing`, `refund.processed`, `refund.failed`, `refund.needs-attention`) plus manual status sync. Transactions older than Paystack's 1-year refund window fall back to verified manual bank transfer.
+    - **Verified manual bank-transfer refunds:** Support free NUBAN verification via `PaystackClient.resolve_account` and require an `external_bank_reference` before transitioning to `completed`.
+    - **Two-step Double-Entry Ledger & Settlement Deduction Split:** Approving a cash refund posts `DR revenue_store` (or original purpose account) / `CR refunds_payable` (`2130`); completing disbursement posts `DR refunds_payable` / `CR paystack_clearing` (Paystack refund) or `CR bank_operating_ngn` (bank transfer). `emit_settlement_to_ledger` drains `paystack_clearing` by `net + fees_minor` (booking only actual PSP fees to `expense_psp_fees`) so Paystack refund deductions netted against settlements are never double-counted as PSP fees.
+    - **No silent paid-order cancellation:** Admin raw status updates cannot transition a paid order directly to `cancelled`; admins must use the audited **Cancel & Issue Refund** workflow or approve a `StoreOrderCase`.
+- **Canonical Docs & Code:**
+  - `docs/store/STORE_OPERATIONS.md`
+  - `docs/store/STORE_ARCHITECTURE.md`
+  - `swimbuddz-backend/services/payments_service/models/refund.py`
+  - `swimbuddz-backend/services/payments_service/routers/refunds.py`
+  - `swimbuddz-backend/services/payments_service/services/paystack_client.py`
+  - `swimbuddz-backend/services/payments_service/services/ledger_emit.py`
+  - `swimbuddz-backend/services/store_service/models/cases.py`
+  - `swimbuddz-backend/services/store_service/services/order_policy.py`
+  - `swimbuddz-backend/services/store_service/routers/order_actions.py`
+  - `swimbuddz-backend/services/store_service/routers/admin_cases.py`
+  - `swimbuddz-frontend/src/app/(member)/account/orders/[id]/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/store/orders/[id]/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/store/cases/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/payments/page.tsx`
+
+---
+
 ## Template for Adding New Decisions
 
 Whenever a new product, pricing, accounting, curriculum, or architectural decision is made during a conversation, append a new `ADR-XXX` entry using this structure:
