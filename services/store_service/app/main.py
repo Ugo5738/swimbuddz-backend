@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from libs.common.health import register_health_check
 from services.store_service.routers import (
+    admin_cases_router,
     admin_catalog_router,
     admin_credits_router,
     admin_inventory_router,
@@ -14,6 +15,7 @@ from services.store_service.routers import (
     cart_router,
     catalog_router,
     checkout_router,
+    order_actions_router,
     orders_router,
 )
 from services.store_service.routers.internal import router as internal_router
@@ -35,10 +37,12 @@ def create_app() -> FastAPI:
     app.include_router(cart_router, prefix="/store")
     app.include_router(checkout_router, prefix="/store")
     app.include_router(orders_router, prefix="/store")
+    app.include_router(order_actions_router, prefix="/store")
 
     # Admin routes (product management, inventory, order management)
     app.include_router(admin_catalog_router, prefix="/admin/store")
     app.include_router(admin_inventory_router, prefix="/admin/store")
+    app.include_router(admin_cases_router, prefix="/admin/store")
     app.include_router(admin_credits_router, prefix="/admin/store")
     app.include_router(admin_suppliers_router, prefix="/admin/store")
     app.include_router(admin_payouts_router, prefix="/admin/store")
