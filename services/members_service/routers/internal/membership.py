@@ -63,20 +63,11 @@ async def check_club_access(
     )
 
 
-@router.get("/{member_id}/membership", response_model=MemberMembershipResponse)
-async def get_member_membership(
-    member_id: uuid.UUID,
-    _: AuthUser = Depends(require_service_role),
-    db: AsyncSession = Depends(get_async_db),
-):
-    """Look up a member's membership tier and billing info."""
-    result = await db.execute(
-        select(MemberMembership).where(MemberMembership.member_id == member_id)
-    )
-    membership = result.scalar_one_or_none()
-    if not membership:
-        raise HTTPException(status_code=404, detail="Membership not found")
-
+async def build_member_membership_response(
+    db: AsyncSession,
+    membership: MemberMembership,
+) -> MemberMembershipResponse:
+    """Normalize and serialize a MemberMembership row into MemberMembershipResponse."""
     # Strip expired tiers on read — stored column is a cache that may have
     # drifted past expiry dates. Write back if it changed so future reads
     # (and other services reading the column directly) see fresh values.
@@ -111,7 +102,7 @@ async def get_member_membership(
     # compatibility product summary used by content/events/calendar surfaces,
     # while session booking still uses the stricter date-and-location check.
     effective_products = set(summary["effective_paid_tiers"])
-    if await has_current_club_access(db, member_id=member_id, at=utc_now()):
+    if await has_current_club_access(db, member_id=membership.member_id, at=utc_now()):
         effective_products.add("club")
     product_priority = {"academy": 3, "club": 2, "community": 1}
     sorted_products = sorted(
@@ -149,6 +140,23 @@ async def get_member_membership(
             else None
         ),
     )
+
+
+@router.get("/{member_id}/membership", response_model=MemberMembershipResponse)
+async def get_member_membership(
+    member_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Look up a member's membership tier and billing info."""
+    result = await db.execute(
+        select(MemberMembership).where(MemberMembership.member_id == member_id)
+    )
+    membership = result.scalar_one_or_none()
+    if not membership:
+        raise HTTPException(status_code=404, detail="Membership not found")
+
+    return await build_member_membership_response(db, membership)
 
 
 @router.get("/{member_id}/tier-history", response_model=TierHistoryResponse)

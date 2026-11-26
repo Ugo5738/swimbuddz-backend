@@ -613,6 +613,42 @@
 
 ---
 
+## ADR-025: Mobile-First Swim Cards, Evergreen Weekly Swim Bubbles Card & Low-Latency Session Checkout
+- **Status:** Settled & Enforced (26 November 2026)
+- **Context & Why:**
+  - On narrow mobile viewports (~375px), Upcoming Swims cards on `/account/bookings` and session cards on `/account/find-a-swim` placed a shrinking `flex-1` title/time block on the same flex line as a wide status pill (`"Scheduled for your Club"`) and action button, squeezing the session title and time to the left edge and visually colliding with the status pill.
+  - On `/account/wallet/rewards`, the Weekly Swim Bubbles card still displayed launch-date boilerplate (`"SWIM BUBBLES PROGRAMME · SINCE 22 NOV 2026"`, `"Automatic · ₦100 / 🫧"`, and a second `"launched 22 Nov 2026"` paragraph) that repeated information already visible in the metric tiles and **Ways to Earn Bubbles** directly below.
+  - Loading `/sessions/[id]/book` (the session booking & payment page) suffered severe latency from five stacked bottlenecks: (1) a 4-step frontend serial waterfall (`getCurrentAccessToken` → `getSession` → `ride-configs` → `members/me + wallet/me`) all blocking `setLoading(false)`, (2) a double-fired `loadExistingBooking` effect (`[params.id, session]`) downloading the member's entire lifetime `sessions/bookings/me` and `attendance/me` (with `include_session=true`, triggering another 100-session batch lookup), (3) `GET /sessions/{id}` performing up to 5 serial internal HTTP hops including a hidden `media_service` profile-photo lookup inside `members/by-auth/{auth_id}` that `sessions_service` discarded, (4) `GET /transport/sessions/{id}/ride-configs` making an HTTP call to `sessions_service` even when a session had zero ride configs and executing 40–70 N+1 SQL queries when ride configs existed, and (5) `BundleBookingFlow` loading ride configs serially after sessions.
+- **Decision & Non-Negotiable Invariants:**
+  - **Mobile-First Swim Cards (`/account/bookings`, `/account/find-a-swim`):**
+    - Status badges render as `inline-flex shrink-0 whitespace-nowrap` pills so they never wrap ambiguously or collide with time/location lines.
+    - On mobile (`< sm`), swim cards stack cleanly in full-width zones: status pill above → full-width title + time/pool location + unbooked notice → separated footer action bar (`Book this swim` / `Details` or `Details` / `+ Add`). On `sm:` and above, cards transition to a clean 2-column horizontal row (`flex-col sm:flex-row sm:items-center sm:justify-between`) without squeezing text.
+  - **Evergreen Weekly Swim Bubbles Copy (`SwimRewards.tsx`):**
+    - Remove the `"SWIM BUBBLES PROGRAMME · SINCE 22 NOV 2026"` eyebrow, the `"Automatic · ₦100 / 🫧"` header badge, and the `"Swim Bubbles launched 22 Nov 2026…"` disclaimer paragraph (and drop `"(since 22 Nov 2026)"` from the My Swims strip mini-tile).
+    - Keep **one single muted rule line** at the bottom of the Weekly Swim Bubbles card: `"1 🫧 (₦100) per eligible swim day, up to 3 days/week · Reversed if absent or cancelled."`
+  - **Low-Latency Session Booking & Payment Pipeline:**
+    - **Single-hop internal member access (`GET /internal/members/by-auth/{auth_id}/membership`) & opt-in photos (`include_photo=false`):** `sessions_service` resolves member ID + normalized membership in 1 `members_service` HTTP call with 0 `media_service` calls; booking/attendance member-ID resolution passes `include_photo=false` to `/internal/members/by-auth/{auth_id}`.
+    - **Concurrent single-session access checks:** `evaluate_session_access_for_member` dispatches cohort, pod, club, and event checks concurrently via `asyncio.gather`.
+    - **Single-session booking/attendance filters:** `GET /sessions/bookings/me`, `GET /sessions/bookings/me/unpaid`, and `GET /attendance/me` accept optional `session_id` so checkout performs 0-or-1-row indexed lookups (and `/attendance/me` is queried with `include_session=false`).
+    - **Zero-N+1, short-circuiting `GET /transport/sessions/{session_id}/ride-configs`:** Query `SessionRideConfig` first (returning `[]` immediately with 0 cross-service HTTP calls when none exist), and batch `RideArea`, `PickupLocation`, grouped `RideBooking` counts, and `RouteInfo` into constant SQL queries.
+    - **Non-blocking parallel checkout mount (`sessions/[id]/book` & `BundleBookingFlow`):** Fire `getSession`, `/members/me`, `ride-configs`, `/wallet/me`, and single-session `bookings/me?session_id=...` concurrently in one mount effect (never re-firing on `[session]` state changes), and render the booking form as soon as `session` + `member` resolve while ride-share and wallet balance hydrate seamlessly.
+- **Canonical Docs & Code:**
+  - `swimbuddz-backend/services/members_service/routers/internal/lookups.py`
+  - `swimbuddz-backend/services/members_service/routers/internal/membership.py`
+  - `swimbuddz-backend/libs/common/service_client/members.py`
+  - `swimbuddz-backend/services/sessions_service/routers/member.py`
+  - `swimbuddz-backend/services/sessions_service/routers/bookings.py`
+  - `swimbuddz-backend/services/sessions_service/services/session_access.py`
+  - `swimbuddz-backend/services/attendance_service/routers/member/lists.py`
+  - `swimbuddz-backend/services/transport_service/routers/routes.py`
+  - `swimbuddz-frontend/src/app/(member)/account/bookings/page.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/find-a-swim/page.tsx`
+  - `swimbuddz-frontend/src/components/swims/SwimRewards.tsx`
+  - `swimbuddz-frontend/src/app/(sessions)/sessions/[id]/book/page.tsx`
+  - `swimbuddz-frontend/src/app/(sessions)/sessions/bundle/[bundleId]/book/BundleBookingFlow.tsx`
+
+---
+
 ## Template for Adding New Decisions
 
 Whenever a new product, pricing, accounting, curriculum, or architectural decision is made during a conversation, append a new `ADR-XXX` entry using this structure:

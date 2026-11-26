@@ -90,13 +90,19 @@ async def evaluate_session_access_for_member(
     calling_service: str = "sessions",
     confirmed_booking: bool = False,
 ):
-    """Build session-specific context and evaluate access for one session."""
+    """Build session-specific context and evaluate access for one session.
+
+    Dispatches independent cross-service lookups (cohort, pod, club, event)
+    concurrently via ``asyncio.gather`` to avoid serial network latency on
+    single-session checkout reads (ADR-025).
+    """
     member_id = str(member_payload["member_id"])
 
-    cohort_enrollment = None
-    if session.cohort_id is not None and not confirmed_booking:
+    async def _fetch_cohort():
+        if session.cohort_id is None or confirmed_booking:
+            return None
         try:
-            cohort_enrollment = await check_cohort_enrollment(
+            return await check_cohort_enrollment(
                 cohort_id=str(session.cohort_id),
                 member_id=member_id,
                 calling_service=calling_service,
@@ -113,8 +119,9 @@ async def evaluate_session_access_for_member(
                 detail="Could not verify cohort enrollment. Please try again.",
             )
 
-    pod_member_ids = None
-    if session.pod_id is not None and not confirmed_booking:
+    async def _fetch_pod_member_ids():
+        if session.pod_id is None or confirmed_booking:
+            return None
         try:
             pod = await get_pod_by_id(
                 str(session.pod_id), calling_service=calling_service
@@ -131,9 +138,11 @@ async def evaluate_session_access_for_member(
                 status_code=503,
                 detail="Could not verify club pod access. Please try again.",
             )
-        pod_member_ids = (pod or {}).get("active_member_ids") or []
+        return (pod or {}).get("active_member_ids") or []
 
-    if _is_club_session(session) and not confirmed_booking:
+    async def _fetch_club_access():
+        if not _is_club_session(session) or confirmed_booking:
+            return None
         try:
             club_access = await check_club_access_batch(
                 [_club_access_check(session, member_id)],
@@ -150,57 +159,67 @@ async def evaluate_session_access_for_member(
                 status_code=503,
                 detail="Could not verify Club access. Please try again.",
             )
-        club_access_result = club_access.get(str(session.id)) or {
+        return club_access.get(str(session.id)) or {
             "allowed": False,
             "source": "none",
         }
-    else:
-        club_access_result = None
 
-    event_access_result = None
-    if _is_event_session(session) and not confirmed_booking:
+    async def _fetch_event_access():
+        if not _is_event_session(session) or confirmed_booking:
+            return None
         if session.event_id is None:
-            event_access_result = {
+            return {
                 "allowed": False,
                 "tier_access": "event",
                 "source": "event_policy",
                 "reason": "event_unavailable",
             }
-        else:
-            try:
-                decisions = await check_event_attendance_batch(
-                    checks=[
-                        {
-                            "context_key": str(session.id),
-                            "event_id": str(session.event_id),
-                            "paid_tiers": sorted(
-                                active_paid_tiers(
-                                    member_payload,
-                                    session.starts_at or now,
-                                )
-                            ),
-                        }
-                    ],
-                    member_id=member_id,
-                    calling_service=calling_service,
-                )
-            except httpx.HTTPError as e:
-                logger.warning(
-                    "check_event_attendance_batch failed for session=%s member=%s: %s",
-                    session.id,
-                    member_id,
-                    e,
-                )
-                raise HTTPException(
-                    status_code=503,
-                    detail="Could not verify Event access. Please try again.",
-                ) from e
-            event_access_result = decisions.get(str(session.id)) or {
-                "allowed": False,
-                "tier_access": "event",
-                "source": "event_policy",
-                "reason": "event_unavailable",
-            }
+        try:
+            decisions = await check_event_attendance_batch(
+                checks=[
+                    {
+                        "context_key": str(session.id),
+                        "event_id": str(session.event_id),
+                        "paid_tiers": sorted(
+                            active_paid_tiers(
+                                member_payload,
+                                session.starts_at or now,
+                            )
+                        ),
+                    }
+                ],
+                member_id=member_id,
+                calling_service=calling_service,
+            )
+        except httpx.HTTPError as e:
+            logger.warning(
+                "check_event_attendance_batch failed for session=%s member=%s: %s",
+                session.id,
+                member_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Could not verify Event access. Please try again.",
+            ) from e
+        return decisions.get(str(session.id)) or {
+            "allowed": False,
+            "tier_access": "event",
+            "source": "event_policy",
+            "reason": "event_unavailable",
+        }
+
+    (
+        cohort_enrollment,
+        pod_member_ids,
+        club_access_result,
+        event_access_result,
+    ) = await asyncio.gather(
+        _fetch_cohort(),
+        _fetch_pod_member_ids(),
+        _fetch_club_access(),
+        _fetch_event_access(),
+    )
 
     return evaluate_session_access(
         member_payload,
