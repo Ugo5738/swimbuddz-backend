@@ -29,6 +29,7 @@ from services.academy_service.models import (
     AcademyLessonDrill,
     AcademyLessonVersion,
     AcademyMilestoneDefinition,
+    AcademyMilestoneRemedialDrill,
     AcademyMilestoneSkill,
     AcademyMilestoneVersion,
     AcademyModule,
@@ -135,6 +136,12 @@ class ModuleQuizInput(BaseModel):
 
 class SkillLinkInput(BaseModel):
     skill_id: uuid.UUID
+
+
+class RemedialDrillInput(BaseModel):
+    drill_id: uuid.UUID
+    priority_order: int = Field(default=0, ge=0)
+    coach_tip: str | None = Field(default=None, max_length=1000)
 
 
 def _definition_data(item) -> dict:
@@ -1010,6 +1017,142 @@ async def remove_milestone_skill(
     return await _remove_entity_skill(
         db, AcademyMilestoneSkill, "milestone_id", definition_id, link_id
     )
+
+
+@router.get("/milestones/{definition_id}/remedial-drills")
+async def list_milestone_remedial_drills(
+    definition_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    if await db.get(AcademyMilestoneDefinition, definition_id) is None:
+        raise HTTPException(status_code=404, detail="Milestone definition not found")
+    links = (
+        (
+            await db.execute(
+                select(AcademyMilestoneRemedialDrill)
+                .where(
+                    AcademyMilestoneRemedialDrill.milestone_definition_id
+                    == definition_id
+                )
+                .order_by(
+                    AcademyMilestoneRemedialDrill.priority_order,
+                    AcademyMilestoneRemedialDrill.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not links:
+        return []
+    drill_ids = {link.drill_id for link in links}
+    drills = (
+        (await db.execute(select(AcademyDrill).where(AcademyDrill.id.in_(drill_ids))))
+        .scalars()
+        .all()
+    )
+    drill_by_id = {d.id: d for d in drills}
+    published_versions = (
+        (
+            await db.execute(
+                select(AcademyDrillVersion)
+                .where(
+                    AcademyDrillVersion.drill_id.in_(drill_ids),
+                    AcademyDrillVersion.state == "published",
+                )
+                .distinct(AcademyDrillVersion.drill_id)
+                .order_by(
+                    AcademyDrillVersion.drill_id,
+                    AcademyDrillVersion.version.desc(),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    latest_version_by_drill = {v.drill_id: v for v in published_versions}
+    return [
+        {
+            "id": str(link.id),
+            "milestone_definition_id": str(link.milestone_definition_id),
+            "drill_id": str(link.drill_id),
+            "drill_code": drill_by_id[link.drill_id].code
+            if link.drill_id in drill_by_id
+            else None,
+            "drill_title": drill_by_id[link.drill_id].title
+            if link.drill_id in drill_by_id
+            else None,
+            "latest_published_version_id": (
+                str(latest_version_by_drill[link.drill_id].id)
+                if link.drill_id in latest_version_by_drill
+                else None
+            ),
+            "primary_focal_cue": (
+                latest_version_by_drill[link.drill_id].primary_focal_cue
+                if link.drill_id in latest_version_by_drill
+                else None
+            ),
+            "priority_order": link.priority_order,
+            "coach_tip": link.coach_tip,
+        }
+        for link in links
+    ]
+
+
+@router.post("/milestones/{definition_id}/remedial-drills", status_code=201)
+async def attach_milestone_remedial_drill(
+    definition_id: uuid.UUID,
+    payload: RemedialDrillInput,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    if await db.get(AcademyMilestoneDefinition, definition_id) is None:
+        raise HTTPException(status_code=404, detail="Milestone definition not found")
+    drill = await db.get(AcademyDrill, payload.drill_id)
+    if drill is None:
+        raise HTTPException(status_code=404, detail="Drill definition not found")
+    if drill.is_retired:
+        raise HTTPException(
+            status_code=409, detail="Retired drills cannot be linked as remedial drills"
+        )
+    row = AcademyMilestoneRemedialDrill(
+        milestone_definition_id=definition_id,
+        drill_id=payload.drill_id,
+        priority_order=payload.priority_order,
+        coach_tip=payload.coach_tip.strip() if payload.coach_tip else None,
+    )
+    db.add(row)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Drill already linked to this milestone"
+        ) from exc
+    return {"id": str(row.id)}
+
+
+@router.delete("/milestones/{definition_id}/remedial-drills/{link_id}", status_code=204)
+async def remove_milestone_remedial_drill(
+    definition_id: uuid.UUID,
+    link_id: uuid.UUID,
+    current_user: AuthUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_async_db),
+):
+    link = (
+        await db.execute(
+            select(AcademyMilestoneRemedialDrill).where(
+                AcademyMilestoneRemedialDrill.id == link_id,
+                AcademyMilestoneRemedialDrill.milestone_definition_id == definition_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if link is None:
+        raise HTTPException(status_code=404, detail="Remedial drill link not found")
+    await db.delete(link)
+    await db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/drills/{definition_id}/skills")

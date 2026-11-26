@@ -1,7 +1,7 @@
 # SwimBuddz Academy — Competency Architecture V2
 
-**Status:** Accepted & Enforced via [`ADR-010`](../DECISIONS.md#adr-010-modular-academy-curriculum-versioned-catalog--evidence-backed-competency-passport-v2) (Phases 1–3 Implemented; Phase 4 Authoring/Ops Hardening In Progress). Supersedes the V1 schema and auto-backfill clauses in `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`.  
-**Date:** 18 November 2026 (Updated 25 November 2026)  
+**Status:** Accepted & Enforced via [`ADR-010`](../DECISIONS.md#adr-010-modular-academy-curriculum-versioned-catalog--evidence-backed-competency-passport-v2) (Phases 1–4 Implemented: Versioned Catalog, Frozen Snapshots, Evidence-Backed Passport, Native Cohort & Diagnostic V2 Assessments, Prior-Credit Cohort Plan, and TI Remedial/Personalized Drill Prescriptions; Phase 5 Graduation/Club Switch Pending Dual-Read Parity). Supersedes the V1 schema and auto-backfill clauses in `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`.  
+**Date:** 18 November 2026 (Updated 26 November 2026)  
 **Scope:** Academy curriculum, evidence, assessment, progression and their interfaces to Club and Stroke Lab.  
 **Related:** ADR-004, ADR-009, ADR-010, ADR-013, ADR-016.  
 **Explicit non-goal:** Rewriting attendance, payments, classes remaining, bank transfers or the Club payment model.

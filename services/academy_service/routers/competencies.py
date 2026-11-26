@@ -1,4 +1,4 @@
-"""Portable Academy competency passport: verified legacy evidence, not automatic credit.
+"""Portable Academy competency passport: legacy promotions & native V2 assessments.
 
 This sidecar deliberately does NOT alter legacy StudentProgress, certificates,
 Club eligibility, rewards or enrollment commercial terms.
@@ -6,31 +6,46 @@ Club eligibility, rewards or enrollment commercial terms.
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.auth.dependencies import get_current_user, require_admin
+from libs.auth.dependencies import (
+    get_current_user,
+    is_admin_or_service,
+    require_admin,
+    require_coach_for_cohort,
+)
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
+from libs.common.datetime_utils import utc_now
+from libs.common.service_client import get_member_by_id
 from libs.common.service_client.core import internal_get
 from libs.db.session import get_async_db
 from services.academy_service.models import (
     AcademyCohortRequirementsSnapshot,
     AcademyCompetencyRevocation,
     AcademyCompetencyVerification,
+    AcademyDrill,
+    AcademyDrillVersion,
     AcademyMilestoneDefinition,
+    AcademyMilestoneRemedialDrill,
     AcademyMilestoneVersion,
+    AcademyStudentDrillAssignment,
     Enrollment,
     Milestone,
     MilestoneEventType,
     MilestoneReviewEvent,
     ProgressStatus,
     StudentProgress,
+)
+from services.academy_service.routers.drill_assignments import (
+    serialize_drill_assignments,
 )
 from services.academy_service.services.requirements_resolver import (
     requirements_sha256,
@@ -60,8 +75,42 @@ class PromoteLegacyReviewInput(BaseModel):
     equivalence_reason: str = Field(min_length=30, max_length=4000)
 
 
+class CohortV2AssessmentInput(BaseModel):
+    enrollment_id: uuid.UUID
+    milestone_version_id: uuid.UUID
+    evidence_media_id: uuid.UUID
+    evidence_uploaded_by: Literal["assessor", "member"] = "assessor"
+    criteria_passed: list[str] = Field(min_length=1)
+    assessment_notes: str = Field(min_length=20, max_length=4000)
+
+
+class DiagnosticAssessmentInput(BaseModel):
+    member_id: uuid.UUID
+    member_auth_id: str | None = Field(default=None, max_length=160)
+    milestone_version_id: uuid.UUID
+    evidence_media_id: uuid.UUID
+    evidence_uploaded_by: Literal["assessor", "member"] = "assessor"
+    criteria_passed: list[str] = Field(min_length=1)
+    assessment_notes: str = Field(min_length=20, max_length=4000)
+    clinic_label: str | None = Field(default=None, max_length=200)
+
+
 class RevokeVerificationInput(BaseModel):
     reason: str = Field(min_length=20, max_length=4000)
+
+
+def _human_assessor_role(user: AuthUser) -> str:
+    if user.role == "service_role":
+        raise HTTPException(
+            status_code=403, detail="Human coach or administrator approval is required"
+        )
+    if is_admin_or_service(user):
+        return "admin"
+    if user.has_role("coach"):
+        return "coach"
+    raise HTTPException(
+        status_code=403, detail="Coach or administrator privileges required"
+    )
 
 
 def _view_verification(
@@ -75,11 +124,21 @@ def _view_verification(
         "id": str(record.id),
         "member_id": str(record.member_id),
         "member_auth_id": record.member_auth_id,
+        "source_type": record.source_type,
+        "assessor_role": record.assessor_role,
         "milestone_definition_id": str(record.milestone_definition_id),
         "milestone_version_id": str(record.milestone_version_id),
-        "source_enrollment_id": str(record.source_enrollment_id),
-        "source_progress_id": str(record.source_progress_id),
-        "source_review_event_id": str(record.source_review_event_id),
+        "source_enrollment_id": (
+            str(record.source_enrollment_id) if record.source_enrollment_id else None
+        ),
+        "source_progress_id": (
+            str(record.source_progress_id) if record.source_progress_id else None
+        ),
+        "source_review_event_id": (
+            str(record.source_review_event_id)
+            if record.source_review_event_id
+            else None
+        ),
         "evidence_media_id": str(record.evidence_media_id),
         "verified_by_auth_id": record.verified_by_auth_id,
         "review_notes": record.review_notes,
@@ -92,6 +151,60 @@ def _view_verification(
         "criteria_passed": record.criteria_passed,
         "assessment_context_snapshot": record.assessment_context_snapshot,
     }
+
+
+def _validate_rubric_and_validity(
+    *,
+    version: AcademyMilestoneVersion,
+    rubric_snapshot: dict,
+    context_snapshot: dict,
+    safety_gate: bool,
+    criteria_passed: list[str],
+) -> int | None:
+    if version.evidence_policy not in ("video", "time_trial"):
+        raise HTTPException(
+            status_code=409,
+            detail="Portable practical credit requires video-based evidence",
+        )
+    if not isinstance(context_snapshot, dict):
+        raise HTTPException(status_code=409, detail="Invalid assessment context")
+    valid_days = context_snapshot.get("validity_days")
+    if valid_days is not None and (
+        isinstance(valid_days, bool)
+        or not isinstance(valid_days, int)
+        or valid_days <= 0
+    ):
+        raise HTTPException(
+            status_code=409, detail="Invalid assessment validity policy"
+        )
+    if safety_gate and valid_days is None:
+        raise HTTPException(
+            status_code=409, detail="Safety-sensitive credit needs a recheck interval"
+        )
+    rubric_criteria = (
+        rubric_snapshot.get("criteria") if isinstance(rubric_snapshot, dict) else None
+    )
+    if not isinstance(rubric_criteria, list) or not rubric_criteria:
+        raise HTTPException(
+            status_code=409, detail="Competency rubric needs explicit criteria"
+        )
+    expected = [
+        item if isinstance(item, str) else item.get("code")
+        for item in rubric_criteria
+        if isinstance(item, (str, dict))
+    ]
+    if (
+        len(expected) != len(rubric_criteria)
+        or any(not isinstance(item, str) or not item for item in expected)
+        or len(set(expected)) != len(expected)
+        or len(set(criteria_passed)) != len(criteria_passed)
+        or set(criteria_passed) != set(expected)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Every published criterion must be explicitly attested",
+        )
+    return valid_days
 
 
 async def _latest_decision(db: AsyncSession, progress_id: uuid.UUID):
@@ -187,22 +300,26 @@ async def _uploader_auth_id(
     if last_claim is None:
         raise HTTPException(status_code=409, detail="Evidence provenance is missing")
     if last_claim.actor_role == "coach":
-        # Source CLAIMED events identify the original coach uploader.
         return str(last_claim.actor_id)
     if last_claim.actor_role != "student" or not enrollment.member_auth_id:
         raise HTTPException(status_code=409, detail="Evidence owner cannot be verified")
     return str(enrollment.member_auth_id)
 
 
-async def _check_media(progress: StudentProgress, owner_auth_id: str):
+async def _check_media_evidence(
+    *,
+    media_id: uuid.UUID,
+    owner_auth_id: str,
+    expected_linked_id: str,
+) -> None:
     try:
         response = await internal_get(
             service_url=get_settings().MEDIA_SERVICE_URL,
-            path=f"/internal/media/alumni-evidence/{progress.evidence_media_id}",
+            path=f"/internal/media/alumni-evidence/{media_id}",
             calling_service="academy",
             params={
                 "owner_auth_id": owner_auth_id,
-                "expected_linked_id": f"{progress.enrollment_id}:{progress.milestone_id}",
+                "expected_linked_id": expected_linked_id,
             },
         )
     except (httpx.HTTPError, OSError) as exc:
@@ -214,6 +331,14 @@ async def _check_media(progress: StudentProgress, owner_auth_id: str):
             status_code=422 if response.status_code == 404 else 503,
             detail="Source video evidence could not be verified",
         )
+
+
+async def _check_media(progress: StudentProgress, owner_auth_id: str):
+    await _check_media_evidence(
+        media_id=progress.evidence_media_id,
+        owner_auth_id=owner_auth_id,
+        expected_linked_id=f"{progress.enrollment_id}:{progress.milestone_id}",
+    )
 
 
 async def _project_verifications(
@@ -237,7 +362,6 @@ async def _project_verifications(
     definition_by_id = {item.id: item for item in definitions}
 
     ids = [row.id for row in records]
-    progress_ids = {row.source_progress_id for row in records}
     revocations = (
         (
             await db.execute(
@@ -251,40 +375,66 @@ async def _project_verifications(
     )
     revoked_by_id = {r.verification_id: r for r in revocations}
 
-    source_records = (
-        (
-            await db.execute(
-                select(StudentProgress).where(StudentProgress.id.in_(progress_ids))
+    legacy_progress_ids = {
+        row.source_progress_id
+        for row in records
+        if row.source_type == "legacy_promotion" and row.source_progress_id is not None
+    }
+    progress_by_id: dict[uuid.UUID, StudentProgress] = {}
+    latest_decisions: dict[uuid.UUID, MilestoneReviewEvent] = {}
+    if legacy_progress_ids:
+        source_records = (
+            (
+                await db.execute(
+                    select(StudentProgress).where(
+                        StudentProgress.id.in_(legacy_progress_ids)
+                    )
+                )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
-    progress_by_id = {p.id: p for p in source_records}
-    latest_decisions = await _latest_decisions_batch(db, progress_ids)
+        progress_by_id = {p.id: p for p in source_records}
+        latest_decisions = await _latest_decisions_batch(db, legacy_progress_ids)
 
     now = datetime.now(timezone.utc)
     views = []
     for row in records:
-        progress = progress_by_id.get(row.source_progress_id)
-        decision = latest_decisions.get(row.source_progress_id)
         revoked = revoked_by_id.get(row.id)
         if revoked:
             state, reason = "revoked", revoked.reason
-        elif progress is None or decision is None:
-            state, reason = "recheck_required", "Original assessment is unavailable"
-        elif (
-            progress.status != ProgressStatus.ACHIEVED
-            or decision.new_status != ProgressStatus.ACHIEVED
-            or decision.id != row.source_review_event_id
-        ):
-            state, reason = "recheck_required", "Original assessment was changed"
-        elif progress.evidence_media_id != row.evidence_media_id:
-            state, reason = "recheck_required", "Original evidence changed"
-        elif row.expires_at is not None and row.expires_at <= now:
-            state, reason = "expired", "Competency assessment needs renewal"
+        elif row.source_type == "legacy_promotion":
+            progress = (
+                progress_by_id.get(row.source_progress_id)
+                if row.source_progress_id
+                else None
+            )
+            decision = (
+                latest_decisions.get(row.source_progress_id)
+                if row.source_progress_id
+                else None
+            )
+            if progress is None or decision is None:
+                state, reason = "recheck_required", "Original assessment is unavailable"
+            elif (
+                progress.status != ProgressStatus.ACHIEVED
+                or decision.new_status != ProgressStatus.ACHIEVED
+                or decision.id != row.source_review_event_id
+            ):
+                state, reason = "recheck_required", "Original assessment was changed"
+            elif progress.evidence_media_id != row.evidence_media_id:
+                state, reason = "recheck_required", "Original evidence changed"
+            elif row.expires_at is not None and row.expires_at <= now:
+                state, reason = "expired", "Competency assessment needs renewal"
+            else:
+                state, reason = "verified", None
         else:
-            state, reason = "verified", None
+            # Native V2 assessment ('cohort_v2' or 'diagnostic_assessment'):
+            # the ledger row itself is the primary evidence-backed assessment.
+            if row.expires_at is not None and row.expires_at <= now:
+                state, reason = "expired", "Competency assessment needs renewal"
+            else:
+                state, reason = "verified", None
 
         view = _view_verification(row, state, reason=reason, revocation=revoked)
         definition = definition_by_id.get(row.milestone_definition_id)
@@ -381,9 +531,15 @@ async def list_legacy_promotion_candidates(
         .all()
     )
     verification_by_review = {
-        v.source_review_event_id: v for v in existing_verifications
+        v.source_review_event_id: v
+        for v in existing_verifications
+        if v.source_review_event_id is not None
     }
-    verification_by_progress = {v.source_progress_id: v for v in existing_verifications}
+    verification_by_progress = {
+        v.source_progress_id: v
+        for v in existing_verifications
+        if v.source_progress_id is not None
+    }
 
     items = []
     for progress, enrollment, legacy_milestone in rows:
@@ -546,11 +702,6 @@ async def verify_legacy_competency(
     definition = await db.get(AcademyMilestoneDefinition, version.definition_id)
     if definition is None:
         raise HTTPException(status_code=409, detail="Missing canonical definition")
-    if version.evidence_policy not in ("video", "time_trial"):
-        raise HTTPException(
-            status_code=409,
-            detail="Portable practical credit requires video-based evidence",
-        )
 
     snapshot = (
         await db.execute(
@@ -587,43 +738,13 @@ async def verify_legacy_competency(
             detail="Published assessment does not match the cohort's frozen requirements",
         )
 
-    frozen_context = match["assessment_context_snapshot"]
-    if not isinstance(frozen_context, dict):
-        raise HTTPException(status_code=409, detail="Invalid frozen assessment context")
-    valid_days = frozen_context.get("validity_days")
-    if valid_days is not None and (
-        isinstance(valid_days, bool)
-        or not isinstance(valid_days, int)
-        or valid_days <= 0
-    ):
-        raise HTTPException(
-            status_code=409, detail="Invalid assessment validity policy"
-        )
-    if version.safety_gate and valid_days is None:
-        raise HTTPException(
-            status_code=409, detail="Safety-sensitive credit needs a recheck interval"
-        )
-    rubric_criteria = version.rubric_json.get("criteria")
-    if not isinstance(rubric_criteria, list) or not rubric_criteria:
-        raise HTTPException(
-            status_code=409, detail="Competency rubric needs explicit criteria"
-        )
-    expected = [
-        item if isinstance(item, str) else item.get("code")
-        for item in rubric_criteria
-        if isinstance(item, (str, dict))
-    ]
-    if (
-        len(expected) != len(rubric_criteria)
-        or any(not isinstance(item, str) or not item for item in expected)
-        or len(set(expected)) != len(expected)
-        or len(set(payload.criteria_passed)) != len(payload.criteria_passed)
-        or set(payload.criteria_passed) != set(expected)
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail="Every published criterion must be explicitly attested",
-        )
+    valid_days = _validate_rubric_and_validity(
+        version=version,
+        rubric_snapshot=match["rubric_snapshot"],
+        context_snapshot=match["assessment_context_snapshot"],
+        safety_gate=bool(version.safety_gate),
+        criteria_passed=payload.criteria_passed,
+    )
 
     already = (
         await db.execute(
@@ -637,20 +758,18 @@ async def verify_legacy_competency(
 
     uploader = await _uploader_auth_id(db, progress, enrollment)
     await _check_media(progress, uploader)
-    # The source review is deliberately locked by the progress row; concurrent
-    # admin operations on the same source progress serialize here.
     current_review = await _source_review(db, progress)
     if current_review.id != review.id:
         raise HTTPException(
             status_code=409, detail="Source review changed during verification"
         )
 
-    # Validity starts when the swimmer passed the source assessment, not
-    # when an administrator later imports that evidence into the passport.
     assessed_at = review.created_at
     record = AcademyCompetencyVerification(
         member_id=enrollment.member_id,
         member_auth_id=str(enrollment.member_auth_id),
+        source_type="legacy_promotion",
+        assessor_role="admin",
         source_enrollment_id=enrollment.id,
         source_progress_id=progress.id,
         source_review_event_id=review.id,
@@ -681,6 +800,221 @@ async def verify_legacy_competency(
         ) from exc
     await db.refresh(record)
     return _view_verification(record, "verified")
+
+
+@router.post("/coach/assess-cohort", status_code=201)
+async def assess_cohort_v2_competency(
+    payload: CohortV2AssessmentInput,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Assigned cohort coach or human admin issues a native V2 cohort assessment."""
+    assessor_role = _human_assessor_role(current_user)
+    if len(payload.assessment_notes.strip()) < 20:
+        raise HTTPException(
+            status_code=422, detail="Substantive assessment notes are required"
+        )
+
+    enrollment = (
+        await db.execute(
+            select(Enrollment)
+            .where(Enrollment.id == payload.enrollment_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if enrollment is None:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    if enrollment.cohort_id is None or not enrollment.member_auth_id:
+        raise HTTPException(
+            status_code=409, detail="Verifiable cohort enrollment is required"
+        )
+    await require_coach_for_cohort(current_user, str(enrollment.cohort_id), db)
+
+    version = await db.get(AcademyMilestoneVersion, payload.milestone_version_id)
+    if version is None or version.state != "published" or version.published_at is None:
+        raise HTTPException(
+            status_code=409, detail="Published milestone version required"
+        )
+    definition = await db.get(AcademyMilestoneDefinition, version.definition_id)
+    if definition is None:
+        raise HTTPException(status_code=409, detail="Missing canonical definition")
+
+    snapshot = (
+        await db.execute(
+            select(AcademyCohortRequirementsSnapshot).where(
+                AcademyCohortRequirementsSnapshot.cohort_id == enrollment.cohort_id
+            )
+        )
+    ).scalar_one_or_none()
+    if snapshot is None or snapshot.program_id != enrollment.program_id:
+        raise HTTPException(
+            status_code=409, detail="A frozen cohort assessment standard is required"
+        )
+    if requirements_sha256(snapshot.requirements_json) != snapshot.sha256:
+        raise HTTPException(
+            status_code=409, detail="Cohort requirements integrity mismatch"
+        )
+
+    match = next(
+        (
+            item
+            for item in snapshot.requirements_json.get("milestones", [])
+            if item.get("version_id") == str(version.id)
+        ),
+        None,
+    )
+    if (
+        match is None
+        or match.get("rubric_snapshot") != version.rubric_json
+        or match.get("assessment_context_snapshot") != version.assessment_context_json
+        or match.get("safety_gate") != bool(version.safety_gate)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Published assessment does not match the cohort's frozen requirements",
+        )
+
+    valid_days = _validate_rubric_and_validity(
+        version=version,
+        rubric_snapshot=match["rubric_snapshot"],
+        context_snapshot=match["assessment_context_snapshot"],
+        safety_gate=bool(version.safety_gate),
+        criteria_passed=payload.criteria_passed,
+    )
+
+    owner_auth_id = (
+        str(current_user.user_id)
+        if payload.evidence_uploaded_by == "assessor"
+        else str(enrollment.member_auth_id)
+    )
+    await _check_media_evidence(
+        media_id=payload.evidence_media_id,
+        owner_auth_id=owner_auth_id,
+        expected_linked_id=f"{enrollment.id}:{version.id}",
+    )
+
+    now = utc_now()
+    record = AcademyCompetencyVerification(
+        member_id=enrollment.member_id,
+        member_auth_id=str(enrollment.member_auth_id),
+        source_type="cohort_v2",
+        assessor_role=assessor_role,
+        source_enrollment_id=enrollment.id,
+        source_progress_id=None,
+        source_review_event_id=None,
+        milestone_definition_id=definition.id,
+        milestone_version_id=version.id,
+        rubric_snapshot=match["rubric_snapshot"],
+        criteria_passed=payload.criteria_passed,
+        assessment_context_snapshot={
+            **match.get("assessment_context_snapshot", {}),
+            "cohort_id": str(enrollment.cohort_id),
+            "cohort_snapshot_sha256": snapshot.sha256,
+            "evidence_uploaded_by": payload.evidence_uploaded_by,
+        },
+        evidence_media_id=payload.evidence_media_id,
+        evidence_owner_auth_id=owner_auth_id,
+        verified_by_auth_id=str(current_user.user_id),
+        review_notes=payload.assessment_notes.strip(),
+        verified_at=now,
+        expires_at=now + timedelta(days=valid_days) if valid_days else None,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    view = _view_verification(record, "verified")
+    view["code"] = definition.code
+    view["title"] = definition.title
+    return view
+
+
+@router.post("/admin/assess-diagnostic", status_code=201)
+async def assess_diagnostic_competency(
+    payload: DiagnosticAssessmentInput,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Human coach or admin issues portable prerequisite credit from a diagnostic clinic."""
+    assessor_role = _human_assessor_role(current_user)
+    if len(payload.assessment_notes.strip()) < 20:
+        raise HTTPException(
+            status_code=422, detail="Substantive assessment notes are required"
+        )
+
+    member_auth_id = (payload.member_auth_id or "").strip()
+    if not member_auth_id:
+        member = await get_member_by_id(
+            str(payload.member_id), calling_service="academy"
+        )
+        if not member or not member.get("auth_id"):
+            raise HTTPException(
+                status_code=404, detail="Member profile or auth identity not found"
+            )
+        member_auth_id = str(member["auth_id"])
+
+    version = await db.get(AcademyMilestoneVersion, payload.milestone_version_id)
+    if version is None or version.state != "published" or version.published_at is None:
+        raise HTTPException(
+            status_code=409, detail="Published milestone version required"
+        )
+    definition = await db.get(AcademyMilestoneDefinition, version.definition_id)
+    if definition is None or definition.is_retired:
+        raise HTTPException(
+            status_code=409, detail="Active canonical milestone definition required"
+        )
+
+    valid_days = _validate_rubric_and_validity(
+        version=version,
+        rubric_snapshot=version.rubric_json,
+        context_snapshot=version.assessment_context_json,
+        safety_gate=bool(version.safety_gate),
+        criteria_passed=payload.criteria_passed,
+    )
+
+    owner_auth_id = (
+        str(current_user.user_id)
+        if payload.evidence_uploaded_by == "assessor"
+        else member_auth_id
+    )
+    await _check_media_evidence(
+        media_id=payload.evidence_media_id,
+        owner_auth_id=owner_auth_id,
+        expected_linked_id=f"diagnostic:{payload.member_id}:{version.id}",
+    )
+
+    now = utc_now()
+    context = dict(version.assessment_context_json or {})
+    context["evidence_uploaded_by"] = payload.evidence_uploaded_by
+    if payload.clinic_label and payload.clinic_label.strip():
+        context["clinic_label"] = payload.clinic_label.strip()
+
+    record = AcademyCompetencyVerification(
+        member_id=payload.member_id,
+        member_auth_id=member_auth_id,
+        source_type="diagnostic_assessment",
+        assessor_role=assessor_role,
+        source_enrollment_id=None,
+        source_progress_id=None,
+        source_review_event_id=None,
+        milestone_definition_id=definition.id,
+        milestone_version_id=version.id,
+        rubric_snapshot=version.rubric_json,
+        criteria_passed=payload.criteria_passed,
+        assessment_context_snapshot=context,
+        evidence_media_id=payload.evidence_media_id,
+        evidence_owner_auth_id=owner_auth_id,
+        verified_by_auth_id=str(current_user.user_id),
+        review_notes=payload.assessment_notes.strip(),
+        verified_at=now,
+        expires_at=now + timedelta(days=valid_days) if valid_days else None,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    view = _view_verification(record, "verified")
+    view["code"] = definition.code
+    view["title"] = definition.title
+    return view
 
 
 @router.post("/admin/{verification_id}/revoke", status_code=201)
@@ -769,6 +1103,217 @@ async def _passport(db: AsyncSession, auth_id: str) -> dict:
         "member_auth_id": auth_id,
         "competencies": list(by_definition.values()),
         "verifications": views,
+    }
+
+
+@router.get("/enrollments/{enrollment_id}/v2-plan")
+async def get_enrollment_v2_learning_plan(
+    enrollment_id: uuid.UUID,
+    current_user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Read-only V2 learning plan: frozen cohort milestones + prior credit + remedial drills."""
+    enrollment = await db.get(Enrollment, enrollment_id)
+    if enrollment is None:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    is_owner = current_user.role != "service_role" and enrollment.member_auth_id == str(
+        current_user.user_id
+    )
+    if not is_owner:
+        if enrollment.cohort_id:
+            await require_coach_for_cohort(current_user, str(enrollment.cohort_id), db)
+        elif not (
+            current_user.role != "service_role" and is_admin_or_service(current_user)
+        ):
+            raise HTTPException(status_code=403, detail="Not authorized")
+
+    snapshot = (
+        await db.scalar(
+            select(AcademyCohortRequirementsSnapshot).where(
+                AcademyCohortRequirementsSnapshot.cohort_id == enrollment.cohort_id
+            )
+        )
+        if enrollment.cohort_id
+        else None
+    )
+
+    passport = (
+        await _passport(db, str(enrollment.member_auth_id))
+        if enrollment.member_auth_id
+        else {"competencies": [], "verifications": []}
+    )
+    summary_by_def = {c["milestone_definition_id"]: c for c in passport["competencies"]}
+    verifications_by_def: dict[str, list[dict]] = {}
+    for v in passport["verifications"]:
+        verifications_by_def.setdefault(v["milestone_definition_id"], []).append(v)
+
+    # Load drill assignments for this enrollment (plus standalone member diagnostic drills)
+    drill_filters = [AcademyStudentDrillAssignment.enrollment_id == enrollment_id]
+    if enrollment.member_auth_id:
+        drill_filters.append(
+            (AcademyStudentDrillAssignment.member_auth_id == enrollment.member_auth_id)
+            & (AcademyStudentDrillAssignment.enrollment_id.is_(None))
+        )
+    assigned_rows = (
+        (
+            await db.execute(
+                select(AcademyStudentDrillAssignment)
+                .where(
+                    or_(*drill_filters),
+                    AcademyStudentDrillAssignment.status != "archived",
+                )
+                .order_by(AcademyStudentDrillAssignment.created_at.desc())
+                .limit(100)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    drill_assignments = await serialize_drill_assignments(db, assigned_rows)
+
+    if snapshot is None:
+        return {
+            "enrollment_id": str(enrollment.id),
+            "cohort_id": str(enrollment.cohort_id) if enrollment.cohort_id else None,
+            "has_frozen_requirements": False,
+            "snapshot_sha256": None,
+            "milestones": [],
+            "drill_assignments": drill_assignments,
+        }
+
+    raw_milestones = snapshot.requirements_json.get("milestones", [])
+    def_uuids = {
+        uuid.UUID(m["definition_id"]) for m in raw_milestones if m.get("definition_id")
+    }
+
+    # Batch load remedial drills + latest published drill versions for every milestone
+    remedial_by_def: dict[str, list[dict]] = {}
+    if def_uuids:
+        remedial_links = (
+            (
+                await db.execute(
+                    select(AcademyMilestoneRemedialDrill)
+                    .where(
+                        AcademyMilestoneRemedialDrill.milestone_definition_id.in_(
+                            def_uuids
+                        )
+                    )
+                    .order_by(
+                        AcademyMilestoneRemedialDrill.milestone_definition_id,
+                        AcademyMilestoneRemedialDrill.priority_order,
+                        AcademyMilestoneRemedialDrill.id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if remedial_links:
+            drill_ids = {link.drill_id for link in remedial_links}
+            drills = (
+                (
+                    await db.execute(
+                        select(AcademyDrill).where(
+                            AcademyDrill.id.in_(drill_ids),
+                            AcademyDrill.is_retired.is_(False),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            drill_by_id = {d.id: d for d in drills}
+            published_versions = (
+                (
+                    await db.execute(
+                        select(AcademyDrillVersion)
+                        .where(
+                            AcademyDrillVersion.drill_id.in_(drill_ids),
+                            AcademyDrillVersion.state == "published",
+                        )
+                        .distinct(AcademyDrillVersion.drill_id)
+                        .order_by(
+                            AcademyDrillVersion.drill_id,
+                            AcademyDrillVersion.version.desc(),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            ver_by_drill = {v.drill_id: v for v in published_versions}
+            for link in remedial_links:
+                drill = drill_by_id.get(link.drill_id)
+                ver = ver_by_drill.get(link.drill_id)
+                if drill is None or ver is None:
+                    continue
+                remedial_by_def.setdefault(
+                    str(link.milestone_definition_id), []
+                ).append(
+                    {
+                        "drill_id": str(drill.id),
+                        "drill_version_id": str(ver.id),
+                        "code": drill.code,
+                        "title": drill.title,
+                        "version": ver.version,
+                        "primary_focal_cue": ver.primary_focal_cue,
+                        "steps_json": ver.steps_json,
+                        "requires_supervision": bool(ver.requires_supervision),
+                        "coach_tip": link.coach_tip,
+                        "priority_order": link.priority_order,
+                    }
+                )
+
+    projected_milestones = []
+    for item in raw_milestones:
+        def_id = item.get("definition_id")
+        summary = summary_by_def.get(def_id) if def_id else None
+        status = summary["status"] if summary else "unverified"
+        def_verifications = verifications_by_def.get(def_id, []) if def_id else []
+        active_verified = [v for v in def_verifications if v["status"] == "verified"]
+        primary_verification = active_verified[0] if active_verified else None
+        prior_credit = bool(
+            primary_verification is not None
+            and (
+                primary_verification["source_type"] == "diagnostic_assessment"
+                or primary_verification["source_enrollment_id"] != str(enrollment.id)
+            )
+        )
+        projected_milestones.append(
+            {
+                **item,
+                "passport_status": status,
+                "prior_credit": prior_credit,
+                "supporting_verification_id": (
+                    primary_verification["id"] if primary_verification else None
+                ),
+                "verified_source_type": (
+                    primary_verification["source_type"]
+                    if primary_verification
+                    else None
+                ),
+                "verified_at": (
+                    primary_verification["verified_at"]
+                    if primary_verification
+                    else None
+                ),
+                "expires_at": (
+                    primary_verification["expires_at"] if primary_verification else None
+                ),
+                "remedial_drills": (
+                    [] if status == "verified" else remedial_by_def.get(def_id, [])
+                ),
+            }
+        )
+
+    return {
+        "enrollment_id": str(enrollment.id),
+        "cohort_id": str(enrollment.cohort_id) if enrollment.cohort_id else None,
+        "has_frozen_requirements": True,
+        "snapshot_sha256": snapshot.sha256,
+        "milestones": projected_milestones,
+        "drill_assignments": drill_assignments,
     }
 
 

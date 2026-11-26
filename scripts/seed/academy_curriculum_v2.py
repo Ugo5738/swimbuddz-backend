@@ -33,6 +33,7 @@ from services.academy_service.models import (  # noqa: E402
     AcademyLessonDrill,
     AcademyLessonVersion,
     AcademyMilestoneDefinition,
+    AcademyMilestoneRemedialDrill,
     AcademyMilestoneVersion,
     AcademyModule,
     AcademyModuleLesson,
@@ -576,6 +577,70 @@ MODULES = [
 ]
 
 
+REMEDIAL_DRILLS = [
+    (
+        "MS-F1-SAFE-ENTRY",
+        "DRL-F1-WALL-WALK",
+        0,
+        "Build calm wall orientation before free standing.",
+    ),
+    (
+        "MS-F1-SAFE-ENTRY",
+        "DRL-F1-CHIN-TUCK-STAND",
+        1,
+        "Practice knee-tuck recovery until it feels automatic.",
+    ),
+    (
+        "MS-F2-RHYTHMIC-BOBS-20",
+        "DRL-F2-HUMMING-BOBS",
+        0,
+        "Focus on unbroken gentle humming so you never gasp at the surface.",
+    ),
+    (
+        "MS-F3-BACK-FLOAT-30S",
+        "DRL-F3-WEIGHTLESS-HEAD",
+        0,
+        "Submerge both ears and let the water hold your skull weightless.",
+    ),
+    (
+        "MS-F3-BACK-FLOAT-30S",
+        "DRL-F1-CHIN-TUCK-STAND",
+        1,
+        "End every float with a calm knee-tuck stand recovery.",
+    ),
+    (
+        "MS-F4-STREAMLINE-GLIDE-7M",
+        "DRL-F4-SUPERMAN-GLIDE",
+        0,
+        "Press chest gently downward so hips rise without kicking hard.",
+    ),
+    (
+        "MS-S1-FREE-25M",
+        "DRL-S1-TI-SKATE",
+        0,
+        "Hold a long, balanced side-lying line before rotating to breathe.",
+    ),
+    (
+        "MS-S1-FREE-25M",
+        "DRL-S1-6-KICK-SWITCH",
+        1,
+        "Keep the lead hand patient until the recovering hand enters cleanly.",
+    ),
+    (
+        "MS-S1-FREE-50M",
+        "DRL-S1-6-KICK-SWITCH",
+        0,
+        "Use core hip rotation to conserve energy across 50 meters.",
+    ),
+    (
+        "MS-A1-TREAD-60S",
+        "DRL-A1-SCULLING-TREAD",
+        0,
+        "Keep forearm sculls wide and horizontal; avoid vertical splashing.",
+    ),
+]
+
+
 async def _get_or_create_definition(
     db, model, *, code: str, title: str, description: str
 ):
@@ -617,10 +682,12 @@ async def seed_academy_curriculum_v2(db) -> dict[str, int]:
         "quizzes_created": 0,
         "lessons_created": 0,
         "modules_created": 0,
+        "remedial_links_created": 0,
     }
     now = utc_now()
 
     drill_v1: dict[str, AcademyDrillVersion] = {}
+    drill_defs_by_code: dict[str, AcademyDrill] = {}
     for item in DRILLS:
         defn, created = await _get_or_create_definition(
             db,
@@ -629,6 +696,7 @@ async def seed_academy_curriculum_v2(db) -> dict[str, int]:
             title=item["title"],
             description=item["description"],
         )
+        drill_defs_by_code[item["code"]] = defn
         if created:
             counts["drills_created"] += 1
         ver, ver_created = await _get_or_create_v1(
@@ -649,6 +717,7 @@ async def seed_academy_curriculum_v2(db) -> dict[str, int]:
         drill_v1[item["code"]] = ver
 
     milestone_v1: dict[str, AcademyMilestoneVersion] = {}
+    milestone_defs_by_code: dict[str, AcademyMilestoneDefinition] = {}
     for item in MILESTONES:
         defn, created = await _get_or_create_definition(
             db,
@@ -657,6 +726,7 @@ async def seed_academy_curriculum_v2(db) -> dict[str, int]:
             title=item["title"],
             description=item["description"],
         )
+        milestone_defs_by_code[item["code"]] = defn
         if created:
             counts["milestones_created"] += 1
         ver, ver_created = await _get_or_create_v1(
@@ -821,6 +891,26 @@ async def seed_academy_curriculum_v2(db) -> dict[str, int]:
             await db.flush()
             ver.state = "published"
             ver.published_at = ver.published_at or now
+
+    for ms_code, drill_code, priority, tip in REMEDIAL_DRILLS:
+        ms_def = milestone_defs_by_code[ms_code]
+        dr_def = drill_defs_by_code[drill_code]
+        exists = await db.scalar(
+            select(AcademyMilestoneRemedialDrill.id).where(
+                AcademyMilestoneRemedialDrill.milestone_definition_id == ms_def.id,
+                AcademyMilestoneRemedialDrill.drill_id == dr_def.id,
+            )
+        )
+        if exists is None:
+            db.add(
+                AcademyMilestoneRemedialDrill(
+                    milestone_definition_id=ms_def.id,
+                    drill_id=dr_def.id,
+                    priority_order=priority,
+                    coach_tip=tip,
+                )
+            )
+            counts["remedial_links_created"] += 1
 
     await db.commit()
     return counts

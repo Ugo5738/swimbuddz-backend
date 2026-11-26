@@ -21991,6 +21991,96 @@
         ]
       }
     },
+    "/api/v1/academy/competencies/coach/assess-cohort": {
+      "post": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Assess Cohort V2 Competency",
+        "description": "Assigned cohort coach or human admin issues a native V2 cohort assessment.",
+        "operationId": "assess_cohort_v2_competency_academy_competencies_coach_assess_cohort_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CohortV2AssessmentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/competencies/admin/assess-diagnostic": {
+      "post": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Assess Diagnostic Competency",
+        "description": "Human coach or admin issues portable prerequisite credit from a diagnostic clinic.",
+        "operationId": "assess_diagnostic_competency_academy_competencies_admin_assess_diagnostic_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagnosticAssessmentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/academy/competencies/admin/{verification_id}/revoke": {
       "post": {
         "tags": [
@@ -22027,6 +22117,53 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/competencies/enrollments/{enrollment_id}/v2-plan": {
+      "get": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Get Enrollment V2 Learning Plan",
+        "description": "Read-only V2 learning plan: frozen cohort milestones + prior credit + remedial drills.",
+        "operationId": "get_enrollment_v2_learning_plan_academy_competencies_enrollments__enrollment_id__v2_plan_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -22094,6 +22231,284 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/competencies/drills/published": {
+      "get": {
+        "tags": [
+          "academy-drill-prescriptions"
+        ],
+        "summary": "List Published Drills For Coaching",
+        "description": "List latest published version of each active TI drill for coaches & admins.",
+        "operationId": "list_published_drills_for_coaching_academy_competencies_drills_published_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/competencies/me/drills": {
+      "get": {
+        "tags": [
+          "academy-drill-prescriptions"
+        ],
+        "summary": "List My Assigned Drills",
+        "description": "List TI drills prescribed to the authenticated swimmer.",
+        "operationId": "list_my_assigned_drills_academy_competencies_me_drills_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Archived"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/competencies/me/drills/{assignment_id}/practiced": {
+      "post": {
+        "tags": [
+          "academy-drill-prescriptions"
+        ],
+        "summary": "Mark My Drill Practiced",
+        "description": "Learner logs that they practiced an assigned drill (cannot self-mark mastered).",
+        "operationId": "mark_my_drill_practiced_academy_competencies_me_drills__assignment_id__practiced_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/competencies/enrollments/{enrollment_id}/drills": {
+      "get": {
+        "tags": [
+          "academy-drill-prescriptions"
+        ],
+        "summary": "List Enrollment Drills",
+        "description": "List prescribed TI drills for a cohort enrollment (owner, assigned coach, or admin).",
+        "operationId": "list_enrollment_drills_academy_competencies_enrollments__enrollment_id__drills_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "enrollment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Enrollment Id"
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Archived"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/competencies/coach/drills/assign": {
+      "post": {
+        "tags": [
+          "academy-drill-prescriptions"
+        ],
+        "summary": "Assign Student Drill",
+        "description": "Coach or admin prescribes a published TI drill version to a swimmer.",
+        "operationId": "assign_student_drill_academy_competencies_coach_drills_assign_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignDrillInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/academy/competencies/coach/drills/{assignment_id}/status": {
+      "patch": {
+        "tags": [
+          "academy-drill-prescriptions"
+        ],
+        "summary": "Update Student Drill Status",
+        "description": "Coach or admin updates a prescribed drill's status (e.g., mastered or archived).",
+        "operationId": "update_student_drill_status_academy_competencies_coach_drills__assignment_id__status_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDrillStatusInput"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -25891,6 +26306,157 @@
         ],
         "summary": "Remove Milestone Skill",
         "operationId": "remove_milestone_skill_academy_admin_curriculum_library_milestones__definition_id__skills__link_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "definition_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Definition Id"
+            }
+          },
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Link Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/milestones/{definition_id}/remedial-drills": {
+      "get": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "List Milestone Remedial Drills",
+        "operationId": "list_milestone_remedial_drills_academy_admin_curriculum_library_milestones__definition_id__remedial_drills_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "definition_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Definition Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Attach Milestone Remedial Drill",
+        "operationId": "attach_milestone_remedial_drill_academy_admin_curriculum_library_milestones__definition_id__remedial_drills_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "definition_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Definition Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemedialDrillInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/academy/admin/curriculum-library/milestones/{definition_id}/remedial-drills/{link_id}": {
+      "delete": {
+        "tags": [
+          "academy-curriculum-library"
+        ],
+        "summary": "Remove Milestone Remedial Drill",
+        "operationId": "remove_milestone_remedial_drill_academy_admin_curriculum_library_milestones__definition_id__remedial_drills__link_id__delete",
         "security": [
           {
             "HTTPBearer": []
@@ -95948,6 +96514,104 @@
         ],
         "title": "ApproveUnpaidCohortChange"
       },
+      "AssignDrillInput": {
+        "properties": {
+          "drill_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Drill Version Id"
+          },
+          "enrollment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrollment Id"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "member_auth_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Auth Id"
+          },
+          "milestone_definition_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Definition Id"
+          },
+          "focal_cue_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Cue Note"
+          },
+          "sets": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Sets",
+            "default": 3
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "drill_version_id"
+        ],
+        "title": "AssignDrillInput"
+      },
       "AssignmentRoleEnum": {
         "type": "string",
         "enum": [
@@ -98772,6 +99436,57 @@
         "type": "object",
         "title": "CohortUpdate"
       },
+      "CohortV2AssessmentInput": {
+        "properties": {
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Enrollment Id"
+          },
+          "milestone_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Version Id"
+          },
+          "evidence_media_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evidence Media Id"
+          },
+          "evidence_uploaded_by": {
+            "type": "string",
+            "enum": [
+              "assessor",
+              "member"
+            ],
+            "title": "Evidence Uploaded By",
+            "default": "assessor"
+          },
+          "criteria_passed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Criteria Passed"
+          },
+          "assessment_notes": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 20,
+            "title": "Assessment Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enrollment_id",
+          "milestone_version_id",
+          "evidence_media_id",
+          "criteria_passed",
+          "assessment_notes"
+        ],
+        "title": "CohortV2AssessmentInput"
+      },
       "CommercialTermsRequest": {
         "properties": {
           "adjustment_id": {
@@ -99286,6 +100001,81 @@
         "type": "object",
         "title": "CurriculumWeekUpdate",
         "description": "Update a week."
+      },
+      "DiagnosticAssessmentInput": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_auth_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Auth Id"
+          },
+          "milestone_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Milestone Version Id"
+          },
+          "evidence_media_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evidence Media Id"
+          },
+          "evidence_uploaded_by": {
+            "type": "string",
+            "enum": [
+              "assessor",
+              "member"
+            ],
+            "title": "Evidence Uploaded By",
+            "default": "assessor"
+          },
+          "criteria_passed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Criteria Passed"
+          },
+          "assessment_notes": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 20,
+            "title": "Assessment Notes"
+          },
+          "clinic_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clinic Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "milestone_version_id",
+          "evidence_media_id",
+          "criteria_passed",
+          "assessment_notes"
+        ],
+        "title": "DiagnosticAssessmentInput"
       },
       "DimensionLabelsResponse": {
         "properties": {
@@ -102454,6 +103244,38 @@
         ],
         "title": "ReadinessCheckStatus"
       },
+      "RemedialDrillInput": {
+        "properties": {
+          "drill_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Drill Id"
+          },
+          "priority_order": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Priority Order",
+            "default": 0
+          },
+          "coach_tip": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach Tip"
+          }
+        },
+        "type": "object",
+        "required": [
+          "drill_id"
+        ],
+        "title": "RemedialDrillInput"
+      },
       "RequiredEvidence": {
         "type": "string",
         "enum": [
@@ -102946,6 +103768,37 @@
         ],
         "title": "UpcomingSessionSummary",
         "description": "Summary of an upcoming session for dashboard."
+      },
+      "UpdateDrillStatusInput": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "assigned",
+              "practiced",
+              "mastered",
+              "archived"
+            ],
+            "title": "Status"
+          },
+          "focal_cue_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Cue Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "UpdateDrillStatusInput"
       },
       "WithdrawEnrollmentRequest": {
         "properties": {

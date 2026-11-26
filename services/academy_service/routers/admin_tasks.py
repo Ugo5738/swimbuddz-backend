@@ -6,6 +6,7 @@ from services.academy_service.models import (
     AcademyEnrollmentChange,
     AcademyFinancialCredit,
     AcademyJourney,
+    AcademyStudentDrillAssignment,
     AcademyTransferRefundObligation,
     ProgramInterest,
 )
@@ -130,6 +131,11 @@ async def admin_delete_member_academy_records(
         )
         deleted_progress = progress_result.rowcount or 0
 
+    await db.execute(
+        delete(AcademyStudentDrillAssignment).where(
+            AcademyStudentDrillAssignment.member_id == member_id
+        )
+    )
     await db.execute(
         delete(AcademyJourney).where(AcademyJourney.member_id == member_id)
     )
