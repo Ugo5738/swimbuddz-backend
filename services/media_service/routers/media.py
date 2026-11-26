@@ -208,6 +208,7 @@ def _require_original_access(
 
     restricted_purposes = {
         "payment_proof",
+        "finance_document",
         "milestone_evidence",
         "milestone_video",
         "club_assessment_video",
@@ -218,6 +219,19 @@ def _require_original_access(
         and purpose not in restricted_purposes
     ):
         return
+
+    # Finance documents: uploader, admin/service, or verified active Ledger member
+    # (the async helper handles the Ledger HTTP check when called from routes).
+    if purpose == "finance_document":
+        if current_user and (
+            _user_is_admin_or_service(current_user)
+            or (
+                getattr(current_user, "user_id", None)
+                and str(item.uploaded_by) == str(current_user.user_id)
+            )
+        ):
+            return
+        raise HTTPException(status_code=404, detail="Media item not found")
 
     # Payment receipts and original presentation assets: strictly uploader or admin
     if is_receipt or is_presentation_original:
@@ -254,6 +268,56 @@ def _require_original_access(
     raise HTTPException(status_code=404, detail="Media item not found")
 
 
+async def _is_active_finance_member(authorization: Optional[str]) -> bool:
+    """Verify active Ledger membership over HTTP without importing ledger_service."""
+    if not authorization:
+        return False
+    import httpx
+    from libs.common.config import get_settings
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                f"{get_settings().LEDGER_SERVICE_URL}/admin/finance/users/me",
+                headers={"Authorization": authorization},
+            )
+        if resp.status_code != 200:
+            return False
+        data = resp.json()
+        return (
+            isinstance(data, dict)
+            and not data.get("deactivated_at")
+            and bool(data.get("role"))
+        )
+    except Exception:
+        return False
+
+
+async def _require_original_access_async(
+    item: MediaItem,
+    current_user: Optional[AuthUser],
+    *,
+    is_playback_route: bool = False,
+    authorization: Optional[str] = None,
+) -> None:
+    """Async access gate extending _require_original_access with Ledger check for finance_document."""
+    metadata = item.metadata_info or {}
+    purpose = metadata.get("purpose")
+    if purpose == "finance_document":
+        if current_user and (
+            _user_is_admin_or_service(current_user)
+            or (
+                getattr(current_user, "user_id", None)
+                and str(item.uploaded_by) == str(current_user.user_id)
+            )
+        ):
+            return
+        if current_user and await _is_active_finance_member(authorization):
+            return
+        raise HTTPException(status_code=404, detail="Media item not found")
+    _require_original_access(item, current_user, is_playback_route=is_playback_route)
+
+
 # ── Upload size limits per purpose ──
 MAX_UPLOAD_SIZES: dict[str, int] = {
     # Images: 25 MB
@@ -279,6 +343,7 @@ MAX_UPLOAD_SIZES: dict[str, int] = {
     # Documents: 10 MB
     "coach_document": 10 * 1024 * 1024,
     "payment_proof": 10 * 1024 * 1024,
+    "finance_document": 15 * 1024 * 1024,
     "size_chart": 10 * 1024 * 1024,
     # General: 50 MB
     "general": 50 * 1024 * 1024,
@@ -482,6 +547,7 @@ async def upload_file(
     allowed_purposes = {
         "coach_document",
         "payment_proof",
+        "finance_document",
         "milestone_evidence",
         "milestone_video",
         "club_assessment_video",
@@ -506,7 +572,7 @@ async def upload_file(
         )
 
     # Different purposes have different allowed file types
-    if purpose in ("coach_document", "payment_proof"):
+    if purpose in ("coach_document", "payment_proof", "finance_document"):
         if not (is_image or is_pdf):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -578,6 +644,9 @@ async def upload_file(
         "payment_proof": (
             f"payment-proofs/{linked_id}" if linked_id else "payment-proofs"
         ),
+        "finance_document": (
+            f"finance-documents/{linked_id}" if linked_id else "finance-documents"
+        ),
         "milestone_evidence": (
             f"milestone-evidence/{linked_id}" if linked_id else "milestone-evidence"
         ),
@@ -642,6 +711,12 @@ async def upload_file(
         elif purpose == "payment_proof":
             auto_description = (
                 f"Proof of payment for {linked_id}" if linked_id else "Proof of payment"
+            )
+        elif purpose == "finance_document":
+            auto_description = (
+                f"Finance supporting document for {linked_id}"
+                if linked_id
+                else "Finance supporting document"
             )
         elif purpose == "milestone_evidence":
             auto_description = "Milestone evidence submission"
@@ -895,6 +970,7 @@ async def register_external_url(
     allowed_purposes = {
         "coach_document",
         "payment_proof",
+        "finance_document",
         "milestone_evidence",
         "milestone_video",
         "general",
@@ -969,12 +1045,14 @@ async def list_media(
         func.coalesce(MediaItem.metadata_info["purpose"].astext, "").notin_(
             (
                 "payment_proof",
+                "finance_document",
                 "milestone_evidence",
                 "milestone_video",
                 "club_assessment_video",
             )
         ),
         MediaItem.file_url.not_like("%/payment-proofs/%"),
+        MediaItem.file_url.not_like("%/finance-documents/%"),
     )
     query = query.order_by(desc(MediaItem.created_at))
 
@@ -996,6 +1074,7 @@ async def list_media(
 @router.get("/media/{media_id}", response_model=MediaItemResponse)
 async def get_media_item(
     media_id: uuid.UUID,
+    request: Request,
     current_user: Optional[AuthUser] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -1007,7 +1086,12 @@ async def get_media_item(
     if not item:
         raise HTTPException(status_code=404, detail="Media item not found")
 
-    _require_original_access(item, current_user, is_playback_route=False)
+    await _require_original_access_async(
+        item,
+        current_user,
+        is_playback_route=False,
+        authorization=request.headers.get("authorization"),
+    )
 
     result = await _build_media_item_response(db, item)
     if _protected_video(item):
@@ -1032,6 +1116,7 @@ async def _resolve_media_playback(
     current_user: Optional[AuthUser],
     expires: int | None = None,
     token: str | None = None,
+    authorization: str | None = None,
 ):
     """Resolve playback headers and redirect URL for a media item."""
     query = select(MediaItem).where(MediaItem.id == media_id)
@@ -1045,7 +1130,12 @@ async def _resolve_media_playback(
         if not _valid_media_playback_token(item.id, expires, token):
             raise HTTPException(status_code=404, detail="Media item not found")
     else:
-        _require_original_access(item, current_user, is_playback_route=True)
+        await _require_original_access_async(
+            item,
+            current_user,
+            is_playback_route=True,
+            authorization=authorization,
+        )
 
     private_key = _private_s3_key(item.file_url)
     if private_key:
@@ -1122,7 +1212,12 @@ async def head_media_item_playback(
     """Answer browser HEAD probes for media playback."""
     expires, token = _playback_query_credentials(request)
     headers, _ = await _resolve_media_playback(
-        media_id, db, current_user, expires=expires, token=token
+        media_id,
+        db,
+        current_user,
+        expires=expires,
+        token=token,
+        authorization=request.headers.get("authorization"),
     )
     return Response(status_code=200, headers=headers)
 
@@ -1146,7 +1241,12 @@ async def get_media_item_playback(
     """
     expires, token = _playback_query_credentials(request)
     _, redirect_url = await _resolve_media_playback(
-        media_id, db, current_user, expires=expires, token=token
+        media_id,
+        db,
+        current_user,
+        expires=expires,
+        token=token,
+        authorization=request.headers.get("authorization"),
     )
     return RedirectResponse(url=redirect_url, status_code=307)
 

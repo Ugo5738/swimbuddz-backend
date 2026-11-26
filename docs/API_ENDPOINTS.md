@@ -12,9 +12,12 @@ This document defines the **HTTP interface** exposed via the gateway (`https://a
 All endpoints assume Bearer authentication with a Supabase access token unless marked as **Public**.
 
 `GET /api/v1/admin/finance/intelligence` requires an active Ledger membership
-with viewer access. Its existing report combines read-only Payments, Academy,
-Club and Store aggregates in the Ledger service. See
-[Finance Intelligence](design/FINANCE_INTELLIGENCE_PROCUREMENT.md#finance-intelligence-endpoint).
+with viewer access. Per **ADR-023**, it is aggregated in **`gateway_service`**
+from service-owned internal summary endpoints (`payments_service`,
+`academy_service`, `members_service`, `store_service`) so `ledger_service`
+remains 100% detachable with zero non-ledger SQL dependencies. See
+[Finance Intelligence & Store Procurement](design/FINANCE_INTELLIGENCE_PROCUREMENT.md)
+and [Accounting Service Boundaries](design/ACCOUNTING_SERVICE_BOUNDARIES_AND_REUSE.md).
 
 ## Service Coverage
 
@@ -2192,6 +2195,24 @@ transport/unexpected responses return 503 and authorization denial remains 403.
 Operational Store grants/admin roles do not replace the Owner check. Public
 `/store/products` and `/store/categories` do not depend on that authorization
 request. No new public endpoint or schema change is introduced.
+
+### Detachable Ledger, Gateway Finance Intelligence & Closed Procurement Loops (25 Nov 2026 — ADR-023)
+
+- **Ledger Multi-Tenancy & Organizations (`ledger_service`, `X-Ledger-Org-Id` header supported):**
+  - `GET /api/v1/admin/finance/organizations` — list active orgs where the authenticated user holds a `LedgerUser` membership.
+  - `GET /api/v1/admin/finance/organizations/current` — current tenant profile + available CoA templates (`generic_smb`, `sports_club`).
+  - `PATCH /api/v1/admin/finance/organizations/current` — Owner-only update of tax/treasury org metadata.
+  - `POST /internal/ledger/organizations` (service-role) — provision a new tenant org with CoA template, opening period, and initial Owner.
+  - `GET /api/v1/admin/finance/treasury/liability-ledger-options` — active postable liability accounts for `kind="liability_settlement"` requests.
+- **Gateway Finance Intelligence (`gateway_service`):**
+  - `GET /api/v1/admin/finance/intelligence` — verifies caller via `ledger_service` `/admin/finance/users/me` and aggregates `/internal/payments/finance-summary`, `/internal/academy/finance-summary` (installments exclude `dropped` enrollments; surfaces `dropout_pending_enrollments`), `/internal/members/club-finance-summary`, and `/internal/store/finance-summary` (surfaces `unvalued_fulfilled_orders_count`).
+- **Closed Store Procurement Loops (`store_service`):**
+  - `POST /api/v1/admin/store/procurement/receipts/{receipt_id}/sync-ledger` — idempotent Ledger replay for goods receipts.
+  - `GET/POST /api/v1/admin/store/procurement/invoices/{invoice_id}/settlements` — Owner-certified partial/full supplier invoice settlements (verifying linked Ledger journal entries over HTTP).
+  - `GET/POST /api/v1/admin/store/procurement/receivables/{receivable_id}/payments` — Owner-verified partial/full credit repayments (`DR Bank / CR Accounts Receivable`, settling receivable & order `paid_at` at 100%).
+  - `GET /api/v1/admin/store/procurement/fulfilled-orders` & `POST /api/v1/admin/store/procurement/orders/{order_id}/returns` — Owner-audited fulfilled-order returns restoring `restockable` inventory/valuation + reversing COGS, or recording `damaged` shrinkage.
+- **Private Finance Evidence Uploads (`media_service`):**
+  - `POST /api/v1/media/uploads` with `purpose="finance_document"` (PDF/images up to 15 MB in private S3), readable strictly by uploader, platform admins, and active Ledger members verified over HTTP.
 
 
 ### Reviewed stock preparation and pickup correction (24 November 2026)

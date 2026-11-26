@@ -35,7 +35,22 @@ EXPECTED_RLS_TABLES = {
     "invoices",
     "invoice_lines",
     "invoice_sequences",
+    "treasury_bank_accounts",
+    "treasury_statement_lines",
+    "treasury_budgets",
+    "treasury_requests",
+    "treasury_audit_events",
+    "treasury_bank_snapshots",
+    "treasury_forecast_lines",
 }
+
+
+async def test_resolve_org_prefers_explicit_header_over_env(monkeypatch, db_session):
+    explicit = uuid.uuid4()
+    env_org = uuid.uuid4()
+    monkeypatch.setattr(deps, "_env_org_id", lambda: env_org)
+    monkeypatch.setattr(deps, "_FALLBACK_ORG_ID", None)
+    assert await deps._resolve_org_id(db_session, explicit_org_id=explicit) == explicit
 
 
 async def test_resolve_org_prefers_env_when_set(monkeypatch, db_session):

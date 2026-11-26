@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     # environment (the org row is created by scripts/seed/ledger_org.py in PR-1).
     # Empty until seeded; emitters resolve org_id from this value.
     LEDGER_DEFAULT_ORG_ID: str = ""
+    # Optional dedicated DB URL for ledger_service (e.g. a NOBYPASSRLS role such
+    # as `ledger_app`, or a completely standalone Postgres DB for B2B extraction).
+    # When unset, ledger_service reuses DATABASE_URL.
+    LEDGER_DATABASE_URL: str = ""
 
     # Weather Service
     # Provider for forecast data. "open-meteo" (default) needs no API key, but
@@ -274,13 +278,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    @field_validator("DATABASE_URL")
+    @field_validator("DATABASE_URL", "LEDGER_DATABASE_URL")
     @classmethod
     def assemble_db_connection(cls, v: Optional[str]) -> str:
-        if isinstance(v, str):
-            if v.startswith("postgresql://"):
-                return v.replace("postgresql://", "postgresql+psycopg://", 1)
-        return v
+        if isinstance(v, str) and v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+psycopg://", 1)
+        return v or ""
 
 
 @lru_cache

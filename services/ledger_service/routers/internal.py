@@ -6,17 +6,30 @@ resolved by get_ledger_db (Phase 1: LEDGER_DEFAULT_ORG_ID). The route owns the
 transaction boundary — it commits on success, rolls back on error.
 """
 
+import uuid
 from datetime import date
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from libs.auth.dependencies import require_service_role
 from libs.auth.models import AuthUser
-from services.ledger_service.app.deps import get_ledger_db
+from pydantic import BaseModel, Field
+from services.ledger_service.app.db import get_ledger_raw_db
+from services.ledger_service.app.deps import (
+    get_ledger_db,
+    set_org_rls_context,
+)
+from services.ledger_service.models import LedgerUser, Organization
+from services.ledger_service.models.enums import (
+    AccountingStandard,
+    LedgerRole,
+    OrgStatus,
+)
+from services.ledger_service.schemas.invoice import InvoiceCreate, InvoiceOut
 from services.ledger_service.schemas.journal import (
     JournalEntryCreate,
     JournalEntryResult,
 )
-from services.ledger_service.schemas.invoice import InvoiceCreate, InvoiceOut
 from services.ledger_service.schemas.reconciliation import (
     ExternalTransactionBatch,
     ReconciliationIntakeResult,
@@ -27,7 +40,12 @@ from services.ledger_service.schemas.reports import (
     MarginReport,
     ProfitLossReport,
 )
+from services.ledger_service.services.accounts import (
+    list_coa_templates,
+    seed_chart_of_accounts,
+)
 from services.ledger_service.services.invoices import create_invoice
+from services.ledger_service.services.periods import resolve_or_create_period
 from services.ledger_service.services.posting import (
     PeriodClosedError,
     UnbalancedEntryError,
@@ -43,9 +61,118 @@ from services.ledger_service.services.reports import (
     margin_by_domain,
     profit_loss,
 )
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/internal/ledger", tags=["ledger-internal"])
+
+
+class ProvisionOrganizationRequest(BaseModel):
+    """Onboard a company onto the multi-tenant detachable Ledger."""
+
+    name: str = Field(min_length=2, max_length=200)
+    legal_name: Optional[str] = Field(None, max_length=200)
+    base_currency: str = Field(default="NGN", min_length=3, max_length=3)
+    fiscal_year_start_month: int = Field(default=1, ge=1, le=12)
+    accounting_standard: AccountingStandard = AccountingStandard.ACCRUAL
+    tax_country: str = Field(default="NG", min_length=2, max_length=2)
+    coa_template: str = Field(default="generic_smb", min_length=2, max_length=60)
+    owner_email: str = Field(min_length=3, max_length=255)
+    owner_auth_id: Optional[str] = Field(None, max_length=255)
+    owner_display_name: Optional[str] = Field(None, max_length=200)
+    org_metadata: Optional[dict] = None
+
+
+class ProvisionOrganizationResponse(BaseModel):
+    organization_id: uuid.UUID
+    name: str
+    base_currency: str
+    coa_template: str
+    accounts_created: int
+    initial_period: str
+    owner_user_id: uuid.UUID
+
+
+@router.post(
+    "/organizations",
+    response_model=ProvisionOrganizationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def provision_organization(
+    payload: ProvisionOrganizationRequest,
+    _user: AuthUser = Depends(require_service_role),
+    session: AsyncSession = Depends(get_ledger_raw_db),
+) -> ProvisionOrganizationResponse:
+    """Provision a brand-new tenant organization with its own CoA, period & owner."""
+    if payload.coa_template not in list_coa_templates():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown coa_template {payload.coa_template!r}; choose from {list_coa_templates()}",
+        )
+
+    org = Organization(
+        id=uuid.uuid4(),
+        name=payload.name.strip(),
+        legal_name=(payload.legal_name or "").strip() or None,
+        base_currency=payload.base_currency.upper(),
+        fiscal_year_start_month=payload.fiscal_year_start_month,
+        accounting_standard=payload.accounting_standard,
+        tax_country=payload.tax_country.upper(),
+        status=OrgStatus.ACTIVE,
+        org_metadata=payload.org_metadata,
+    )
+    # Bind RLS context to the new org id so subsequent inserts pass FORCE RLS.
+    await set_org_rls_context(session, org.id)
+    session.add(org)
+    await session.flush()
+
+    seed_result = await seed_chart_of_accounts(session, org.id, payload.coa_template)
+    period = await resolve_or_create_period(session, org.id, date.today())
+
+    owner = LedgerUser(
+        org_id=org.id,
+        email=payload.owner_email.strip().lower(),
+        auth_id=(payload.owner_auth_id or "").strip() or None,
+        display_name=(payload.owner_display_name or "").strip() or None,
+        role=LedgerRole.OWNER,
+    )
+    session.add(owner)
+    await session.commit()
+    return ProvisionOrganizationResponse(
+        organization_id=org.id,
+        name=org.name,
+        base_currency=org.base_currency,
+        coa_template=payload.coa_template,
+        accounts_created=seed_result["created"],
+        initial_period=period.period_name,
+        owner_user_id=owner.id,
+    )
+
+
+async def _activate_payload_org(
+    session: AsyncSession,
+    request: Request,
+    payload_org_id: Optional[uuid.UUID],
+) -> uuid.UUID:
+    """Honor explicit ``payload.org_id`` when different from default org."""
+    org_id = payload_org_id or request.state.org_id
+    if payload_org_id is not None and payload_org_id != request.state.org_id:
+        await set_org_rls_context(session, payload_org_id)
+        org = await session.scalar(
+            select(Organization).where(Organization.id == payload_org_id)
+        )
+        if org is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target ledger organization not found",
+            )
+        if org.status != OrgStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Target ledger organization is {org.status.value}",
+            )
+        request.state.org_id = payload_org_id
+    return org_id
 
 
 @router.post(
@@ -64,7 +191,7 @@ async def post_journal_entry(
     400 — unbalanced or unknown account_ref; 409 — period closed; 201 — posted
     (or idempotent replay, indicated by ``idempotent_replay`` in the body).
     """
-    org_id = request.state.org_id
+    org_id = await _activate_payload_org(session, request, payload.org_id)
     try:
         result = await post_entry(
             session,
@@ -104,7 +231,7 @@ async def post_external_transactions(
     matched against ``journal_lines.external_ref``; unmatched or amount-mismatched
     items open a reconciliation break. Service-role only (design §11.2).
     """
-    org_id = request.state.org_id
+    org_id = await _activate_payload_org(session, request, payload.org_id)
     summary = await intake_external_transactions(session, org_id, payload.transactions)
     await session.commit()
     return ReconciliationIntakeResult(**summary)
@@ -126,7 +253,7 @@ async def post_invoice(
     Service-role only (design §13). Other services (corporate, payments) call this
     to issue an invoice for a deal/payment.
     """
-    org_id = request.state.org_id
+    org_id = await _activate_payload_org(session, request, payload.org_id)
     result = await create_invoice(session, org_id, payload)
     await session.commit()
     return result

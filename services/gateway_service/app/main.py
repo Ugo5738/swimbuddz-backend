@@ -745,8 +745,18 @@ def create_app() -> FastAPI:
         return await proxy_request(clients.corporate_client, target, request)
 
     # ==================================================================
-    # LEDGER SERVICE PROXY
+    # LEDGER SERVICE PROXY & GATEWAY FINANCE INTELLIGENCE (ADR-023)
     # ==================================================================
+    # Cross-business Finance Intelligence is aggregated in gateway_service from
+    # service-owned internal endpoints (keeping ledger_service 100% detachable).
+    # Register BEFORE the /api/v1/admin/finance/{path:path} catch-all proxy so
+    # GET /api/v1/admin/finance/intelligence matches here first.
+    from services.gateway_service.app.routers.finance_intelligence import (
+        router as finance_intelligence_router,
+    )
+
+    app.include_router(finance_intelligence_router, prefix="/api/v1")
+
     # Admin / finance surface only. Internal posting (/internal/ledger/*) is
     # service-to-service (direct call, service-role JWT) and intentionally NOT
     # proxied. /api/v1/ledger/* is reserved for future member-facing endpoints

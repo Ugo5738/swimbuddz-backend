@@ -128,3 +128,109 @@ async def member_store_unfinished_orders(
         }
         for order in orders
     ]
+
+
+@router.get("/finance-summary", dependencies=[Depends(require_service_role)])
+async def store_finance_summary(db: AsyncSession = Depends(get_async_db)):
+    """Service-owned Store operational finance summary for gateway aggregation."""
+    from services.store_service.models import InventoryItem, Order
+    from services.store_service.models.procurement import (
+        StoreCostEvent,
+        StoreInventoryValuation,
+        StoreSupplierInvoice,
+        StoreTradeReceivable,
+    )
+
+    store_rows = (
+        await db.execute(
+            select(
+                Order.status,
+                func.count(Order.id),
+                func.coalesce(func.sum(Order.total_ngn), 0),
+            ).group_by(Order.status)
+        )
+    ).all()
+    order_status_totals = [
+        {
+            "status": status.value if hasattr(status, "value") else str(status),
+            "count": int(count),
+            "gross_order_ngn": str(total),
+        }
+        for status, count, total in store_rows
+    ]
+
+    valued_minor, unvalued_skus = (
+        await db.execute(
+            select(
+                func.coalesce(
+                    func.sum(StoreInventoryValuation.total_cost_minor).filter(
+                        StoreInventoryValuation.quantity
+                        == InventoryItem.quantity_on_hand
+                    ),
+                    0,
+                ),
+                func.count(InventoryItem.id).filter(
+                    StoreInventoryValuation.quantity.is_distinct_from(
+                        InventoryItem.quantity_on_hand
+                    )
+                ),
+            )
+            .select_from(InventoryItem)
+            .outerjoin(
+                StoreInventoryValuation,
+                StoreInventoryValuation.variant_id == InventoryItem.variant_id,
+            )
+        )
+    ).one()
+
+    supplier_unpaid = int(
+        await db.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        StoreSupplierInvoice.total_minor
+                        - StoreSupplierInvoice.verified_paid_minor
+                    ),
+                    0,
+                )
+            )
+        )
+        or 0
+    )
+    approved_credit = int(
+        await db.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        StoreTradeReceivable.amount_minor
+                        - StoreTradeReceivable.verified_paid_minor
+                    ),
+                    0,
+                )
+            ).where(StoreTradeReceivable.status == "approved")
+        )
+        or 0
+    )
+    unvalued_fulfilled_events = int(
+        await db.scalar(
+            select(func.count(func.distinct(StoreCostEvent.evidence))).where(
+                StoreCostEvent.event_kind == "sale_unvalued"
+            )
+        )
+        or 0
+    )
+    return {
+        "order_status_totals": order_status_totals,
+        "valued_inventory_minor": (
+            int(valued_minor or 0) if int(unvalued_skus or 0) == 0 else None
+        ),
+        "partial_valued_inventory_minor": int(valued_minor or 0),
+        "unvalued_sku_count": int(unvalued_skus or 0),
+        "unvalued_fulfilled_orders_count": unvalued_fulfilled_events,
+        "supplier_liabilities_minor": supplier_unpaid,
+        "approved_credit_exposure_minor": approved_credit,
+        "warning": (
+            "Inventory valuation reflects verified receipts, approved openings, sales and returns. "
+            "Unvalued legacy SKUs remain flagged rather than estimated from retail prices."
+        ),
+    }

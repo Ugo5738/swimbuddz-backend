@@ -91,6 +91,59 @@ def recognizable_amount(
     return max(0, earned_to_date - recognized_minor)
 
 
+async def _resolve_deferred_policies(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    refs: list[str],
+) -> dict[str, tuple[RecognitionMethod, int, str]]:
+    """Resolve ``deferred_ref -> (method, default_days, revenue_ref)`` for an org.
+
+    Checks ``ChartOfAccounts.account_metadata`` first (``recognition_target_ref``
+    + ``default_recognition_days``) so any tenant / CoA vertical can define
+    deferred-revenue schedules purely in data. Falls back to legacy
+    ``RECOGNITION_POLICY`` / ``DEFERRED_TO_REVENUE`` for already-seeded orgs.
+    """
+    resolved: dict[str, tuple[RecognitionMethod, int, str]] = {}
+    if not refs:
+        return resolved
+
+    maps_to = ChartOfAccounts.account_metadata["maps_to"].astext
+    rows = (
+        await session.execute(
+            select(
+                maps_to, ChartOfAccounts.code, ChartOfAccounts.account_metadata
+            ).where(
+                ChartOfAccounts.org_id == org_id,
+                ChartOfAccounts.is_active.is_(True),
+                (maps_to.in_(refs) | ChartOfAccounts.code.in_(refs)),
+            )
+        )
+    ).all()
+
+    meta_by_ref: dict[str, dict] = {}
+    for m, code, meta in rows:
+        if isinstance(meta, dict):
+            if m:
+                meta_by_ref[m] = meta
+            meta_by_ref[code] = meta
+
+    for ref in refs:
+        meta = meta_by_ref.get(ref) or {}
+        target_ref = meta.get("recognition_target_ref")
+        default_days = meta.get("default_recognition_days")
+        if (
+            isinstance(target_ref, str)
+            and target_ref
+            and isinstance(default_days, int)
+            and default_days > 0
+        ):
+            resolved[ref] = (RecognitionMethod.STRAIGHT_LINE, default_days, target_ref)
+        elif ref in RECOGNITION_POLICY and ref in DEFERRED_TO_REVENUE:
+            method, fallback_days = RECOGNITION_POLICY[ref]
+            resolved[ref] = (method, fallback_days, DEFERRED_TO_REVENUE[ref])
+    return resolved
+
+
 async def _create_schedule(
     session: AsyncSession,
     org_id: uuid.UUID,
@@ -106,6 +159,9 @@ async def _create_schedule(
     member_ref: Optional[str],
     currency: str,
     duration_days: Optional[int] = None,
+    revenue_ref: Optional[str] = None,
+    method: Optional[RecognitionMethod] = None,
+    default_days: Optional[int] = None,
 ) -> bool:
     """Insert one schedule; idempotent on the source unique constraint.
 
@@ -113,7 +169,11 @@ async def _create_schedule(
     the real term (e.g. a club member's selected period). Returns True if created,
     False if it already existed.
     """
-    method, default_days = RECOGNITION_POLICY[deferred_ref]
+    if method is None or default_days is None:
+        fallback_method, fallback_days = RECOGNITION_POLICY[deferred_ref]
+        method = method or fallback_method
+        default_days = default_days or fallback_days
+    target_revenue_ref = revenue_ref or DEFERRED_TO_REVENUE[deferred_ref]
     days = duration_days if duration_days and duration_days > 0 else default_days
     schedule = RevenueRecognitionSchedule(
         org_id=org_id,
@@ -122,7 +182,7 @@ async def _create_schedule(
         source_id=source_id,
         origin_entry_id=origin_entry_id,
         deferred_account_ref=deferred_ref,
-        revenue_account_ref=DEFERRED_TO_REVENUE[deferred_ref],
+        revenue_account_ref=target_revenue_ref,
         dimension_1=dimension_1,
         member_ref=member_ref,
         currency=currency or "NGN",
@@ -150,17 +210,19 @@ async def ensure_schedules_for_entry(
 ) -> None:
     """Create recognition schedules for the entry's deferred-revenue credits.
 
-    Called from `post_entry` on a real (non-replay) post. Uses the payload's
-    `account_ref`s directly (no reverse lookup). No-op for entries with no
-    deferred credit line covered by RECOGNITION_POLICY.
+    Called from `post_entry` on a real (non-replay) post. Uses account metadata
+    (``recognition_target_ref`` / ``default_recognition_days``) with fallback to
+    ``RECOGNITION_POLICY`` so any org's deferred accounts are supported.
     """
-    # The emitter may pass the real recognition window (e.g. a club member's
-    # selected term) as metadata["recognition_days"]; it applies to this entry's
-    # deferred line(s). Falls back to the per-account policy default if absent.
+    credit_refs = [line.account_ref for line in payload.lines if line.credit > 0]
+    policies = await _resolve_deferred_policies(session, org_id, credit_refs)
+    if not policies:
+        return
     recognition_days = (payload.metadata or {}).get("recognition_days")
     for line in payload.lines:
-        if line.credit <= 0 or line.account_ref not in RECOGNITION_POLICY:
+        if line.credit <= 0 or line.account_ref not in policies:
             continue
+        method, default_days, revenue_ref = policies[line.account_ref]
         await _create_schedule(
             session,
             org_id,
@@ -175,35 +237,53 @@ async def ensure_schedules_for_entry(
             member_ref=line.member_ref,
             currency=line.currency or "NGN",
             duration_days=recognition_days,
+            revenue_ref=revenue_ref,
+            method=method,
+            default_days=default_days,
         )
 
 
 async def backfill_schedules(session: AsyncSession, org_id: uuid.UUID) -> int:
     """Create schedules for deferred-revenue credits posted before the hook.
 
-    Scans posted entries' deferred credit lines (matched via the account's
-    `maps_to` ref) and ensures a schedule exists for each. Idempotent. Returns
-    the count of newly-created schedules.
+    Scans posted entries' deferred credit lines (matched via CoA metadata
+    ``recognition_target_ref`` or legacy ``RECOGNITION_POLICY``) and ensures a
+    schedule exists for each. Idempotent. Returns newly-created count.
     """
-    # `maps_to` lives in the account_metadata JSONB ({"maps_to": "..."}), not a
-    # column — same accessor resolve_account_ids uses (hits the functional index).
     maps_to = ChartOfAccounts.account_metadata["maps_to"].astext
+    target_ref = ChartOfAccounts.account_metadata["recognition_target_ref"].astext
     rows = (
         await session.execute(
-            select(JournalEntry, JournalLine, maps_to)
+            select(JournalEntry, JournalLine, maps_to, ChartOfAccounts.account_metadata)
             .join(JournalLine, JournalLine.entry_id == JournalEntry.id)
             .join(ChartOfAccounts, ChartOfAccounts.id == JournalLine.account_id)
             .where(
                 JournalEntry.org_id == org_id,
                 JournalEntry.status == EntryStatus.POSTED,
                 JournalLine.credit_minor > 0,
-                maps_to.in_(list(RECOGNITION_POLICY.keys())),
+                (
+                    target_ref.is_not(None)
+                    | maps_to.in_(list(RECOGNITION_POLICY.keys()))
+                ),
             )
         )
     ).all()
 
     created = 0
-    for entry, line, deferred_ref in rows:
+    for entry, line, deferred_ref, meta in rows:
+        meta = meta if isinstance(meta, dict) else {}
+        rev_ref = meta.get("recognition_target_ref") or DEFERRED_TO_REVENUE.get(
+            deferred_ref
+        )
+        def_days = meta.get("default_recognition_days")
+        if not rev_ref:
+            continue
+        if isinstance(def_days, int) and def_days > 0:
+            method, fallback_days = RecognitionMethod.STRAIGHT_LINE, def_days
+        elif deferred_ref in RECOGNITION_POLICY:
+            method, fallback_days = RECOGNITION_POLICY[deferred_ref]
+        else:
+            continue
         was_created = await _create_schedule(
             session,
             org_id,
@@ -218,6 +298,9 @@ async def backfill_schedules(session: AsyncSession, org_id: uuid.UUID) -> int:
             member_ref=line.member_ref,
             currency=line.currency or "NGN",
             duration_days=(entry.entry_metadata or {}).get("recognition_days"),
+            revenue_ref=rev_ref,
+            method=method,
+            default_days=fallback_days,
         )
         created += int(was_created)
     return created

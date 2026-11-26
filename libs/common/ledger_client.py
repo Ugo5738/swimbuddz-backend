@@ -105,14 +105,17 @@ async def post_journal_entry(
         "lines": lines,
         "metadata": metadata or {},
     }
+    extra_headers: dict[str, str] | None = None
     if org_id is not None:
         payload["org_id"] = org_id
+        extra_headers = {"X-Ledger-Org-Id": str(org_id)}
 
     resp = await internal_post(
         service_url=settings.LEDGER_SERVICE_URL,
         path="/internal/ledger/journal-entries",
         calling_service=calling_service,
         json=payload,
+        headers=extra_headers,
     )
     resp.raise_for_status()  # RAISES on failure — caller dead-letters. Not best-effort.
     return resp.json()
