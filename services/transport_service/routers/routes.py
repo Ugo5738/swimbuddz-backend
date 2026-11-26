@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from libs.auth.dependencies import get_current_user, require_admin
 from libs.auth.models import AuthUser
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.common.currency import naira_to_kobo
@@ -356,103 +356,166 @@ async def get_session_ride_configs(
     _user: AuthUser = Depends(get_current_user),
 ):
     """Get ride configurations for a session with route info and pickup location
-    availability."""
-    # Fetch session via the shared service_client. Goes through
-    # libs/common/service_client → /internal/sessions/{id} on sessions-service,
-    # keeping the cross-service URL and auth concerns in one place.
+    availability.
+
+    Short-circuits immediately when the session has no ride configurations
+    (zero cross-service HTTP calls) and batches RideArea, PickupLocation,
+    RideBooking counts, and RouteInfo lookups into constant SQL queries
+    (ADR-025).
+    """
+    # 1. Check SessionRideConfig rows first so sessions without ride share
+    # return [] immediately without an extra HTTP hop to sessions_service.
+    configs = list(
+        (
+            await db.execute(
+                select(SessionRideConfig).where(
+                    SessionRideConfig.session_id == session_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not configs:
+        return []
+
+    # 2. Fetch session metadata (starts_at + pool_id/location) for route ETA calculation.
     session_data = await get_session_by_id(str(session_id), calling_service="transport")
     if session_data is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Extract needed fields - sessions service uses starts_at, not start_time
     start_time_str = session_data.get("starts_at") or session_data.get("start_time")
-    session_start_time = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
-    # Prefer the pool_id link (post-registry); fall back to the legacy
-    # location enum string for pre-registry sessions.
-    session_pool_id = session_data.get("pool_id")
+    session_start_time = (
+        datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+        if start_time_str
+        else None
+    )
+    raw_pool_id = session_data.get("pool_id")
+    session_pool_id: Optional[uuid.UUID] = None
+    if raw_pool_id:
+        try:
+            session_pool_id = uuid.UUID(str(raw_pool_id))
+        except ValueError:
+            session_pool_id = None
     session_location = session_data.get("location")
 
-    # Get session ride configs
-    query = select(SessionRideConfig).where(SessionRideConfig.session_id == session_id)
-    result = await db.execute(query)
-    configs = result.scalars().all()
+    # 3. Batch-load RideAreas, PickupLocations, grouped RideBooking counts, and RouteInfo.
+    area_ids = list({cfg.ride_area_id for cfg in configs})
+    config_ids = [cfg.id for cfg in configs]
+
+    areas_by_id = {
+        area.id: area
+        for area in (
+            await db.execute(select(RideArea).where(RideArea.id.in_(area_ids)))
+        )
+        .scalars()
+        .all()
+    }
+
+    all_locations = list(
+        (
+            await db.execute(
+                select(PickupLocation).where(PickupLocation.area_id.in_(area_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    locations_by_area: dict[uuid.UUID, list[PickupLocation]] = {}
+    for loc in all_locations:
+        locations_by_area.setdefault(loc.area_id, []).append(loc)
+
+    booking_counts_by_key: dict[tuple[uuid.UUID, uuid.UUID], int] = {}
+    if config_ids:
+        count_rows = (
+            await db.execute(
+                select(
+                    RideBooking.session_ride_config_id,
+                    RideBooking.pickup_location_id,
+                    func.count(RideBooking.id),
+                )
+                .where(RideBooking.session_ride_config_id.in_(config_ids))
+                .group_by(
+                    RideBooking.session_ride_config_id,
+                    RideBooking.pickup_location_id,
+                )
+            )
+        ).all()
+        for cfg_id, loc_id, count in count_rows:
+            booking_counts_by_key[(cfg_id, loc_id)] = int(count or 0)
+
+    route_by_pool: dict[uuid.UUID, RouteInfo] = {}
+    route_by_dest: dict[uuid.UUID, RouteInfo] = {}
+    all_loc_ids = [loc.id for loc in all_locations]
+    if all_loc_ids and (session_pool_id or session_location):
+        dest_filters = []
+        if session_pool_id:
+            dest_filters.append(RouteInfo.destination_pool_id == session_pool_id)
+        if session_location:
+            dest_filters.append(RouteInfo.destination == session_location)
+        routes = (
+            (
+                await db.execute(
+                    select(RouteInfo).where(
+                        RouteInfo.origin_pickup_location_id.in_(all_loc_ids),
+                        or_(*dest_filters),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for route in routes:
+            origin_id = route.origin_pickup_location_id
+            if origin_id is None:
+                continue
+            if (
+                session_pool_id
+                and route.destination_pool_id is not None
+                and str(route.destination_pool_id) == str(session_pool_id)
+                and origin_id not in route_by_pool
+            ):
+                route_by_pool[origin_id] = route
+            if (
+                session_location
+                and route.destination == session_location
+                and origin_id not in route_by_dest
+            ):
+                route_by_dest[origin_id] = route
 
     responses = []
     for cfg in configs:
-        # Get ride area details
-        area_query = select(RideArea).where(RideArea.id == cfg.ride_area_id)
-        area_result = await db.execute(area_query)
-        area = area_result.scalar_one()
+        area = areas_by_id.get(cfg.ride_area_id)
+        if area is None:
+            continue
 
-        # Get pickup locations
-        locs_query = select(PickupLocation).where(
-            PickupLocation.area_id == cfg.ride_area_id
-        )
-        locs_result = await db.execute(locs_query)
-        locations = locs_result.scalars().all()
+        locations = locations_by_area.get(cfg.ride_area_id, [])
 
-        # Check booking counts per pickup location to determine availability
-        # Get booking counts for all pickup locations in this config
-        booking_counts = {}
-        active_pickup_location_id = None
-
+        # Determine active pickup location (first location with existing bookings)
+        active_pickup_location_id: Optional[str] = None
         for loc in locations:
-            count_query = select(func.count(RideBooking.id)).where(
-                RideBooking.session_ride_config_id == cfg.id,
-                RideBooking.pickup_location_id == loc.id,
-            )
-            count_result = await db.execute(count_query)
-            count = count_result.scalar_one() or 0
-            booking_counts[str(loc.id)] = count
-
-            # If this location has bookings, it's the active one
-            if count > 0 and active_pickup_location_id is None:
+            if booking_counts_by_key.get((cfg.id, loc.id), 0) > 0:
                 active_pickup_location_id = str(loc.id)
+                break
 
-        # Build pickup locations with availability info AND route info
         pickup_locations_data = []
-
         for loc in locations:
             loc_id = str(loc.id)
-            current_bookings = booking_counts.get(loc_id, 0)
+            current_bookings = booking_counts_by_key.get((cfg.id, loc.id), 0)
 
             # A location is available if:
             # 1. No location in this area has bookings yet, OR
-            # 2. This is the location that has bookings AND it hasn't reached capacity
-            is_available = False
+            # 2. This is the active location AND it hasn't reached capacity
             if active_pickup_location_id is None:
-                # No bookings yet, all locations are available
                 is_available = True
             elif active_pickup_location_id == loc_id:
-                # This location has bookings, check if it has capacity
                 is_available = current_bookings < cfg.capacity
-            # else: Another location is active, this one is not available
+            else:
+                is_available = False
 
-            # Fetch route info for this specific pickup location.
-            # Match strategy: prefer the session's pool_id against the route's
-            # destination_pool_id (pool-registry era). When either side is
-            # missing, fall back to matching the legacy `destination` string
-            # against the session's `location` enum value.
-            route_info = None
-            if session_pool_id:
-                route_info = (
-                    await db.execute(
-                        select(RouteInfo).where(
-                            RouteInfo.origin_pickup_location_id == loc.id,
-                            RouteInfo.destination_pool_id == session_pool_id,
-                        )
-                    )
-                ).scalar_one_or_none()
-            if route_info is None and session_location:
-                route_info = (
-                    await db.execute(
-                        select(RouteInfo).where(
-                            RouteInfo.origin_pickup_location_id == loc.id,
-                            RouteInfo.destination == session_location,
-                        )
-                    )
-                ).scalar_one_or_none()
-            # Calculate times
+            # Prefer pool_id route match; fall back to legacy destination string.
+            route_info = route_by_pool.get(loc.id) or route_by_dest.get(loc.id)
+
             loc_distance_text = None
             loc_duration_text = None
             loc_departure_time_calculated = None

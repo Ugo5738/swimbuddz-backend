@@ -3,6 +3,8 @@
 from services.academy_service.models.competency import (
     AcademyCompetencyRevocation,
     AcademyCompetencyVerification,
+    AcademyMilestoneRemedialDrill,
+    AcademyStudentDrillAssignment,
 )
 
 from services.academy_service.models.requirements import (
@@ -104,6 +106,8 @@ from services.academy_service.models.progress import (
 __all__ = [
     "AcademyCompetencyRevocation",
     "AcademyCompetencyVerification",
+    "AcademyMilestoneRemedialDrill",
+    "AcademyStudentDrillAssignment",
     "AcademyCohortRequirementsSnapshot",
     "AcademyMilestoneDefinition",
     "AcademyMilestoneVersion",

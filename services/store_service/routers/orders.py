@@ -29,7 +29,9 @@ from services.store_service.models import (
     InventoryMovement,
     InventoryMovementType,
     Order,
+    OrderFulfillmentStatus,
     OrderItem,
+    OrderPaymentStatus,
     OrderStatus,
     PickupLocation,
     Product,
@@ -37,6 +39,11 @@ from services.store_service.models import (
     ProductVariant,
     SourcingType,
     StoreCredit,
+    StoreCreditTransaction,
+)
+from services.store_service.services.order_policy import (
+    allocate_line_net_totals,
+    sync_order_status_dimensions,
 )
 from services.store_service.routers.cart import (
     TIER_DISCOUNT_MAP,
@@ -240,6 +247,7 @@ async def start_checkout(
 
     # Apply store credits if requested
     store_credit_applied = Decimal("0")
+    credit_debits: list[tuple[StoreCredit, Decimal]] = []
     if request.apply_store_credit:
         # Get available store credits for member
         credits_query = (
@@ -262,6 +270,7 @@ async def start_checkout(
             credit.balance_ngn -= apply_amount
             store_credit_applied += apply_amount
             remaining_to_cover -= apply_amount
+            credit_debits.append((credit, apply_amount))
 
     # Amount remaining after store credit
     amount_after_credit = final_total - store_credit_applied
@@ -306,13 +315,16 @@ async def start_checkout(
         discount_amount_ngn=discount_amount,
         store_credit_applied_ngn=store_credit_applied,
         delivery_fee_ngn=delivery_fee,
-        total_ngn=paystack_amount,  # Amount remaining for Paystack (or 0 if fully covered)
+        order_total_ngn=final_total,
+        total_ngn=paystack_amount,  # Cash remaining for Paystack/transfer (0 if fully covered)
         discount_code=cart.discount_code,
         discount_breakdown={
             "member_tier_discount": float(cart.member_discount_percent or 0),
             "coupon_code": cart.discount_code,
         },
         status=OrderStatus.PENDING_PAYMENT,
+        payment_status=OrderPaymentStatus.UNPAID,
+        fulfillment_status=OrderFulfillmentStatus.NOT_STARTED,
         fulfillment_type=request.fulfillment_type,
         pickup_location_id=request.pickup_location_id,
         delivery_address=(
@@ -323,6 +335,17 @@ async def start_checkout(
     )
     db.add(order)
     await db.flush()  # Get order ID
+
+    # Record auditable StoreCreditTransaction rows so cancellations can restore credit
+    for credit, apply_amount in credit_debits:
+        db.add(
+            StoreCreditTransaction(
+                store_credit_id=credit.id,
+                order_id=order.id,
+                amount_ngn=apply_amount,
+                transaction_type="debit",
+            )
+        )
 
     # A wallet-only order has no external provider step. Reserve first, commit
     # the order, then capture the same hold after all order rows exist.
@@ -350,13 +373,23 @@ async def start_checkout(
             raise
 
     if amount_after_credit <= 0:
-        order.status = OrderStatus.PAID
+        sync_order_status_dimensions(order, legacy_status=OrderStatus.PAID)
         order.paid_at = datetime.utcnow()
 
-    # Create order items
-    for item in cart.items:
+    # Create order items with line-level net allocation & sourcing/swimwear snapshots
+    cart_items_list = list(cart.items)
+    net_line_totals = allocate_line_net_totals(
+        [item.unit_price_ngn * item.quantity for item in cart_items_list],
+        discount_amount,
+    )
+    for item, net_line_total in zip(cart_items_list, net_line_totals):
         variant = item.variant
         product = variant.product
+        sourcing_val = (
+            product.sourcing_type.value
+            if hasattr(product.sourcing_type, "value")
+            else str(product.sourcing_type or "stocked")
+        )
         order_item = OrderItem(
             order_id=order.id,
             variant_id=variant.id,
@@ -366,10 +399,13 @@ async def start_checkout(
             quantity=item.quantity,
             unit_price_ngn=item.unit_price_ngn,
             line_total_ngn=item.unit_price_ngn * item.quantity,
-            is_preorder=product.sourcing_type.value == "preorder",
+            net_line_total_ngn=net_line_total,
+            is_preorder=sourcing_val == "preorder",
+            sourcing_type=sourcing_val,
+            requires_size_chart_ack=bool(product.requires_size_chart_ack),
             estimated_ship_date=(
                 datetime.utcnow() + timedelta(days=product.preorder_lead_days or 0)
-                if product.sourcing_type.value == "preorder"
+                if sourcing_val == "preorder"
                 else None
             ),
             # Supplier snapshot (captured at order time)
@@ -405,7 +441,7 @@ async def start_checkout(
                 order.wallet_hold_id, calling_service="store"
             )
         order.wallet_transaction_id = captured.get("wallet_transaction_id")
-        order.status = OrderStatus.PAID
+        sync_order_status_dimensions(order, legacy_status=OrderStatus.PAID)
         order.paid_at = datetime.utcnow()
         await db.commit()
 

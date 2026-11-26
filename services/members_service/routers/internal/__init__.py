@@ -28,6 +28,7 @@ from fastapi import APIRouter
 
 from . import birthdays as _birthdays
 from . import coach as _coach
+from . import finance_summary as _finance_summary
 from . import flywheel as _flywheel
 from . import lookups as _lookups
 from . import swim_clearance as _swim_clearance
@@ -44,6 +45,7 @@ router.include_router(_birthdays.router)
 router.include_router(_flywheel.router)
 router.include_router(_coach.router)
 router.include_router(_quarter_reports.router)
+router.include_router(_finance_summary.router)
 router.include_router(_membership.router)
 
 __all__ = ["router"]

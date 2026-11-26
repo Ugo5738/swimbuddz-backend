@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     # environment (the org row is created by scripts/seed/ledger_org.py in PR-1).
     # Empty until seeded; emitters resolve org_id from this value.
     LEDGER_DEFAULT_ORG_ID: str = ""
+    # Optional dedicated DB URL for ledger_service (e.g. a NOBYPASSRLS role such
+    # as `ledger_app`, or a completely standalone Postgres DB for B2B extraction).
+    # When unset, ledger_service reuses DATABASE_URL.
+    LEDGER_DATABASE_URL: str = ""
 
     # Weather Service
     # Provider for forecast data. "open-meteo" (default) needs no API key, but
@@ -111,14 +115,33 @@ class Settings(BaseSettings):
     STROKELAB_COACH_GATE_MODEL: str = "o4-mini"  # view/usability gate (reasoning)
     # Holistic + per-instance coach model. The ONE swap point between providers:
     #   OpenAI (stills):  STROKELAB_COACH_MODEL=gpt-4o                  + STROKELAB_COACH_VIDEO=false
-    #   Gemini (video):   STROKELAB_COACH_MODEL=gemini/gemini-3.5-flash + STROKELAB_COACH_VIDEO=true
-    #     gemini-3.5-flash = latest GA, best for video. Free testing: gemini/gemini-2.5-flash
-    #     on a NO-BILLING key (enabling billing on a project kills its free tier entirely).
+    #   Gemini (video):   STROKELAB_COACH_MODEL=gemini/gemini-3.8-flash + STROKELAB_COACH_VIDEO=true
+    #   Lean Gemini:      STROKELAB_COACH_MODEL=gemini/gemini-3.5-flash-lite + STROKELAB_COACH_VIDEO=true
+    #   (Note: gemini-2.5-flash is deprecated; use Gemini 3.x models so LiteLLM
+    #   forwards video_metadata.fps and media_resolution.)
     # LiteLLM routes by the model string; GEMINI_API_KEY/OPENAI_API_KEY pick the creds.
     STROKELAB_COACH_MODEL: str = "gpt-4o"  # holistic + per-instance coaching
-    # Send the actual CLIP to the holistic coach (motion!) instead of 8 stills. Only
+    # Send the actual CLIP to the coach (motion!) instead of sparse stills. Only
     # honoured by video-capable models (Gemini); on a stills model it's ignored.
     STROKELAB_COACH_VIDEO: bool = False
+    # Custom frame extraction rate (FPS) sent via Gemini 3+ video_metadata.fps on
+    # short stroke chunks. Static Gemini defaults to 1 FPS, which misses ~0.8-1.0s
+    # arm recoveries; 4.0 FPS gives ~16 frames across a 4s stroke chunk.
+    STROKELAB_COACH_VIDEO_FPS: float = 4.0
+    # Per-part media resolution for Gemini 3+ video chunks ("low" | "medium" | "high").
+    STROKELAB_COACH_VIDEO_DETAIL: str = "medium"
+    # Hybrid chunk input: attach up to 2 crisp high-resolution key frames alongside
+    # the downscaled chunk video clip so the VLM sees both smooth motion and anatomy.
+    STROKELAB_COACH_CHUNK_HYBRID_STILLS: bool = True
+    # Reasoning effort for thinking models (e.g. Gemini 3.x Flash). Keeping this
+    # "low" for structured JSON coaching calls prevents thinking tokens from
+    # starving maxOutputTokens and truncating JSON mid-response.
+    STROKELAB_COACH_REASONING_EFFORT: str = "low"
+    # Optional selective second-model adjudicator (e.g. "gpt-5.4-mini" or "gpt-4o").
+    # Empty = disabled. When set, invoked ONLY when a top fix on a clean clip is
+    # uncertain (single-stroke only or borderline confidence), sending high-res
+    # evidence stills to confirm or downgrade to INFO.
+    STROKELAB_COACH_ADJUDICATOR_MODEL: str = ""
     # Inline-video ceiling AFTER downscale (the holistic coach transcodes every clip
     # to 480p first). 14 keeps the base64 request under Gemini's ~20 MB inline limit;
     # a downscaled clip rarely approaches it, so this is a safety net → stills.
@@ -160,6 +183,10 @@ class Settings(BaseSettings):
     # (serverless GPU — keeps the heavy CV off the app box; see services/ai_service/
     # modal/pose_modal.py). Modal needs the URL + proxy-auth key/secret from deploy.
     STROKELAB_POSE_BACKEND: str = "local"
+    # Which pose keypoint engine to run: "auto" (prefers Apache-2.0 rtmlib/RTMPose
+    # when installed, falls back to yolov8), "rtmpose" (Apache-2.0 onnxruntime), or
+    # "yolov8" (Ultralytics — requires commercial license or AGPL compliance).
+    STROKELAB_POSE_ENGINE: str = "auto"
     STROKELAB_POSE_MODAL_URL: str = ""
     STROKELAB_POSE_MODAL_KEY: str = ""
     STROKELAB_POSE_MODAL_SECRET: str = ""
@@ -247,6 +274,16 @@ class Settings(BaseSettings):
 
     # Admin configuration
     ADMIN_EMAILS: list[str] = ["admin@admin.com", "contactugodaniels@gmail.com"]
+
+    # Academy V2 Competency Passport Graduation Switch (ADR-010 Phase 5B).
+    # Strictly default-OFF ("legacy") until production dual-read parity holds and
+    # the owner authorizes cutover:
+    #   - "legacy":      Legacy milestone completion governs certificates & PDFs.
+    #   - "shadow_log":  Legacy governs certificates; daily job also logs non-PII V2 parity.
+    #   - "v2_enforced": Cohorts with a frozen V2 snapshot require live V2 verified
+    #                    credentials for all required milestones/safety gates + required
+    #                    cohort quizzes; unfrozen historical cohorts retain legacy rules.
+    ACADEMY_V2_GRADUATION_MODE: str = "legacy"
     EMAIL_FROM_SUPPORT: str = ""
     EMAIL_FROM_BILLING: str = ""
     EMAIL_FROM_WELCOME: str = ""
@@ -274,13 +311,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    @field_validator("DATABASE_URL")
+    @field_validator("DATABASE_URL", "LEDGER_DATABASE_URL")
     @classmethod
     def assemble_db_connection(cls, v: Optional[str]) -> str:
-        if isinstance(v, str):
-            if v.startswith("postgresql://"):
-                return v.replace("postgresql://", "postgresql+psycopg://", 1)
-        return v
+        if isinstance(v, str) and v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+psycopg://", 1)
+        return v or ""
 
 
 @lru_cache

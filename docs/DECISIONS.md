@@ -161,7 +161,7 @@
   - **Reviewed store preorder correction (12 Nov 2026):** Correcting an unsettled preorder to a more expensive SKU preserves the original frozen payment and receipt, creates a separate payment for the server-priced difference, and audits the item/supplier snapshots and revised order total. A reconciliation hold prevents either partial receipt from fulfilling the whole order. Only after both payments are independently bank-verified and their sum equals the corrected order total may the primary payment's fulfillment be replayed. The scoped operator repair is not a general exchange/refund API, never rewrites posted journals, and never posts the revised full total as an additional cash receipt.
   - **Reviewed Bubble settlement reallocation (16 Nov 2026):** A bank-free session payment settled entirely with Bubbles may be reversed only after an operator validates the original debit, refund, booking and wallet audit. Preserve the original paid receipt, prices and wallet transaction; add a linked refund and a new debit for the correct swim, reopen the original booking debt, and prohibit replay of its reversed settlement. A private admin review marker plus exact zero-cash/full-Bubbles proof allows a replacement checkout; member-supplied metadata alone never does. Post missing and correcting journals idempotently without inventing cash or changing posted entries. The Amara repair is a scoped maintenance transaction, not a general refund endpoint.
   - **Store service isolation and Finance authorization (19 Nov 2026):** Store procurement approvals remain Finance Owner-only with independent approval. The Store container must start without importing Ledger service code or models. It checks the authenticated caller through Ledger’s existing `/admin/finance/users/me` HTTP endpoint, forwarding that caller’s bearer token; missing authority or an unavailable Finance service denies the protected action without blocking public catalogue startup. Application admin and procurement grants never substitute for Finance Owner authority. Regression checks import Store with Ledger packages unavailable.
-  - **Ledger startup isolation (20 Nov 2026):** The isolated Ledger image must start without Academy, Members, Payments or Store packages. Keep Finance Intelligence role-gated and use read-only aggregate queries against its existing shared database projection. Test startup with other service packages unavailable.
+  - **Ledger startup isolation (20 Nov 2026 — superseded by ADR-023 for Finance Intelligence):** The isolated Ledger image must start without Academy, Members, Payments or Store packages. Originally Finance Intelligence queried shared operational tables directly from `ledger_service` via raw SQL; `ADR-023` supersedes that projection by moving cross-business Finance Intelligence out of `ledger_service` into `gateway_service` + service-owned internal endpoints so `ledger_service` has **zero** cross-service Python imports and **zero** non-ledger SQL dependencies.
   - **Reviewed stocked catalogue and Fatima handover reconciliation (24 Nov 2026):** The owner requested Stocked sourcing for the eight products with thirteen previously purchased colour/size variants and confirmed five units remaining per purchased variant after Fatima collected both items. Record this as an audited, scoped inventory-count correction: establish five units for each purchased variant, temporarily include the two collected units, and reserve those units against Fatima’s verified paid order before its normal Picked Up transition consumes them. Preserve original preorder order-line snapshots, all prices, bank receipts and payment journals; do not reinterpret old completed orders or restock again on retries. Unpurchased variants retain their counts. Acquisition costs remain unknown/unvalued until supported procurement evidence and independent valuation approval; retail prices are never acquisition costs. This reviewed repair replaces the unmerged draft preorder bypass; no global preorder fulfilment bypass is deployed.
   - **Member Financial Obligations Aggregator:** `/account/billing` aggregates obligations across Annual Membership, Club, Academy installments, and unpaid session/guest balances into a single trust-first overview, preserving loading states so active enrollments are never misreported as empty.
 - **Canonical Docs & Code:**
@@ -196,7 +196,7 @@
 ---
 
 ## ADR-010: Modular Academy Curriculum, Versioned Catalog & Evidence-Backed Competency Passport (V2)
-- **Status:** Settled & Enforced — V2 Implementation Contract Accepted (Nov 2026; PRs `#424`, `#442`, `#445`, `#446`, `#217`, `#220`, `#222`, hardening/ops follow-up). Supersedes the V1 schema/auto-backfill clauses of `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` while preserving its pedagogical pathway taxonomy and TI coaching goals.
+- **Status:** Settled & Enforced — V2 Implementation Contract Accepted (Nov 2026; PRs `#424`, `#442`, `#445`, `#446`, `#461`, `#463`, `#467`, `#217`, `#220`, `#222`, `#234`, `#236`, `#240`, plus Phase 5B Default-OFF Feature-Flagged Graduation Consumer & Stroke Lab TI Drill Bridge). Supersedes the V1 schema/auto-backfill clauses of `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` while preserving its pedagogical pathway taxonomy and TI coaching goals.
 - **Context & Why:**
   - Selling only a monolithic 12-week Beginner-to-50m course forced swimmers with partial skills to repeat basics and limited entry points to three intakes a year. Conversely, an unguided à-la-carte lesson menu causes choice overload and lets learners skip water safety.
   - The earlier V1 draft (`ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`) proposed mutating legacy `milestones.program_id` to nullable, attaching mutable milestone rows via `program_milestones`/`cohort_milestones`, and auto-backfilling a mutable `learner_milestone_credits` table from historical `student_progress` rows. Review showed two fatal risks in V1: (1) editing a rubric later would silently alter historical cohort/graduate standards, and (2) auto-backfilling legacy `student_progress` rows of uneven rigor or missing video evidence would inflate trust in portable safety credentials.
@@ -218,10 +218,29 @@
     - **No Automatic Legacy Backfill:** A historical `StudentProgress` achievement becomes a portable competency credit **only** after a human administrator (never `service_role` or AI) confirms equivalence against a frozen cohort V2 milestone standard, attests every published criterion in `criteria_passed`, provides a substantive `equivalence_reason`, and backend verification confirms the private video evidence exists (`HeadObject` via `media_service` `/internal/media/alumni-evidence/{id}`), belongs to the original claimant/coach uploader, and has not changed since approval.
     - One source review event (`source_review_event_id`) can issue at most one credential. Validity/expiry anchors to the **original assessment date** (`review.created_at`), never the later administrative import date.
     - Read projections (`/competencies/me`, `/competencies/admin/members/{member_auth_id}`) dynamically check revocations, expiry, and whether the underlying source `StudentProgress` / latest review decision remains `ACHIEVED` with unchanged evidence — failing closed to `recheck_required` if overridden or missing, and surfacing `revoked` when all supporting verifications have been withdrawn.
-  - **Controlled Rollout & Legacy Isolation:** Legacy graduation, certificates, Club readiness (`ADR-005`), attendance (`ADR-004`), and commercial terms remain isolated until dual-read parity, native coach V2 assessments, and remedial/personalized drill prescriptions are explicitly promoted in later phases.
+    - **Native V2 Assessment Write Paths (`source_type IN ('legacy_promotion', 'cohort_v2', 'diagnostic_assessment')`):**
+      - `cohort_v2` (`POST /competencies/coach/assess-cohort`): An assigned cohort coach (`require_coach_for_cohort`) or human admin directly verifies an enrolled swimmer against one of the cohort's frozen V2 video/time-trial milestones, validating private S3 video (`linked_id = "{enrollment_id}:{milestone_version_id}"`), attesting every published rubric criterion, and recording substantive assessment notes (`>=20` chars).
+      - `diagnostic_assessment` (`POST /competencies/admin/assess-diagnostic`): A human coach or admin verifies a swimmer during a pre-enrollment diagnostic clinic against any published video/time-trial V2 milestone (`linked_id = "diagnostic:{member_id}:{milestone_version_id}"`), issuing portable prerequisite credit before cohort enrollment.
+      - `assessor_role IN ('coach', 'admin')`: `service_role` and AI remain strictly blocked (`403`) from issuing practical competency credentials.
+      - Read projections evaluate `legacy_promotion` rows against source `StudentProgress` + latest review event, and evaluate primary `cohort_v2` / `diagnostic_assessment` rows directly against revocation + expiry (`verified` / `expired` / `revoked`).
+    - **TI Remedial & Personalized Drill Prescriptions (`academy_milestone_remedial_drills` + `academy_student_drill_assignments`):**
+      - Canonical milestones link to recommended TI remedial drills (resolved to latest published `AcademyDrillVersion` with 1 `primary_focal_cue` and steps) surfaced automatically on unverified milestones in the learner's V2 cohort learning plan (`GET /competencies/enrollments/{enrollment_id}/v2-plan`), alongside **Prior Credit** badges for competencies already verified in earlier cohorts or diagnostic clinics.
+      - Coaches/admins (and future Stroke Lab AI recommendations) can prescribe version-pinned drills to an enrolled student or member with a personalized focal cue note and sets/distance prescription. Learners may mark their own assigned drills `practiced`; only coaches/admins may mark drills `mastered` or `archived`.
+  - **Phase 5A — Controlled Dual-Read Graduation Parity & Club-Readiness Advisory Bridge (Read-Only, Zero Side Effects):**
+    - **Graduation Dual-Read Parity (`GET /academy/competencies/admin/cohorts/{cohort_id}/graduation-parity`):** Computes a batched, zero-N+1 shadow comparison for every enrolled/graduated learner in a cohort comparing legacy eligibility (all program `Milestone` rows achieved in `StudentProgress`, matching `tasks/reporting.py`) against fail-closed V2 eligibility (every required milestone and `safety_gate` in the cohort's SHA-256-verified frozen `AcademyCohortRequirementsSnapshot` satisfied by a live, non-expired, non-revoked verification in `academy_competency_verifications`, recognizing prior/diagnostic credit without altering class balances). Classifies each learner as `aligned_eligible`, `aligned_ineligible`, `legacy_only_eligible`, `v2_only_eligible`, `no_frozen_snapshot`, or `snapshot_integrity_error`. Purely read-only: **never mutates `Enrollment.status`, `certificate_issued_at`, `certificate_code`, or legacy graduation/reward jobs.**
+    - **Club-Readiness Competency Advisory (`GET /academy/competencies/admin/members/{member_auth_id}/club-readiness-advisory` & internal `GET /internal/academy/competencies/members/{member_auth_id}/club-readiness-advisory`):** Surfaces a swimmer's live, non-expired, non-revoked V2 safety-gate credentials and core Club readiness checklist (`MS-S1-FREE-25M`, `MS-A1-TREAD-60S`, `MS-F3-BACK-FLOAT-30S`, `MS-F1-SAFE-ENTRY`) plus any expired/revoked/recheck safety alerts directly in `/admin/club-applications` alongside uploaded videos. Strictly **advisory evidence (`advisory_only: true`, `human_approval_required: true`)**: per `ADR-005`, Club checkout remains locked until a human reviewer explicitly approves the `ClubApplication` (`club_ready` / `club_ready_modified`), and first-session live verification rules remain intact.
+  - **Phase 5B — Feature-Flagged V2 Graduation Consumer & Stroke Lab TI Drill Bridge (Default-OFF Cutover Switch):**
+    - **Explicit Operator-Gated Switch (`ACADEMY_V2_GRADUATION_MODE`, default `"legacy"`):** Supports three modes exposed read-only via `GET /academy/competencies/admin/graduation-mode`:
+      - `"legacy"` *(default)*: Legacy milestone completion continues to govern certificate issuance (`tasks/reporting.py`) and PDF downloads (`routers/reports.py`) with zero behavior change.
+      - `"shadow_log"`: Legacy continues to govern certificates while the daily certificate job also evaluates `compute_cohort_graduation_parity` in best-effort shadow mode to emit non-PII discrepancy telemetry.
+      - `"v2_enforced"` *(explicit post-parity operator activation only)*: Both certificate issuance (`tasks/reporting.py`) and certificate PDF downloads (`routers/reports.py`) share a single authoritative evaluator (`evaluate_enrollment_certificate_eligibility`). For cohorts with a frozen `AcademyCohortRequirementsSnapshot`, eligibility fails closed on SHA-256 integrity error, requires live verified credentials for every required milestone and `safety_gate` (recognizing prior/diagnostic credit and revoking/suspending eligibility immediately on expiry or revocation), and requires passing all required cohort knowledge quizzes (`AcademyQuizAssignment.required = true`). Cohorts without a frozen snapshot safely preserve legacy milestone eligibility so historical cohorts never break.
+    - **Stroke Lab AI → Academy V2 TI Drill Prescription Bridge (`POST /academy/competencies/me/drills/from-strokelab` & internal `POST /internal/academy/competencies/drills/prescribe-from-strokelab`):** Deterministically maps the six vetted Stroke Lab `academy_ref` TI drill identifiers (`academy:ti:superman-glide`, `academy:ti:one-goggle-breathing`, `academy:ti:zen-skate`, `academy:ti:shark-fin-recovery`, `academy:ti:patient-lead-hand`, `academy:ti:mail-slot-entry`) to canonical published `AcademyDrillVersion` records (`DRL-F4-SUPERMAN-GLIDE`, `DRL-S1-ONE-GOGGLE-BREATH`, `DRL-S1-TI-SKATE`, `DRL-S1-SHARK-FIN-RECOVERY`, `DRL-S1-6-KICK-SWITCH`, `DRL-S1-MAIL-SLOT-ENTRY`) seeded in `scripts/seed/academy_curriculum_v2.py`. Creates idempotent `AcademyStudentDrillAssignment` rows with `assigned_by_role = "strokelab_ai"` linked to the member's active enrollment (when present) so both swimmer (`/account/academy/passport`) and assigned coach (`/coach/students/[enrollmentId]`) see the single TI focal cue—**never** accepting arbitrary free-text drills and **never** creating `academy_competency_verifications` rows (`ADR-013`).
+    - **Rollout Runbook:** Production rollout follows `docs/operations/ACADEMY_V2_ROLLOUT_AND_CUTOVER_RUNBOOK.md` (1. idempotent baseline seed → 2. freeze active cohort snapshots → 3. `shadow_log` until zero `legacy_only_eligible` regressions → 4. explicit owner sign-off to set `ACADEMY_V2_GRADUATION_MODE=v2_enforced`, with instant zero-migration rollback to `legacy`).
 - **Canonical Docs & Code:**
   - `docs/design/ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`
+  - `docs/operations/ACADEMY_V2_ROLLOUT_AND_CUTOVER_RUNBOOK.md`
   - `swimbuddz-backend/docs/design/ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`
+  - `swimbuddz-backend/docs/operations/ACADEMY_V2_ROLLOUT_AND_CUTOVER_RUNBOOK.md`
   - `docs/design/ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` *(Superseded V1 reference — pedagogical taxonomy & seed catalogue)*
   - `docs/academy/MODULAR_CURRICULUM_PATHWAY.md`
   - `swimbuddz-backend/services/academy_service/models/curriculum_library.py`
@@ -230,10 +249,19 @@
   - `swimbuddz-backend/services/academy_service/routers/curriculum_library.py`
   - `swimbuddz-backend/services/academy_service/routers/requirements.py`
   - `swimbuddz-backend/services/academy_service/routers/competencies.py`
+  - `swimbuddz-backend/services/academy_service/routers/drill_assignments.py`
+  - `swimbuddz-backend/services/academy_service/routers/reports.py`
+  - `swimbuddz-backend/services/academy_service/tasks/reporting.py`
   - `swimbuddz-backend/services/academy_service/services/requirements_resolver.py`
+  - `swimbuddz-backend/services/academy_service/services/parity.py`
+  - `swimbuddz-backend/scripts/seed/academy_curriculum_v2.py`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/curriculum-library/page.tsx`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/requirements/page.tsx`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/competencies/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/club-applications/page.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/strokelab/[jobId]/_components/StrokeLabResultSections.tsx`
+  - `swimbuddz-frontend/src/app/coach/students/[enrollmentId]/page.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/academy/enrollments/[id]/page.tsx`
   - `swimbuddz-frontend/src/app/(member)/account/academy/passport/page.tsx`
 
 ---
@@ -286,17 +314,28 @@
 ---
 
 ## ADR-013: Stroke Lab AI Video Analyzer & Total Immersion (TI) Coaching Doctrine
-- **Status:** Settled & Enforced (Jul–Sep 2026, PRs `#208`, `#210`, `#232`)
+- **Status:** Settled & Enforced (Jul–Nov 2026, PRs `#208`, `#210`, `#232`, `#439`, v2 reliability upgrade)
 - **Context & Why:**
   - Generic LLM swim advice often tells adult learners to "kick harder" or "pull harder" (increasing drag and exhaustion) or hallucinates underwater catch/crossover faults that are impossible to see from an above-water side camera.
+  - Furthermore, default 1 FPS static video processing misses ~0.8–1.0s arm recoveries, Gemini 2.5/3.x thinking tokens truncate JSON when `max_tokens` is tight, newer late-2026 model IDs (e.g. `gemini-3.8-flash`, `gemini-3.5-flash-lite`) can silently return `$0.00` from LiteLLM pricing tables (blinding cost circuit breakers), and `ultralytics` `yolov8-pose` carries AGPL commercial licensing obligations.
 - **Decision & Non-Negotiable Invariants:**
   - **TI-Informed Priority Order (`STROKELAB_TI_COACHING_KNOWLEDGE_BANK.md`):** Stroke Lab coaches efficiency-first in strict order: **1. Balance & Comfort → 2. Drag Reduction & Streamline (Shape the Vessel) → 3. Whole-Body Rotation & Propulsion**, prescribing **one focal point / drill at a time**.
   - **Strict Camera-Angle Visibility Rules ("Honesty Over Helpfulness"):** Never diagnose underwater catch/pull from above-water clips, and never claim midline crossover from side-on footage. Return `unclear` / `unavailable` when an aspect is not visible.
-  - **Public & Member Analyzer:** Public guest analyzer enforces compute isolation, credit checks, and worker ready-emails (`STROKELAB_PUBLIC_ANALYZER_DESIGN.md`).
+  - **Controlled Staged Pipeline Over Autonomous Agent Swarms (25 Nov 2026):** Keep fixed, deterministic ARQ-orchestrated stages (`Gate → Segment/Pose → Chunk/Aspect Coach → Verify → Grade → Aggregator → Compare`) with bounded per-attempt call/spend circuit breakers rather than free-roaming multi-agent debates.
+  - **Explicit Video FPS, Hybrid Key Stills & Thinking-Token Headroom:** Pass explicit `video_metadata.fps` (default `4.0` FPS on ~4s stroke chunks, configurable via `STROKELAB_COACH_VIDEO_FPS`) and optional high-resolution key frames alongside chunk video (`STROKELAB_COACH_CHUNK_HYBRID_STILLS`) for Gemini 3+ video calls; enforce `reasoning_effort="low"` and `max_tokens >= 4096` headroom for thinking-model JSON responses, plus resilient JSON object extraction.
+  - **Fail-Safe Cost Accounting for New Models:** Maintain a conservative fallback token-rate table (anchored on standard post-promo Jan 2027 rates, e.g., `gemini-3.8-flash` `$1.50/$7.50` per 1M tokens) in `providers/base.py` so per-attempt and daily AI cost circuit breakers never report `$0.00` on models absent from LiteLLM's bundled pricing JSON.
+  - **Graded 3-Tier Gate, Runtime Verification & Safe TI Drill Grounding:** The gate emits graded `profile_quality` (`clean | partial | poor`) plus explicit `catastrophic_flags` while preserving 3-tier `clean / borderline / refuse` UX. Deterministic post-VLM verification (`pipeline/verify.py`) enforces closed-enum verdicts, runtime ADR-013 honesty/visibility bans (including overhead body-line sink suppression and side-on crossover rejection), cross-stroke consensus across sampled chunks, and optional selective second-model adjudication (`STROKELAB_COACH_ADJUDICATOR_MODEL`) only for uncertain top findings. Drills map deterministically to the curated beginner-safe TI drill catalog (`analysis/drills.py`, aligned with `ADR-010`) rather than unvetted free-text LLM advice.
+  - **Permissive Pose Engine & Zero-Cost Longitudinal Progress:** Support an Apache-2.0 `rtmlib` / `onnxruntime` (`RTMPose`) pose recovery backend (`STROKELAB_POSE_ENGINE`) alongside `yolov8` to remove AGPL exposure, and attach deterministic zero-VLM-cost longitudinal progression diffs (`pipeline/compare.py`) comparing verified aspect verdicts against a swimmer's previous completed freestyle analysis.
+  - **Coach-Labeled Multi-Config Bake-Off Before Model Swaps:** Benchmark candidate models and input modes (starting with 25–30 stratified coach-labeled clips, scaling to 100+) across repeated runs via `validation/bakeoff_eval.py`, tracking coach inter-rater agreement, repeatability, refusal accuracy, honesty violations, and Jan-2027 unit cost before changing production defaults.
+  - **Public & Member Analyzer:** Public guest analyzer enforces compute isolation, verified email ownership, credit checks, cost circuit breakers, and worker ready-emails (`STROKELAB_PUBLIC_ANALYZER_DESIGN.md`).
 - **Canonical Docs & Code:**
   - `docs/design/STROKELAB_TI_COACHING_KNOWLEDGE_BANK.md`
   - `docs/design/STROKELAB_VLM_COACH_DESIGN.md`
   - `docs/design/STROKELAB_PUBLIC_ANALYZER_DESIGN.md`
+  - `swimbuddz-backend/docs/design/STROKELAB_MVP_ENGINE_EVALUATION_20261121.md`
+  - `swimbuddz-backend/services/ai_service/pipeline/verify.py`
+  - `swimbuddz-backend/services/ai_service/pipeline/compare.py`
+  - `swimbuddz-backend/services/ai_service/validation/bakeoff_eval.py`
 
 ---
 
@@ -333,7 +372,7 @@
 - **Context & Why:**
   - Committing directly to `main` or `develop`, hand-editing Alembic migrations, or leaving dozens of merged git worktrees with `.next` build caches caused branch drift, multi-head Alembic failures in production, and disk exhaustion.
 - **Decision & Non-Negotiable Invariants:**
-  - **Branching Flow:** All changes MUST be developed on a feature/fix branch (`feature/*`, `fix/*`, `codex/*`), merged via PR to `develop`, and promoted via PR from `develop` to `main`. Keep `main` and `develop` synced between local and `origin`.
+  - **Branching Flow & Release Boundary (updated 26 Nov 2026):** All changes MUST be developed on a feature/fix branch (`feature/*`, `fix/*`, `codex/*`), merged via PR **only into `develop`** across all SwimBuddz repositories (`swimbuddz-docs`, `swimbuddz-backend`, `swimbuddz-frontend`, `swimbuddz-analyzer`), and promoted via PR from `develop` to `main`. **AI agents must never push or merge directly to `main`/production** — the owner manually reviews and promotes `develop → main` for production releases. Keep `main` and `develop` synced between local and `origin`.
   - **Migrations:** Always generate migrations via `./scripts/db/migrate.sh <service>_service "description"`, register new models in `alembic/env.py` (`SERVICE_TABLES`), and ensure a single Alembic head per service.
   - **Verified recovery before production migrations (16 Nov 2026):** Deployment must first capture a private logical backup of application `public` and Supabase `auth` schemas, restore that archive into an isolated PostgreSQL instance, and compare all table counts from the same exported source snapshot. A failed dump, restore or comparison stops deployment before migrations or service replacement. Retain checksums, migration versions, the prior running-image manifest and private runtime configuration outside the checkout. Keep multiple recovery points; never publish dumps or secrets as CI artifacts. This is a migration recovery backup, not a complete Supabase project/S3 disaster-recovery copy. Restore is an explicit maintenance operation after pausing writers and reconciling post-backup transactions; never automatically restore a live database on deployment failure.
   - **Production Docker disk recovery (20 Nov 2026):** A release can fill the host while unpacking images because Docker keeps the running stack and tagged rollback layers. Check free blocks and inodes on Docker's storage filesystem, clear unused build cache, and review retention before retrying through the normal release job. Keep at least five verified recovery points and incident pins. Retire older local image tags only after operator review. The verified database backup gate remains required.
@@ -478,6 +517,135 @@
   - `swimbuddz-frontend/src/app/(member)/account/billing/_billing/FinancialOverviewCard.tsx`
   - `swimbuddz-frontend/src/app/(member)/account/billing/_billing/ProductPaymentReceipts.tsx`
   - `swimbuddz-frontend/src/app/(member)/account/billing/_billing/PendingTransfersCard.tsx`
+
+---
+
+## ADR-023: Detachable Multi-Tenant Ledger Core, Zero-Coupling Finance Intelligence & End-to-End Treasury / Store Procurement Loops
+- **Status:** Settled & Enforced (25 November 2026)
+- **Context & Why:**
+  - The owner confirmed that `ledger_service` must be engineered from the ground up as a **detachable, multi-tenant accounting engine** capable of onboarding other companies later (SwimBuddz Ltd is Tenant #1) while remaining focused on SwimBuddz's live operations today.
+  - The 20 Nov emergency crash fix (`#434`) removed cross-service Python imports from `ledger_service` but left raw SQL queries against 12 SwimBuddz domain tables (`payments`, `enrollments`, `academy_class_plans`, `club_enrollments`, `store_orders`, etc.) inside `services/ledger_service/routers/intelligence.py`. That coupled `ledger_service` to SwimBuddz schemas, broke detachability, and contained two reporting bugs (`enrollment_installments` counted dropped learners' unpaid installments; `active_enrollments` omitted `dropout_pending`).
+  - Meanwhile, `ledger_service` still resolved only a single default org, hardcoded `NGN` / `stanbic` / `moniepoint` / SwimBuddz account codes in Treasury/Reports/Recognition, broke multi-bank `cash_position` and `cash_projection` whenever an org had != 2 banks, and left four Store Procurement ↔ Treasury accounting loops half-wired (goods receipts/COGS not posting to Ledger, supplier invoices unable to link verified bank settlements, returns not reversing inventory valuation/COGS, approved credit orders unable to fulfill or collect partial repayments, and no receipt file uploads).
+- **Decision & Non-Negotiable Invariants:**
+  - **Zero-Coupling Detachable `ledger_service`:**
+    - `ledger_service` MUST NEVER import another service's Python package AND MUST NEVER execute raw SQL against non-ledger database tables. Both invariants are enforced by automated unit tests (`test_service_runtime_boundaries.py`).
+    - Multi-tenant request resolution supports explicit `X-Ledger-Org-Id` header with strict active `LedgerUser` membership verification in that org, falling back to `LEDGER_DEFAULT_ORG_ID` (or sole-org DB fallback only when `count(orgs) == 1`) so SwimBuddz single-tenant callers work seamlessly.
+    - Dedicated `LEDGER_DATABASE_URL` support allows `ledger_service` (and its Alembic migrations) to run on a dedicated `NOBYPASSRLS` Postgres role or standalone database without repointing other services. All ledger and `treasury_*` tables enforce RLS `org_id` policies (`test_ledger_rls_and_org.py`).
+    - Organization provisioning (`POST /internal/ledger/organizations`) and user org listing (`GET /admin/finance/organizations`, `GET/PATCH /admin/finance/organizations/current`) support vertical-agnostic CoA templates (`generic_smb.yaml` alongside `sports_club.yaml`), org-driven `base_currency`, metadata-driven bank account classification (`cash_position`), metadata-driven deferred-revenue recognition (`recognition.py`), metadata-driven protected system accounts, and N-bank `cash_projection` (1, 2, or 3+ attested banks).
+  - **Gateway-Aggregated SwimBuddz Finance Intelligence (Superseding 20 Nov `ledger_service` Raw SQL):**
+    - `GET /api/v1/admin/finance/intelligence` is served by **`gateway_service`** (`services/gateway_service/app/routers/finance_intelligence.py`), NOT `ledger_service`.
+    - Gateway authenticates the caller strictly against `ledger_service` (`GET /admin/finance/users/me`, forwarding bearer token + `X-Ledger-Org-Id`, failing closed on 401/403/503; global admin never substitutes for Ledger membership), then fans out over authenticated service-role HTTP to service-owned internal summary endpoints: `payments_service` (`/internal/payments/finance-summary`), `academy_service` (`/internal/academy/finance-summary`), `members_service` (`/internal/members/club-finance-summary`), and `store_service` (`/internal/store/finance-summary`).
+    - `academy_service` joins `enrollment_installments` to `enrollments` restricted to active/recoverable statuses (`enrolled`, `dropout_pending`) so `dropped` learners never inflate pending/missed installment totals, and reports `dropout_pending_enrollments` explicitly alongside `active_enrollments`.
+  - **Treasury Disbursement & Liability Settlement Loop:**
+    - `TreasuryRequest.kind` supports `expense`, `funding`, and **`liability_settlement`** (e.g., paying `2110 Accounts Payable` supplier invoices or `Refunds Payable` from a verified bank debit, posting `DR <Liability Account> / CR <Bank Account>`). `GET /admin/finance/treasury/liability-ledger-options` lists postable org liability accounts.
+    - Every request still requires separation of duties (requester cannot approve, confirm, or post their own request), bank-statement debit evidence before confirmation, and owner attestation before ledger posting.
+  - **End-to-End Store Procurement ↔ Ledger Loops (Owner Policy Confirmed 25 Nov 2026):**
+    - **Goods Receipt & Opening Valuation Posting:** Verified goods receipts (`POST /procurement/orders/{id}/receive`) post idempotent `DR store_inventory / CR accounts_payable` journals to `ledger_service`; independently approved opening stock valuations (`POST /procurement/openings/{id}/decision`) post `DR store_inventory / CR retained_earnings`. Failed Ledger calls record `ledger_sync_status = "pending_retry"` with explicit replay endpoints (`sync-ledger`)—never silently swallowed.
+    - **Fulfilled Order COGS (Legacy Unvalued SKU Policy):** Fulfilling (`PICKED_UP`/`DELIVERED`) a paid or credit-approved order posts idempotent `DR cogs_store / CR store_inventory` using deterministic moving weighted-average cost (`consumption_cost_minor`) for all **valued** SKUs. **Unvalued legacy SKUs** remain fulfillable operationally without fabricating ₦0 COGS; they record explicit `StoreCostEvent(event_kind="sale_unvalued")` rows surfaced in Finance Intelligence (`unvalued_fulfilled_orders_count`) until opening valuations are approved.
+    - **Supplier Invoice Settlement:** Independently approved supplier invoice settlements (`POST /procurement/invoices/{id}/settlements`, Finance Owner only, requester/creator separation enforced) record partial or full payments in `store_supplier_invoice_settlements`, prevent overpayment, verify linked Ledger journal entries via authenticated Ledger HTTP check when provided, and update `verified_paid_minor`.
+    - **Fulfilled Order Returns & Cost Reversal:** `POST /procurement/orders/{order_id}/returns` looks up the original `sale` cost events, enforces non-over-return bounds, restores `InventoryItem.quantity_on_hand` + `StoreInventoryValuation` + `StoreCostEvent(event_kind="return_restock")` and posts reversing `DR store_inventory / CR cogs_store` for `restockable` returns, or records `return_damaged` shrinkage audit events without inflating sellable stock for `damaged` returns.
+    - **Approved Store Credit Fulfillment & AR Collection (Owner Policy Confirmed):** Independent Finance Owner approval of a `StoreTradeReceivable` (never self-approved by requester or buyer, including founder) posts `DR accounts_receivable / CR revenue_store` immediately and unlocks controlled order fulfillment (`PROCESSING` → `PICKED_UP` / `DELIVERED`) while keeping `OrderStatus.PAID` strictly gated on settlement. Verified partial/full repayments (`POST /procurement/receivables/{id}/payments`, Finance Owner only, buyer separation enforced) post `DR <bank> / CR accounts_receivable`, increment `verified_paid_minor`, and mark the receivable `settled` + stamp `order.paid_at` (and `PAID` if not yet fulfilled) once 100% settled.
+  - **Private Finance & Procurement Receipt Uploads (`finance_document`):**
+    - `media_service` supports `purpose="finance_document"` in private S3 storage (PDF/images, up to 15 MB), accessible strictly to the uploader, platform admins/service-role, and active `ledger_service` Finance members (verified via forwarded bearer token to `/admin/finance/users/me`, failing closed on outage).
+    - Treasury requests, bank snapshots, Store goods receipts, opening valuations, supplier invoices/settlements, and credit repayments accept optional opaque `evidence_media_id` UUIDs alongside text `evidence_reference` so `ledger_service` retains zero coupling to `media_service`.
+- **Canonical Docs & Code:**
+  - `swimbuddz-backend/docs/design/ACCOUNTING_SERVICE_BOUNDARIES_AND_REUSE.md`
+  - `swimbuddz-backend/docs/design/FINANCE_INTELLIGENCE_PROCUREMENT.md`
+  - `swimbuddz-backend/docs/operations/FINANCE_AND_PROCUREMENT_USER_GUIDE.md`
+  - `swimbuddz-backend/services/ledger_service/app/db.py`
+  - `swimbuddz-backend/services/ledger_service/app/deps.py`
+  - `swimbuddz-backend/services/ledger_service/routers/organizations.py`
+  - `swimbuddz-backend/services/ledger_service/routers/treasury.py`
+  - `swimbuddz-backend/services/ledger_service/coa_templates/generic_smb.yaml`
+  - `swimbuddz-backend/services/gateway_service/app/routers/finance_intelligence.py`
+  - `swimbuddz-backend/services/store_service/routers/procurement.py`
+  - `swimbuddz-backend/services/store_service/routers/admin_inventory/_helpers.py`
+  - `swimbuddz-backend/services/media_service/routers/media.py`
+  - `swimbuddz-backend/tests/unit/test_service_runtime_boundaries.py`
+  - `swimbuddz-frontend/src/app/(admin)/admin/finance/treasury/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/finance/intelligence/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/store/procurement/page.tsx`
+
+---
+
+## ADR-024: Store Post-Purchase Order Lifecycle, Returns/Exchanges & Shared Refund Infrastructure
+- **Status:** Settled & Enforced (25 November 2026; supersedes the legacy Store "All sales are final / store credit only" policy)
+- **Context & Why:**
+  - The Store previously lacked any customer-initiated cancellation, modification, return, exchange, or cash refund workflow. Worse, `OrderStatus` conflated payment, fulfillment, cancellation, and refund into a single enum; `Order.total_ngn` stored the post-credit/post-Bubbles cash remainder (breaking refund validation on Bubbles/Store-Credit orders); `StoreCreditTransaction` rows were never written and store credit was silently lost on cancellation; cancelling a paid order in Admin created no refund obligation; and `emit_settlement_to_ledger` folded all `gross - net` Paystack settlement differences into `expense_psp_fees`, which would double-count Paystack API refunds.
+  - Meanwhile, Nigeria's FCCPA grants statutory remedies for defective, damaged, or misdescribed goods regardless of voluntary store policies, and SwimBuddz sells a mix of `stocked`, `preorder`, `dropship`, and `consignment` items across Paystack, manual bank transfers, Bubbles, and Store Credit.
+- **Decision & Non-Negotiable Invariants:**
+  - **Four Separated Concepts (Order, Fulfillment, Payment, Case/Refund):**
+    - `store_orders` tracks `payment_status` (`unpaid`, `pending_review`, `paid`, `partially_refunded`, `refunded`, `failed`) and `fulfillment_status` (`not_started`, `awaiting_preparation`, `processing`, `ready_for_pickup`, `picked_up`, `shipped`, `delivered`, `cancelled`, `returned`) independently while keeping legacy `status` synchronized for backward compatibility.
+    - `order_total_ngn` preserves the true net order value (`subtotal - discount + delivery_fee`), while `cash_payable_ngn` / `total_ngn` preserves the cash remainder after `store_credit_applied_ngn` and `bubbles_applied`.
+    - `StoreOrderCase` (`store_order_cases` + `store_order_case_items`) tracks every customer post-purchase case (`cancel_request`, `variant_swap`, `return_exchange`, `defect_claim`) with reason codes, photo evidence, inspection outcome, policy overrides (`override_reason` required), and linked refund status.
+  - **Fulfillment-State & Sourcing-Aware Cancellation/Swap Policy:**
+    - **Unpaid orders (`pending_payment` / `payment_failed`):** Customers may self-cancel after a live payment check under lock with `payments_service`. If a Paystack charge already succeeded, cancellation fails closed; if a manual bank-transfer receipt is staged (`pending_review`), self-cancel is blocked and routed to admin review (`ADR-003`).
+    - **Paid, `awaiting_preparation` (`stocked` items only):** Customers may **self-cancel immediately** (releasing reserved stock, restoring `StoreCredit` via idempotent `StoreCreditTransaction` records, refunding captured Bubbles, and auto-creating + initiating a Paystack refund or queueing a verified bank-transfer refund in `payments_service`).
+    - **Paid `preorder`, `dropship`, or `consignment` items — and any order in `processing` or `ready_for_pickup`:** Cancellation is **request-only** (`cancel_request`) so admins can check supplier PO commitment and pool-bag packing before approving.
+    - **Same-price variant swap (`variant_swap`):** Allowed while unpaid or `awaiting_preparation` for active, in-stock variants of the same product at the exact same unit price, performing an atomic inventory reservation swap with zero payment mutation. Priced edits/upgrades continue to follow the audited difference-payment pattern (`ADR-008`).
+    - **`shipped` orders:** Cancellation is disabled; orders move to post-delivery return/exchange.
+  - **Post-Handover Returns, Exchanges & FCCPA Statutory Floor:**
+    - **Change-of-mind / wrong size after pickup or delivery (non-defective):** Allowed within **7 calendar days** of `delivered_at` / `fulfilled_at` for unused, unopened items (swimwear strictly requires unworn condition with hygiene seals and tags intact). Approved remedies are **size/color exchange**, **Store Credit**, or **Bubbles** (never defaulting to cash refund); the original delivery fee is non-refundable and customers drop off at a pool session (free) or cover return dispatch.
+    - **Defective, damaged, misdescribed, or wrong item supplied (`defect_claim`):** Always eligible regardless of voluntary return restrictions or swimwear hygiene rules (FCCPA statutory compliance), entitling the customer to **full refund to the original payment method (including delivery fee)** or **free replacement**.
+    - **Return Inventory Inspection & COGS Conservation:** Receiving a physical return requires an explicit inspection condition (`restockable`, `damaged`, `hygiene_unsellable`). Only `restockable` items increment `InventoryItem.quantity_on_hand` (`InventoryMovementType.RETURN`) and reverse their proportional weighted-average cost into `StoreInventoryValuation` + `StoreCostEvent`; damaged or hygiene-unsellable returns are never added back to sellable stock.
+  - **Shared Refund Infrastructure (`payments_service.refunds`), Paystack API & Ledger Invariants:**
+    - `payments_service` owns a first-class `refunds` table shared across Store, Academy, Club, and Sessions (while domain policies remain owned by each service).
+    - Every cash refund runs under `SELECT ... FOR UPDATE` on `Payment` enforcing `SUM(active_refunds.cash_refund_kobo) <= paid_kobo`, unique `idempotency_key`, and multi-tender pro-rata preservation (promotional discounts are never cashed out; cash returns to cash, Bubbles to Bubbles, Store Credit to Store Credit).
+    - **Paystack API refunds enabled from Release 1:** Paid Paystack transactions refund via `POST /refund` with webhook reconciliation (`refund.pending`, `refund.processing`, `refund.processed`, `refund.failed`, `refund.needs-attention`) plus manual status sync. Transactions older than Paystack's 1-year refund window fall back to verified manual bank transfer.
+    - **Verified manual bank-transfer refunds:** Support free NUBAN verification via `PaystackClient.resolve_account` and require an `external_bank_reference` before transitioning to `completed`.
+    - **Two-step Double-Entry Ledger & Settlement Deduction Split:** Approving a cash refund posts `DR revenue_store` (or original purpose account) / `CR refunds_payable` (`2130`); completing disbursement posts `DR refunds_payable` / `CR paystack_clearing` (Paystack refund) or `CR bank_operating_ngn` (bank transfer). `emit_settlement_to_ledger` drains `paystack_clearing` by `net + fees_minor` (booking only actual PSP fees to `expense_psp_fees`) so Paystack refund deductions netted against settlements are never double-counted as PSP fees.
+    - **No silent paid-order cancellation:** Admin raw status updates cannot transition a paid order directly to `cancelled`; admins must use the audited **Cancel & Issue Refund** workflow or approve a `StoreOrderCase`.
+- **Canonical Docs & Code:**
+  - `docs/store/STORE_OPERATIONS.md`
+  - `docs/store/STORE_ARCHITECTURE.md`
+  - `swimbuddz-backend/services/payments_service/models/refund.py`
+  - `swimbuddz-backend/services/payments_service/routers/refunds.py`
+  - `swimbuddz-backend/services/payments_service/services/paystack_client.py`
+  - `swimbuddz-backend/services/payments_service/services/ledger_emit.py`
+  - `swimbuddz-backend/services/store_service/models/cases.py`
+  - `swimbuddz-backend/services/store_service/services/order_policy.py`
+  - `swimbuddz-backend/services/store_service/routers/order_actions.py`
+  - `swimbuddz-backend/services/store_service/routers/admin_cases.py`
+  - `swimbuddz-frontend/src/app/(member)/account/orders/[id]/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/store/orders/[id]/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/store/cases/page.tsx`
+  - `swimbuddz-frontend/src/app/(admin)/admin/payments/page.tsx`
+
+---
+
+## ADR-025: Mobile-First Swim Cards, Evergreen Weekly Swim Bubbles Card & Low-Latency Session Checkout
+- **Status:** Settled & Enforced (26 November 2026)
+- **Context & Why:**
+  - On narrow mobile viewports (~375px), Upcoming Swims cards on `/account/bookings` and session cards on `/account/find-a-swim` placed a shrinking `flex-1` title/time block on the same flex line as a wide status pill (`"Scheduled for your Club"`) and action button, squeezing the session title and time to the left edge and visually colliding with the status pill.
+  - On `/account/wallet/rewards`, the Weekly Swim Bubbles card still displayed launch-date boilerplate (`"SWIM BUBBLES PROGRAMME · SINCE 22 NOV 2026"`, `"Automatic · ₦100 / 🫧"`, and a second `"launched 22 Nov 2026"` paragraph) that repeated information already visible in the metric tiles and **Ways to Earn Bubbles** directly below.
+  - Loading `/sessions/[id]/book` (the session booking & payment page) suffered severe latency from five stacked bottlenecks: (1) a 4-step frontend serial waterfall (`getCurrentAccessToken` → `getSession` → `ride-configs` → `members/me + wallet/me`) all blocking `setLoading(false)`, (2) a double-fired `loadExistingBooking` effect (`[params.id, session]`) downloading the member's entire lifetime `sessions/bookings/me` and `attendance/me` (with `include_session=true`, triggering another 100-session batch lookup), (3) `GET /sessions/{id}` performing up to 5 serial internal HTTP hops including a hidden `media_service` profile-photo lookup inside `members/by-auth/{auth_id}` that `sessions_service` discarded, (4) `GET /transport/sessions/{id}/ride-configs` making an HTTP call to `sessions_service` even when a session had zero ride configs and executing 40–70 N+1 SQL queries when ride configs existed, and (5) `BundleBookingFlow` loading ride configs serially after sessions.
+- **Decision & Non-Negotiable Invariants:**
+  - **Mobile-First Swim Cards (`/account/bookings`, `/account/find-a-swim`):**
+    - Status badges render as `inline-flex shrink-0 whitespace-nowrap` pills so they never wrap ambiguously or collide with time/location lines.
+    - On mobile (`< sm`), swim cards stack cleanly in full-width zones: status pill above → full-width title + time/pool location + unbooked notice → separated footer action bar (`Book this swim` / `Details` or `Details` / `+ Add`). On `sm:` and above, cards transition to a clean 2-column horizontal row (`flex-col sm:flex-row sm:items-center sm:justify-between`) without squeezing text.
+  - **Evergreen Weekly Swim Bubbles Copy (`SwimRewards.tsx`):**
+    - Remove the `"SWIM BUBBLES PROGRAMME · SINCE 22 NOV 2026"` eyebrow, the `"Automatic · ₦100 / 🫧"` header badge, and the `"Swim Bubbles launched 22 Nov 2026…"` disclaimer paragraph (and drop `"(since 22 Nov 2026)"` from the My Swims strip mini-tile).
+    - Keep **one single muted rule line** at the bottom of the Weekly Swim Bubbles card: `"1 🫧 (₦100) per eligible swim day, up to 3 days/week · Reversed if absent or cancelled."`
+  - **Low-Latency Session Booking & Payment Pipeline:**
+    - **Single-hop internal member access (`GET /internal/members/by-auth/{auth_id}/membership`) & opt-in photos (`include_photo=false`):** `sessions_service` resolves member ID + normalized membership in 1 `members_service` HTTP call with 0 `media_service` calls; booking/attendance member-ID resolution passes `include_photo=false` to `/internal/members/by-auth/{auth_id}`.
+    - **Concurrent single-session access checks:** `evaluate_session_access_for_member` dispatches cohort, pod, club, and event checks concurrently via `asyncio.gather`.
+    - **Single-session booking/attendance filters:** `GET /sessions/bookings/me`, `GET /sessions/bookings/me/unpaid`, and `GET /attendance/me` accept optional `session_id` so checkout performs 0-or-1-row indexed lookups (and `/attendance/me` is queried with `include_session=false`).
+    - **Zero-N+1, short-circuiting `GET /transport/sessions/{session_id}/ride-configs`:** Query `SessionRideConfig` first (returning `[]` immediately with 0 cross-service HTTP calls when none exist), and batch `RideArea`, `PickupLocation`, grouped `RideBooking` counts, and `RouteInfo` into constant SQL queries.
+    - **Non-blocking parallel checkout mount (`sessions/[id]/book` & `BundleBookingFlow`):** Fire `getSession`, `/members/me`, `ride-configs`, `/wallet/me`, and single-session `bookings/me?session_id=...` concurrently in one mount effect (never re-firing on `[session]` state changes), and render the booking form as soon as `session` + `member` resolve while ride-share and wallet balance hydrate seamlessly.
+- **Canonical Docs & Code:**
+  - `swimbuddz-backend/services/members_service/routers/internal/lookups.py`
+  - `swimbuddz-backend/services/members_service/routers/internal/membership.py`
+  - `swimbuddz-backend/libs/common/service_client/members.py`
+  - `swimbuddz-backend/services/sessions_service/routers/member.py`
+  - `swimbuddz-backend/services/sessions_service/routers/bookings.py`
+  - `swimbuddz-backend/services/sessions_service/services/session_access.py`
+  - `swimbuddz-backend/services/attendance_service/routers/member/lists.py`
+  - `swimbuddz-backend/services/transport_service/routers/routes.py`
+  - `swimbuddz-frontend/src/app/(member)/account/bookings/page.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/find-a-swim/page.tsx`
+  - `swimbuddz-frontend/src/components/swims/SwimRewards.tsx`
+  - `swimbuddz-frontend/src/app/(sessions)/sessions/[id]/book/page.tsx`
+  - `swimbuddz-frontend/src/app/(sessions)/sessions/bundle/[bundleId]/book/BundleBookingFlow.tsx`
 
 ---
 

@@ -33,6 +33,7 @@ from services.academy_service.models import (  # noqa: E402
     AcademyLessonDrill,
     AcademyLessonVersion,
     AcademyMilestoneDefinition,
+    AcademyMilestoneRemedialDrill,
     AcademyMilestoneVersion,
     AcademyModule,
     AcademyModuleLesson,
@@ -137,6 +138,57 @@ DRILLS = [
             "Settle cleanly on the opposite side for six kicks and repeat across the length.",
         ],
         "safety_json": {"min_depth_m": 1.2, "max_depth_m": 2.0},
+        "requires_supervision": True,
+    },
+    {
+        "code": "DRL-S1-ONE-GOGGLE-BREATH",
+        "title": "One-Goggle / Pillow-Head Side Breathing",
+        "description": "Balanced rotational freestyle breathing keeping one goggle near the surface so hips stay high.",
+        "primary_focal_cue": "Rest your head on the water like a pillow as your torso rotates to breathe.",
+        "steps_json": [
+            "Exhale steadily underwater while gliding in Skate balance.",
+            "Roll hips and shoulders smoothly together until one goggle clears the surface.",
+            "Inhale calmly without lifting the chin forward, then return eyes straight down.",
+        ],
+        "safety_json": {
+            "min_depth_m": 1.2,
+            "max_depth_m": 2.0,
+            "notes": "Short 15-25m repeats with full wall rest; never hold breath to force distance.",
+        },
+        "requires_supervision": True,
+    },
+    {
+        "code": "DRL-S1-SHARK-FIN-RECOVERY",
+        "title": "Shark Fin / Zipper Relaxed Arm Recovery",
+        "description": "High-elbow, weightless forearm recovery preventing shoulder strain and flat splash.",
+        "primary_focal_cue": "Lead recovery with a relaxed high elbow while fingertips hang weightless near the water.",
+        "steps_json": [
+            "From Skate position, lift the top elbow gently upward like a shark fin.",
+            "Keep wrist and fingers completely loose brushing lightly near the surface.",
+            "Pause briefly in balanced side alignment before sliding fingertips smoothly into entry.",
+        ],
+        "safety_json": {
+            "min_depth_m": 1.2,
+            "max_depth_m": 2.0,
+            "notes": "Stop immediately if you feel any pinching at the front of the shoulder.",
+        },
+        "requires_supervision": True,
+    },
+    {
+        "code": "DRL-S1-MAIL-SLOT-ENTRY",
+        "title": "Mail-Slot Shoulder-Track Entry Spear",
+        "description": "Quiet fingertip entry along the swimmer's own shoulder track preventing crossover and overreach.",
+        "primary_focal_cue": "Slip fingertips quietly into the water directly ahead of your shoulder and extend forward.",
+        "steps_json": [
+            "Aim fingertips downward into an imaginary mail slot in front of your shoulder line.",
+            "Slide the forearm cleanly underwater without slapping or reaching across the centerline.",
+            "Lengthen gently into a streamlined Skate glide as hips rotate onto the opposite side.",
+        ],
+        "safety_json": {
+            "min_depth_m": 1.2,
+            "max_depth_m": 2.0,
+            "notes": "Keep entry unhurried; avoid forcing shoulder hyper-extension.",
+        },
         "requires_supervision": True,
     },
     {
@@ -576,6 +628,88 @@ MODULES = [
 ]
 
 
+REMEDIAL_DRILLS = [
+    (
+        "MS-F1-SAFE-ENTRY",
+        "DRL-F1-WALL-WALK",
+        0,
+        "Build calm wall orientation before free standing.",
+    ),
+    (
+        "MS-F1-SAFE-ENTRY",
+        "DRL-F1-CHIN-TUCK-STAND",
+        1,
+        "Practice knee-tuck recovery until it feels automatic.",
+    ),
+    (
+        "MS-F2-RHYTHMIC-BOBS-20",
+        "DRL-F2-HUMMING-BOBS",
+        0,
+        "Focus on unbroken gentle humming so you never gasp at the surface.",
+    ),
+    (
+        "MS-F3-BACK-FLOAT-30S",
+        "DRL-F3-WEIGHTLESS-HEAD",
+        0,
+        "Submerge both ears and let the water hold your skull weightless.",
+    ),
+    (
+        "MS-F3-BACK-FLOAT-30S",
+        "DRL-F1-CHIN-TUCK-STAND",
+        1,
+        "End every float with a calm knee-tuck stand recovery.",
+    ),
+    (
+        "MS-F4-STREAMLINE-GLIDE-7M",
+        "DRL-F4-SUPERMAN-GLIDE",
+        0,
+        "Press chest gently downward so hips rise without kicking hard.",
+    ),
+    (
+        "MS-S1-FREE-25M",
+        "DRL-S1-TI-SKATE",
+        0,
+        "Hold a long, balanced side-lying line before rotating to breathe.",
+    ),
+    (
+        "MS-S1-FREE-25M",
+        "DRL-S1-6-KICK-SWITCH",
+        1,
+        "Keep the lead hand patient until the recovering hand enters cleanly.",
+    ),
+    (
+        "MS-S1-FREE-25M",
+        "DRL-S1-ONE-GOGGLE-BREATH",
+        2,
+        "Keep one goggle near the surface when rotating to inhale so hips never drop.",
+    ),
+    (
+        "MS-S1-FREE-50M",
+        "DRL-S1-SHARK-FIN-RECOVERY",
+        2,
+        "Relax the recovering forearm to save energy over continuous 50m swims.",
+    ),
+    (
+        "MS-S1-FREE-50M",
+        "DRL-S1-MAIL-SLOT-ENTRY",
+        3,
+        "Enter smoothly on your shoulder track to maintain a straight, low-drag line.",
+    ),
+    (
+        "MS-S1-FREE-50M",
+        "DRL-S1-6-KICK-SWITCH",
+        0,
+        "Use core hip rotation to conserve energy across 50 meters.",
+    ),
+    (
+        "MS-A1-TREAD-60S",
+        "DRL-A1-SCULLING-TREAD",
+        0,
+        "Keep forearm sculls wide and horizontal; avoid vertical splashing.",
+    ),
+]
+
+
 async def _get_or_create_definition(
     db, model, *, code: str, title: str, description: str
 ):
@@ -617,10 +751,12 @@ async def seed_academy_curriculum_v2(db) -> dict[str, int]:
         "quizzes_created": 0,
         "lessons_created": 0,
         "modules_created": 0,
+        "remedial_links_created": 0,
     }
     now = utc_now()
 
     drill_v1: dict[str, AcademyDrillVersion] = {}
+    drill_defs_by_code: dict[str, AcademyDrill] = {}
     for item in DRILLS:
         defn, created = await _get_or_create_definition(
             db,
@@ -629,6 +765,7 @@ async def seed_academy_curriculum_v2(db) -> dict[str, int]:
             title=item["title"],
             description=item["description"],
         )
+        drill_defs_by_code[item["code"]] = defn
         if created:
             counts["drills_created"] += 1
         ver, ver_created = await _get_or_create_v1(
@@ -649,6 +786,7 @@ async def seed_academy_curriculum_v2(db) -> dict[str, int]:
         drill_v1[item["code"]] = ver
 
     milestone_v1: dict[str, AcademyMilestoneVersion] = {}
+    milestone_defs_by_code: dict[str, AcademyMilestoneDefinition] = {}
     for item in MILESTONES:
         defn, created = await _get_or_create_definition(
             db,
@@ -657,6 +795,7 @@ async def seed_academy_curriculum_v2(db) -> dict[str, int]:
             title=item["title"],
             description=item["description"],
         )
+        milestone_defs_by_code[item["code"]] = defn
         if created:
             counts["milestones_created"] += 1
         ver, ver_created = await _get_or_create_v1(
@@ -821,6 +960,26 @@ async def seed_academy_curriculum_v2(db) -> dict[str, int]:
             await db.flush()
             ver.state = "published"
             ver.published_at = ver.published_at or now
+
+    for ms_code, drill_code, priority, tip in REMEDIAL_DRILLS:
+        ms_def = milestone_defs_by_code[ms_code]
+        dr_def = drill_defs_by_code[drill_code]
+        exists = await db.scalar(
+            select(AcademyMilestoneRemedialDrill.id).where(
+                AcademyMilestoneRemedialDrill.milestone_definition_id == ms_def.id,
+                AcademyMilestoneRemedialDrill.drill_id == dr_def.id,
+            )
+        )
+        if exists is None:
+            db.add(
+                AcademyMilestoneRemedialDrill(
+                    milestone_definition_id=ms_def.id,
+                    drill_id=dr_def.id,
+                    priority_order=priority,
+                    coach_tip=tip,
+                )
+            )
+            counts["remedial_links_created"] += 1
 
     await db.commit()
     return counts

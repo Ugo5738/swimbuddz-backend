@@ -123,8 +123,25 @@ async def expense_ledger_options(request: Request, _actor=Depends(require_ledger
         ChartOfAccounts.org_id == org, ChartOfAccounts.is_active.is_(True),
         ChartOfAccounts.type == AccountType.EXPENSE,
     ).order_by(ChartOfAccounts.code))).all()
+    parent_ids = {a.parent_id for a in accounts if a.parent_id is not None}
     return [{"code": a.code, "name": a.name} for a in accounts
-            if a.code.startswith(("5", "6")) and a.code not in ("5000", "6000")]
+            if a.id not in parent_ids and a.code not in ("5000", "6000")]
+
+
+@router.get("/liability-ledger-options")
+async def liability_ledger_options(request: Request, _actor=Depends(require_ledger_role(LedgerRole.VIEWER)), session: AsyncSession = Depends(get_ledger_db)):
+    """Active postable liability accounts for settling payables (e.g. supplier invoices)."""
+    org = request.state.org_id
+    accounts = (await session.scalars(select(ChartOfAccounts).where(
+        ChartOfAccounts.org_id == org, ChartOfAccounts.is_active.is_(True),
+        ChartOfAccounts.type == AccountType.LIABILITY,
+    ).order_by(ChartOfAccounts.code))).all()
+    parent_ids = {a.parent_id for a in accounts if a.parent_id is not None}
+    return [
+        {"code": a.code, "name": a.name}
+        for a in accounts
+        if a.id not in parent_ids and a.code not in ("2000", "2100", "2200", "2300", "2400")
+    ]
 
 
 @router.get("/ledger-options")
@@ -187,6 +204,8 @@ async def create_bank_ledger(bank_id: uuid.UUID, request: Request, actor=Depends
         raise HTTPException(422, "Use the legacy ledger mapping workflow for this account")
 
     stable_code = "11-" + bank.id.hex[:16]
+    org_row = await session.scalar(select(Organization).where(Organization.id == org))
+    base_currency = org_row.base_currency if org_row else "NGN"
     account = await session.scalar(select(ChartOfAccounts).where(
         ChartOfAccounts.org_id == org, ChartOfAccounts.code == stable_code,
     ))
@@ -195,11 +214,15 @@ async def create_bank_ledger(bank_id: uuid.UUID, request: Request, actor=Depends
             ChartOfAccounts.org_id == org, ChartOfAccounts.code == "1110",
         ))
         account = ChartOfAccounts(
-            org_id=org, code=stable_code, name="Bank — " + bank.bank_name + " (NGN)",
+            org_id=org, code=stable_code, name=f"Bank — {bank.bank_name} ({base_currency})",
             type=AccountType.ASSET, normal_balance=NormalBalance.DEBIT,
             parent_id=base.parent_id if base else None,
             is_active=True, is_system=False,
-            account_metadata={"maps_to": "bank_account_" + bank.id.hex},
+            account_metadata={
+                "maps_to": "bank_account_" + bank.id.hex,
+                "is_bank_account": True,
+                "cash_kind": "bank",
+            },
         )
         session.add(account)
         await session.flush()
@@ -476,14 +499,16 @@ async def confirm_request(request_id: uuid.UUID, payload: ConfirmRequest, reques
         if dest is None or dest.bank_account_id != item.destination_bank_id or dest.amount_minor != item.amount_minor or dest.match_status != "unmatched":
             raise HTTPException(422, "Unmatched destination bank credit evidence of the exact amount is required")
     elif payload.destination_line_id:
-        raise HTTPException(422, "An expense must not have a destination bank credit")
+        raise HTTPException(422, "A disbursement must not have a destination bank credit")
     source.match_status, source.request_id = "matched_request", item.id
     if dest:
         dest.match_status, dest.request_id = "matched_request", item.id
         item.destination_bank_line_id = dest.id
     item.bank_line_id = source.id
-    if item.kind == "expense" and not (item.evidence_reference or item.invoice_reference):
-        raise HTTPException(422, "Expense confirmation requires receipt or invoice evidence reference")
+    if item.kind in ("expense", "liability_settlement") and not (
+        item.evidence_reference or item.invoice_reference or item.evidence_media_id
+    ):
+        raise HTTPException(422, "Disbursement confirmation requires receipt, invoice reference, or attached document")
     item.status = "confirmed"
     item.confirmed_by = actor.id
     item.confirmed_at = utc_now()
@@ -577,13 +602,15 @@ async def attest_bank_snapshot(bank_id: uuid.UUID, payload: SnapshotCreate, requ
     session.add(TreasuryBankSnapshot(
         org_id=org, bank_account_id=bank_id, as_of=payload.as_of,
         balance_minor=payload.balance_minor, evidence_reference=payload.evidence_reference,
+        evidence_media_id=payload.evidence_media_id,
         attested_by=actor.id,
     ))
     bank.statement_balance_minor = payload.balance_minor
     bank.statement_as_of = payload.as_of
     bank.statement_verified_at = utc_now()
     bank.statement_evidence = payload.evidence_reference
-    _audit(session, org, actor, "statement_balance_attested", bank_id, as_of=str(payload.as_of), reference=payload.evidence_reference)
+    bank.statement_evidence_media_id = payload.evidence_media_id
+    _audit(session, org, actor, "statement_balance_attested", bank_id, as_of=str(payload.as_of), reference=payload.evidence_reference, evidence_media_id=str(payload.evidence_media_id) if payload.evidence_media_id else None)
     await session.commit()
     await session.refresh(bank)
     return bank
@@ -676,11 +703,18 @@ async def cash_projection(request: Request, scenario: str = "base", days: int = 
     banks = (await session.scalars(select(TreasuryBankAccount).where(
         TreasuryBankAccount.org_id == org,
     ))).all()
-    # Starting cash needs two comparable, explicitly attested balances.
+    # Starting cash requires every registered bank account in the org to carry
+    # an attested closing balance on the same statement date (works for 1, 2, or N banks).
     snapshots = [b for b in banks if b.statement_balance_minor is not None and b.statement_as_of is not None]
-    starting = sum(b.statement_balance_minor for b in snapshots) if len(snapshots) == 2 and len(banks) == 2 and len({b.statement_as_of for b in snapshots}) == 1 else None
+    starting = (
+        sum(b.statement_balance_minor for b in snapshots)
+        if len(banks) >= 1 and len(snapshots) == len(banks) and len({b.statement_as_of for b in snapshots}) == 1
+        else None
+    )
     approved_expenses = int((await session.scalar(select(func.coalesce(func.sum(TreasuryRequest.amount_minor), 0)).where(
-        TreasuryRequest.org_id == org, TreasuryRequest.kind == "expense", TreasuryRequest.status == "approved",
+        TreasuryRequest.org_id == org,
+        TreasuryRequest.kind.in_(("expense", "liability_settlement")),
+        TreasuryRequest.status == "approved",
         ((TreasuryRequest.service_on.is_(None)) | (TreasuryRequest.service_on <= today + timedelta(days=days))),
     ))) or 0)
     # Pending approved expenses are deducted unless explicitly in forecast lines;
@@ -719,9 +753,17 @@ async def post_confirmed_to_ledger(request_id: uuid.UUID, payload: PostConfirmed
     ))
     if not source_acct:
         raise HTTPException(409, "Source ledger not linked")
+    org_row = await session.scalar(select(Organization).where(Organization.id == org))
+    base_currency = org_row.base_currency if org_row else "NGN"
+    org_meta = org_row.org_metadata if (org_row and isinstance(org_row.org_metadata, dict)) else {}
+    protected_categories = set(
+        org_meta.get(
+            "protected_expense_categories",
+            ["coach_payout", "refund", "paystack_fee", "payment_processing"],
+        )
+    )
     destination = None
     dest = None
-    expense_acct = None
     if item.kind == "funding":
         dest = await session.scalar(select(TreasuryStatementLine).where(
             TreasuryStatementLine.org_id == org, TreasuryStatementLine.id == item.destination_bank_line_id,
@@ -734,12 +776,32 @@ async def post_confirmed_to_ledger(request_id: uuid.UUID, payload: PostConfirmed
         ))
         if not dest_acct:
             raise HTTPException(409, "Destination ledger not linked")
-        if payload.expense_account_code:
-            raise HTTPException(422, "Interbank funding is not a business expense")
+        if payload.expense_account_code or payload.liability_account_code:
+            raise HTTPException(422, "Interbank funding is not a business expense or liability settlement")
         debit_ref = dest_acct.code
+        source_type = "treasury_internal_funding"
+    elif item.kind == "liability_settlement":
+        if not (item.evidence_reference or item.invoice_reference or item.evidence_media_id):
+            raise HTTPException(409, "Liability settlement documentation is missing")
+        if payload.expense_account_code:
+            raise HTTPException(422, "Liability settlement must target a liability account, not an expense account")
+        if not payload.liability_account_code:
+            raise HTTPException(422, "Liability settlement requires the reviewed liability account code (e.g. Accounts Payable)")
+        liab_acct = await session.scalar(select(ChartOfAccounts).where(
+            ChartOfAccounts.org_id == org,
+            ChartOfAccounts.code == payload.liability_account_code,
+            ChartOfAccounts.type == AccountType.LIABILITY,
+            ChartOfAccounts.is_active.is_(True),
+        ))
+        if not liab_acct:
+            raise HTTPException(422, "Invalid or inactive liability account")
+        debit_ref = liab_acct.code
+        source_type = "treasury_liability_settlement"
     else:
-        if not item.evidence_reference and not item.invoice_reference:
+        if not (item.evidence_reference or item.invoice_reference or item.evidence_media_id):
             raise HTTPException(409, "Expense documentation is missing")
+        if payload.liability_account_code:
+            raise HTTPException(422, "Expense posting requires an expense account code, not a liability account")
         if not payload.expense_account_code:
             raise HTTPException(422, "Expense posting requires the reviewed expense account code")
         expense_acct = await session.scalar(select(ChartOfAccounts).where(
@@ -750,9 +812,16 @@ async def post_confirmed_to_ledger(request_id: uuid.UUID, payload: PostConfirmed
         ))
         if not expense_acct:
             raise HTTPException(422, "Invalid or inactive expense account")
-        if expense_acct.code in ("5300", "5400", "6100") or item.category in ("coach_payout", "refund", "paystack_fee", "payment_processing"):
+        acct_meta = expense_acct.account_metadata if isinstance(expense_acct.account_metadata, dict) else {}
+        is_system_managed = (
+            bool(acct_meta.get("system_managed"))
+            or acct_meta.get("maps_to") in ("cogs_coach_academy", "cogs_coach_club", "expense_psp_fees")
+            or expense_acct.code in ("5300", "5400", "6100")
+        )
+        if is_system_managed or item.category in protected_categories:
             raise HTTPException(409, "This cost is handled by an existing payout/refund/PSP ledger workflow; reconcile its entry instead")
         debit_ref = expense_acct.code
+        source_type = "treasury_expense"
     if source.journal_entry_id or (dest and dest.journal_entry_id):
         raise HTTPException(409, "Evidence already reconciled to another journal; link instead of posting twice")
     if not source.reference:
@@ -771,19 +840,24 @@ async def post_confirmed_to_ledger(request_id: uuid.UUID, payload: PostConfirmed
     # Force a separate fiscal review of older, already-posted payout entries:
     # the OWNER acknowledges there is no duplicate entry in the existing ledger.
     lines = [
-        dict(account_ref=debit_ref, debit=item.amount_minor, credit=0, currency="NGN",
+        dict(account_ref=debit_ref, debit=item.amount_minor, credit=0, currency=base_currency,
              dimension_1=item.programme or None, cost_center=item.cost_center_code,
              external_ref=source.reference, description=item.purpose),
-        dict(account_ref=source_acct.code, debit=0, credit=item.amount_minor, currency="NGN",
+        dict(account_ref=source_acct.code, debit=0, credit=item.amount_minor, currency=base_currency,
              dimension_1=item.programme or None, cost_center=item.cost_center_code,
              external_ref=source.reference, description=item.purpose),
     ]
     entry_payload = JournalEntryCreate(
         idempotency_key=f"treasury:request:{item.id}",
         entry_date=source.occurred_on, description=item.purpose,
-        source_service="ledger", source_type="treasury_expense" if item.kind == "expense" else "treasury_internal_funding",
+        source_service="ledger", source_type=source_type,
         source_id=str(item.id),
-        metadata={"request_id": str(item.id), "verified_bank_statement_id": source.statement_id},
+        metadata={
+            "request_id": str(item.id),
+            "verified_bank_statement_id": source.statement_id,
+            **({"invoice_reference": item.invoice_reference} if item.invoice_reference else {}),
+            **({"evidence_media_id": str(item.evidence_media_id)} if item.evidence_media_id else {}),
+        },
         lines=lines,
     )
     try:

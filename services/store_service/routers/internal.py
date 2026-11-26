@@ -50,6 +50,116 @@ async def confirm_store_payment(
     )
 
 
+@router.post("/orders/refund-status-callback", include_in_schema=False)
+async def handle_refund_status_callback(
+    payload: dict,
+    current_user: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Receive trusted refund lifecycle updates from payments_service (ADR-024)."""
+    from libs.common.datetime_utils import utc_now
+    from services.store_service.models import (
+        AuditEntityType,
+        Order,
+        OrderCaseStatus,
+        OrderFulfillmentStatus,
+        OrderPaymentStatus,
+        OrderStatus,
+        StoreOrderCase,
+    )
+    from services.store_service.routers._helpers import log_audit
+    from services.store_service.schemas.main.cases import StoreRefundStatusCallback
+    from services.store_service.services.order_lifecycle import (
+        emit_order_cancelled_or_refunded_event,
+        notify_order_case_update,
+    )
+    from services.store_service.services.order_policy import (
+        sync_order_status_dimensions,
+    )
+
+    data = StoreRefundStatusCallback.model_validate(payload)
+    try:
+        order_uuid = uuid.UUID(data.source_entity_id)
+    except ValueError:
+        return {"updated": False, "reason": "invalid_order_id"}
+
+    order = (
+        await db.execute(select(Order).where(Order.id == order_uuid).with_for_update())
+    ).scalar_one_or_none()
+    if not order:
+        return {"updated": False, "reason": "order_not_found"}
+
+    case = (
+        await db.execute(
+            select(StoreOrderCase)
+            .where(StoreOrderCase.refund_reference == data.refund_reference)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+
+    now = utc_now()
+    if case is not None:
+        case.refund_status = data.status
+        if data.status == "completed":
+            case.status = OrderCaseStatus.COMPLETED
+            case.resolved_at = case.resolved_at or data.completed_at or now
+            case.resolved_by_auth_id = case.resolved_by_auth_id or "payments_service"
+        elif data.status == "failed" and data.failure_reason:
+            case.admin_notes = (
+                f"{case.admin_notes}\n[Refund failed] {data.failure_reason}".strip()
+                if case.admin_notes
+                else f"[Refund failed] {data.failure_reason}"
+            )
+
+    if data.status == "completed":
+        cash_paid_kobo = int(round(float(order.total_ngn or 0) * 100))
+        is_full = data.cash_refund_kobo >= cash_paid_kobo
+        order.refunded_at = order.refunded_at or data.completed_at or now
+        sync_order_status_dimensions(
+            order,
+            payment_status=(
+                OrderPaymentStatus.REFUNDED
+                if is_full
+                else OrderPaymentStatus.PARTIALLY_REFUNDED
+            ),
+        )
+        if is_full and order.effective_fulfillment_status in (
+            OrderFulfillmentStatus.CANCELLED,
+            OrderFulfillmentStatus.RETURNED,
+        ):
+            order.status = OrderStatus.REFUNDED
+
+    await log_audit(
+        db,
+        AuditEntityType.ORDER,
+        order.id,
+        f"refund_{data.status}",
+        "payments_service",
+        new_value={
+            "refund_reference": data.refund_reference,
+            "status": data.status,
+            "provider_refund_id": data.provider_refund_id,
+            "external_bank_reference": data.external_bank_reference,
+        },
+        notes=data.failure_reason,
+    )
+    await db.commit()
+
+    if data.status == "completed":
+        await emit_order_cancelled_or_refunded_event(
+            order,
+            event_type="store.order_refunded",
+            idempotency_suffix=data.refund_reference,
+        )
+        await notify_order_case_update(
+            order,
+            title="Refund Completed",
+            body=f"Your refund ({data.refund_reference}) for order #{order.order_number} has been completed.",
+            notif_type="order_refunded",
+        )
+    return {"updated": True, "order_number": order.order_number, "status": data.status}
+
+
 class MemberStoreSummary(BaseModel):
     orders_placed: int = 0
     total_spent: int = 0
@@ -128,3 +238,109 @@ async def member_store_unfinished_orders(
         }
         for order in orders
     ]
+
+
+@router.get("/finance-summary", dependencies=[Depends(require_service_role)])
+async def store_finance_summary(db: AsyncSession = Depends(get_async_db)):
+    """Service-owned Store operational finance summary for gateway aggregation."""
+    from services.store_service.models import InventoryItem, Order
+    from services.store_service.models.procurement import (
+        StoreCostEvent,
+        StoreInventoryValuation,
+        StoreSupplierInvoice,
+        StoreTradeReceivable,
+    )
+
+    store_rows = (
+        await db.execute(
+            select(
+                Order.status,
+                func.count(Order.id),
+                func.coalesce(func.sum(Order.total_ngn), 0),
+            ).group_by(Order.status)
+        )
+    ).all()
+    order_status_totals = [
+        {
+            "status": status.value if hasattr(status, "value") else str(status),
+            "count": int(count),
+            "gross_order_ngn": str(total),
+        }
+        for status, count, total in store_rows
+    ]
+
+    valued_minor, unvalued_skus = (
+        await db.execute(
+            select(
+                func.coalesce(
+                    func.sum(StoreInventoryValuation.total_cost_minor).filter(
+                        StoreInventoryValuation.quantity
+                        == InventoryItem.quantity_on_hand
+                    ),
+                    0,
+                ),
+                func.count(InventoryItem.id).filter(
+                    StoreInventoryValuation.quantity.is_distinct_from(
+                        InventoryItem.quantity_on_hand
+                    )
+                ),
+            )
+            .select_from(InventoryItem)
+            .outerjoin(
+                StoreInventoryValuation,
+                StoreInventoryValuation.variant_id == InventoryItem.variant_id,
+            )
+        )
+    ).one()
+
+    supplier_unpaid = int(
+        await db.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        StoreSupplierInvoice.total_minor
+                        - StoreSupplierInvoice.verified_paid_minor
+                    ),
+                    0,
+                )
+            )
+        )
+        or 0
+    )
+    approved_credit = int(
+        await db.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        StoreTradeReceivable.amount_minor
+                        - StoreTradeReceivable.verified_paid_minor
+                    ),
+                    0,
+                )
+            ).where(StoreTradeReceivable.status == "approved")
+        )
+        or 0
+    )
+    unvalued_fulfilled_events = int(
+        await db.scalar(
+            select(func.count(func.distinct(StoreCostEvent.evidence))).where(
+                StoreCostEvent.event_kind == "sale_unvalued"
+            )
+        )
+        or 0
+    )
+    return {
+        "order_status_totals": order_status_totals,
+        "valued_inventory_minor": (
+            int(valued_minor or 0) if int(unvalued_skus or 0) == 0 else None
+        ),
+        "partial_valued_inventory_minor": int(valued_minor or 0),
+        "unvalued_sku_count": int(unvalued_skus or 0),
+        "unvalued_fulfilled_orders_count": unvalued_fulfilled_events,
+        "supplier_liabilities_minor": supplier_unpaid,
+        "approved_credit_exposure_minor": approved_credit,
+        "warning": (
+            "Inventory valuation reflects verified receipts, approved openings, sales and returns. "
+            "Unvalued legacy SKUs remain flagged rather than estimated from retail prices."
+        ),
+    }

@@ -66,11 +66,11 @@ Membership must be granted in the platform and kept active. **Do not give Comfor
 1. Finance Owner grants a **Store Procurement Officer** role to the correct authenticated staff ID in Store Procurement. A non-admin should see only the scoped procurement workspace.
 2. Officer selects supplier, SKU, quantity and **landed acquisition cost**, then creates and submits a purchase order.
 3. Another authorised Finance Owner approves or rejects. Requester cannot approve their own purchase.
-4. After supplier delivers, officer records the **goods receipt**, quantity per line and delivery evidence reference. Over-receipts and duplicate reference are blocked. Stock on hand and the separate acquisition-cost record change only on a valid goods receipt.
-5. Officer records supplier invoice. This creates money owed but **does not record bank payment**. Existing Finance/Treasury processes must independently verify settlement; invoice-to-bank matching is not fully automated.
-6. For existing stock, officer proposes an opening count/cost with evidence, and an independent Owner approves. If cost is unknown, the stock remains **unvalued**.
-7. On unpaid Store orders, a credit request may be independently approved, but it **does not mark the order Paid or authorise fulfillment**. Do not manually override checkout or inventory status to simulate settlement.
-8. Returns/refunds and legacy stock COGS require further reconciliation before inventory profit figures should be treated as final financial statements.
+4. After supplier delivers, officer records the **goods receipt**, quantity per line, delivery evidence reference (and optional PDF/image waybill upload). Over-receipts and duplicate references are blocked. Stock on hand, moving weighted-average cost, and the Ledger `DR Store Inventory / CR Accounts Payable` entry update automatically (with retry sync if Ledger is briefly unavailable).
+5. Officer records the supplier invoice (with optional PDF/image upload). Once the bank transfer is approved, executed in the bank portal, confirmed, and posted in Treasury as a **Liability Settlement** (`DR Accounts Payable / CR Bank`), Finance Owner records the verified partial or full settlement on the supplier invoice linking the bank reference and posted Ledger journal UUID.
+6. For historical stock without recorded cost, officer proposes an opening count/cost with evidence (and optional receipt upload), and an independent Owner approves (posting `DR Store Inventory / CR Retained Earnings`). Unvalued legacy SKUs remain fulfillable operationally and are flagged in Finance Intelligence (`unvalued_fulfilled_orders_count`) rather than fabricating ₦0 COGS.
+7. On unpaid Store orders, an independently approved credit agreement (never self-approved by requester or buyer) books `DR Accounts Receivable / CR Store Revenue` and unlocks controlled fulfillment. Finance Owner records verified partial or full bank repayments (`DR Bank / CR Accounts Receivable`) until the balance reaches zero and the order is settled.
+8. When a fulfilled order is returned, Finance Owner records the return lines and condition (`restockable` restores inventory/valuation and posts `DR Store Inventory / CR Store COGS`; `damaged` records shrinkage without inflating sellable stock).
 
 ## Troubleshooting
 

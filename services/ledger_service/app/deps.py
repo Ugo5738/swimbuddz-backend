@@ -1,30 +1,19 @@
-"""Request dependencies for the Ledger Service.
+"""Request dependencies for the detachable, multi-tenant Ledger Service.
 
-`get_ledger_db` sets the per-request organization context that the RLS policies
-read (see migration 298d02a91299). `_resolve_org_id` decides which org a request
-acts on — Phase 1 (single-tenant SwimBuddz) resolves to
-`settings.LEDGER_DEFAULT_ORG_ID`, falling back to the sole org in the DB if that
-env var is unset (task #24 — self-heals the prod 503 we hit). The B2B path (org
-from auth claim / URL) lands in the productisation phase.
+``get_ledger_db`` resolves the active tenant ``org_id`` and sets Postgres'
+transaction-scoped ``app.current_org_id`` GUC for RLS defence-in-depth before
+any query runs.
 
-RLS is defence-in-depth: application code must STILL filter every query by
-`request.state.org_id`. This dependency is the belt; query-level filtering is
-the braces.
+Tenant resolution order:
+  1. Explicit ``X-Ledger-Org-Id`` HTTP header (validated UUID; verified active).
+  2. ``settings.LEDGER_DEFAULT_ORG_ID`` (SwimBuddz default when header omitted).
+  3. Sole-org DB fallback ONLY when the DB has exactly one organization (refuses
+     to guess when multiple tenants exist, preventing silent cross-org mixing).
 
-B2B RLS cutover (task #13, pre-B2B infra — NOT done in single-tenant because
-there's one org to isolate and the connection is shared by ~18 services). The
-org-isolation policies are already defined on every org-keyed ledger table
-(298d02a91299 + cf2eae9376e5) but inert under the current `postgres` (BYPASSRLS)
-role. To make them enforce at B2B onboarding, in this order:
-  1. Create a NOBYPASSRLS role, e.g. `ledger_app`, and GRANT it
-     SELECT/INSERT/UPDATE/DELETE on the ledger tables + USAGE on their sequences
-     (and on `public` schema). Keep it scoped to ledger tables only.
-  2. Add `LEDGER_DATABASE_URL` (that role) to `.env.prod` and route ONLY the
-     ledger service's engine to it — do not repoint the shared `DATABASE_URL`.
-  3. Verify with a cross-org isolation test under the new role (set
-     app.current_org_id to org A, confirm org B's rows are invisible) before and
-     after cutover; the coverage test in test_ledger_rls_and_org.py guards that
-     the policies exist.
+RLS is defence-in-depth: application code MUST still filter every query by
+``request.state.org_id``. When ``LEDGER_DATABASE_URL`` is configured (e.g. a
+``NOBYPASSRLS`` ``ledger_app`` role or a standalone Postgres instance), the DB
+enforces org isolation at the storage engine layer as well.
 """
 
 from __future__ import annotations
@@ -37,13 +26,19 @@ from libs.auth.dependencies import get_current_user
 from libs.auth.models import AuthUser
 from libs.common.config import get_settings
 from libs.common.logging import get_logger
-from libs.db.session import get_async_db
+from services.ledger_service.app.db import get_ledger_raw_db
 from services.ledger_service.models import LedgerUser, Organization
-from services.ledger_service.models.enums import LEDGER_ROLE_RANK, LedgerRole
+from services.ledger_service.models.enums import (
+    LEDGER_ROLE_RANK,
+    LedgerRole,
+    OrgStatus,
+)
 from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
+
+ORG_ID_HEADER = "X-Ledger-Org-Id"
 
 # Single-tenant DB fallback (task #24): cache the sole org id so we resolve it
 # once when LEDGER_DEFAULT_ORG_ID is unset, rather than querying every request.
@@ -64,12 +59,27 @@ def _env_org_id() -> uuid.UUID | None:
         ) from exc
 
 
-def resolve_org_id(request: Request) -> uuid.UUID:
-    """Resolve the organization from the env var only (sync).
+def parse_header_org_id(request: Request | None) -> uuid.UUID | None:
+    """Parse ``X-Ledger-Org-Id`` header if supplied; 400 on invalid UUID."""
+    if request is None:
+        return None
+    raw = (request.headers.get(ORG_ID_HEADER) or "").strip()
+    if not raw:
+        return None
+    try:
+        return uuid.UUID(raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{ORG_ID_HEADER} header must be a valid UUID.",
+        ) from exc
 
-    Raises 503 if unset. Request handling goes through the DB-fallback-aware
-    :func:`_resolve_org_id` in ``get_ledger_db``; this stays for any sync caller.
-    """
+
+def resolve_org_id(request: Request) -> uuid.UUID:
+    """Resolve the organization synchronously (header first, then env var)."""
+    header_org = parse_header_org_id(request)
+    if header_org is not None:
+        return header_org
     org = _env_org_id()
     if org is None:
         raise HTTPException(
@@ -79,16 +89,19 @@ def resolve_org_id(request: Request) -> uuid.UUID:
     return org
 
 
-async def _resolve_org_id(session: AsyncSession) -> uuid.UUID:
-    """Resolve the org for a request: env var first, else the sole org in the DB.
+async def _resolve_org_id(
+    session: AsyncSession,
+    *,
+    explicit_org_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """Resolve the tenant org_id: explicit header/arg -> env var -> sole DB org.
 
-    Hardening (task #24): if ``LEDGER_DEFAULT_ORG_ID`` is unset/lost, a single-
-    tenant deployment self-heals by using the only org rather than 503-ing the
-    whole finance surface (the exact prod incident this guards against). Refuses
-    to guess when the DB holds zero or many orgs — that genuinely needs the env
-    var. The resolved id is cached process-wide; env always takes precedence, so
-    setting the var later overrides the fallback without a restart-order trap.
+    When multiple organizations exist in the DB and neither an explicit org_id
+    nor ``LEDGER_DEFAULT_ORG_ID`` is configured, refuses to guess (503).
     """
+    if explicit_org_id is not None:
+        return explicit_org_id
+
     env = _env_org_id()
     if env is not None:
         return env
@@ -102,37 +115,57 @@ async def _resolve_org_id(session: AsyncSession) -> uuid.UUID:
         _FALLBACK_ORG_ID = ids[0]
         logger.warning(
             "LEDGER_DEFAULT_ORG_ID unset; falling back to the sole ledger org %s. "
-            "Set the env var to make this explicit.",
+            "Set the env var or pass %s to make tenant selection explicit.",
             _FALLBACK_ORG_ID,
+            ORG_ID_HEADER,
         )
         return _FALLBACK_ORG_ID
 
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail=(
-            "Ledger organization not configured: LEDGER_DEFAULT_ORG_ID unset and "
-            f"the DB has {len(ids)} orgs (need exactly 1 to auto-resolve)."
+            "Ledger organization not configured: pass X-Ledger-Org-Id or set "
+            f"LEDGER_DEFAULT_ORG_ID (DB has {len(ids)} orgs; auto-resolve requires 1)."
         ),
+    )
+
+
+async def set_org_rls_context(session: AsyncSession, org_id: uuid.UUID) -> None:
+    """Bind transaction-scoped ``app.current_org_id`` GUC for Postgres RLS."""
+    await session.execute(
+        text("SELECT set_config('app.current_org_id', :org, true)"),
+        {"org": str(org_id)},
     )
 
 
 async def get_ledger_db(
     request: Request,
-    session: AsyncSession = Depends(get_async_db),
+    session: AsyncSession = Depends(get_ledger_raw_db),
 ) -> AsyncGenerator[AsyncSession, None]:
-    """Yield a DB session with the org RLS context set for this request.
+    """Yield a DB session scoped to the resolved tenant organization.
 
-    Sets ``app.current_org_id`` transaction-scoped via ``set_config(..., true)``
-    (the function form — ``SET LOCAL x = :v`` cannot bind a parameter). This must
-    be the session's first statement so it shares the transaction with the
-    request's subsequent queries; the GUC is reset on COMMIT, which is correct
-    for the single-transaction-per-request shape used here.
+    When the caller supplies ``X-Ledger-Org-Id``, verifies the organization
+    exists and is ``ACTIVE`` before yielding the session.
     """
-    org_id = await _resolve_org_id(session)
-    await session.execute(
-        text("SELECT set_config('app.current_org_id', :org, true)"),
-        {"org": str(org_id)},
-    )
+    header_org_id = parse_header_org_id(request)
+    org_id = await _resolve_org_id(session, explicit_org_id=header_org_id)
+    await set_org_rls_context(session, org_id)
+
+    if header_org_id is not None:
+        org = await session.scalar(
+            select(Organization).where(Organization.id == org_id)
+        )
+        if org is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Ledger organization not found.",
+            )
+        if org.status != OrgStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Ledger organization is {org.status.value}.",
+            )
+
     request.state.org_id = org_id
     yield session
 
@@ -141,10 +174,9 @@ def require_ledger_role(minimum: LedgerRole):
     """Dependency factory — require an active LedgerUser with at least `minimum`.
 
     Matches the authenticated user to a finance-team member in the request's org
-    by auth_id or email. Hierarchy: owner ⊇ admin ⊇ accountant ⊇ viewer. A login
-    with no active ledger_users row gets 403 — being a SwimBuddz admin does not
-    imply finance access. Service-role emitters use require_service_role and
-    never hit this.
+    by auth_id or email. Hierarchy: owner ⊇ admin ⊇ accountant ⊇ operations ⊇ viewer.
+    A login with no active ledger_users row in the resolved org gets 403 — being
+    a platform admin never implies finance access in any org.
     """
     min_rank = LEDGER_ROLE_RANK[minimum]
 

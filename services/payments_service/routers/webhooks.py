@@ -54,6 +54,18 @@ async def paystack_webhook(
     payload = json.loads(raw.decode("utf-8") or "{}")
     event = payload.get("event")
     data = payload.get("data") or {}
+
+    # Paystack refund.* webhooks identify transactions by data.id and
+    # data.transaction_reference (not data.reference), so handle them before the
+    # Payment.reference lookup below (ADR-024).
+    if isinstance(event, str) and event.startswith("refund."):
+        from services.payments_service.services.refund_service import (
+            apply_paystack_refund_event,
+        )
+
+        await apply_paystack_refund_event(db, event=event, data=data)
+        return {"received": True}
+
     reference = data.get("reference")
     if not reference:
         return {"received": True}

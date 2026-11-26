@@ -14,16 +14,41 @@ from .core import internal_get, internal_post
 
 
 async def get_member_by_auth_id(
-    auth_id: str, *, calling_service: str
+    auth_id: str, *, calling_service: str, include_photo: bool = True
 ) -> Optional[dict]:
     """Look up a member by their Supabase auth_id.
 
     Returns dict with {id, first_name, last_name, email} or None.
+    Pass ``include_photo=False`` for ID-only lookups so members_service
+    skips the extra media_service photo URL resolution hop.
+    """
+    settings = get_settings()
+    params = None if include_photo else {"include_photo": "false"}
+    resp = await internal_get(
+        service_url=settings.MEMBERS_SERVICE_URL,
+        path=f"/internal/members/by-auth/{auth_id}",
+        calling_service=calling_service,
+        params=params,
+    )
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def get_member_membership_by_auth_id(
+    auth_id: str, *, calling_service: str
+) -> Optional[dict]:
+    """Single-hop lookup of member_id + normalized membership by Supabase auth_id.
+
+    Returns dict with {member_id, primary_tier, active_tiers,
+    community_paid_until, club_paid_until, academy_paid_until, ...} or None.
+    Avoids both the media_service photo hop and the second members_service call.
     """
     settings = get_settings()
     resp = await internal_get(
         service_url=settings.MEMBERS_SERVICE_URL,
-        path=f"/internal/members/by-auth/{auth_id}",
+        path=f"/internal/members/by-auth/{auth_id}/membership",
         calling_service=calling_service,
     )
     if resp.status_code == 404:

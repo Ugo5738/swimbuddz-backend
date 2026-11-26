@@ -16,6 +16,9 @@ from services.academy_service.routers.curriculum import router as curriculum_rou
 from services.academy_service.routers.curriculum_library import (
     router as curriculum_library_router,
 )
+from services.academy_service.routers.drill_assignments import (
+    router as drill_assignments_router,
+)
 from services.academy_service.routers.enrollments import router as enrollments_router
 from services.academy_service.routers.evidence import router as evidence_router
 from services.academy_service.routers.extensions import router as extensions_router
@@ -47,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(progress_router, prefix="/academy")
     app.include_router(evidence_router, prefix="/academy")
     app.include_router(competencies_router, prefix="/academy")
+    app.include_router(drill_assignments_router, prefix="/academy")
     app.include_router(coach_dashboard_router, prefix="/academy")
     app.include_router(scoring_router, prefix="/academy")
     app.include_router(reports_router, prefix="/academy")

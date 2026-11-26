@@ -22,7 +22,7 @@ from libs.common.logging import get_logger
 from libs.common.service_client import (
     cancel_opportunities_for_context,
     get_event_session_contract,
-    get_member_by_auth_id,
+    get_member_membership_by_auth_id,
     internal_post,
 )
 from libs.common.session_access import denial_message
@@ -62,7 +62,6 @@ from services.sessions_service.services.pricing import (
 from services.sessions_service.services.session_access import (
     evaluate_session_access_for_member,
     evaluate_session_access_from_context,
-    get_member_session_access_payload,
     get_sessions_access_context,
 )
 
@@ -102,13 +101,13 @@ async def _access_member_payload_for_user(
         return None
 
     try:
-        member = await get_member_by_auth_id(
+        membership = await get_member_membership_by_auth_id(
             current_user.user_id,
             calling_service="sessions",
         )
     except httpx.HTTPError as exc:
         logger.warning(
-            "Could not resolve member for session access user=%s: %s",
+            "Could not resolve member access payload for user=%s: %s",
             current_user.user_id,
             exc,
         )
@@ -117,14 +116,14 @@ async def _access_member_payload_for_user(
             detail="Could not verify your session access. Please try again.",
         )
 
-    if not member or not member.get("id"):
+    if not membership or not membership.get("member_id"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Complete your member profile before accessing sessions.",
         )
 
     try:
-        member_id = uuid.UUID(str(member["id"]))
+        member_id = uuid.UUID(str(membership["member_id"]))
     except ValueError:
         logger.error(
             "Members service returned invalid member id for user=%s",
@@ -135,10 +134,11 @@ async def _access_member_payload_for_user(
             detail="Could not verify your session access. Please try again.",
         )
 
-    return await get_member_session_access_payload(
-        member_id=member_id,
-        calling_service="sessions",
-    )
+    return {
+        "id": str(member_id),
+        "member_id": str(member_id),
+        **membership,
+    }
 
 
 async def _decorate_sessions_for_user(

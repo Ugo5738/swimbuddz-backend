@@ -99,15 +99,28 @@ class AIProviderResponse:
         self.trace_id = trace_id
 
     def parse_json(self) -> dict:
-        """Parse the content as JSON. Handles markdown code blocks."""
+        """Parse the content as JSON.
+
+        Handles markdown code fences and recovers cleanly when thinking models
+        emit short prose before or after a single top-level JSON object.
+        """
         text = self.content.strip()
         # Strip markdown code fences if present
         if text.startswith("```"):
             lines = text.split("\n")
-            # Remove first and last lines (``` markers)
             lines = [line for line in lines if not line.strip().startswith("```")]
             text = "\n".join(lines).strip()
-        return json.loads(text)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            # Extract the first balanced JSON object when prose wraps valid JSON.
+            start = text.find("{")
+            if start != -1:
+                decoder = json.JSONDecoder()
+                obj, _ = decoder.raw_decode(text[start:])
+                if isinstance(obj, dict):
+                    return obj
+            raise
 
 
 class AIImageProviderResponse:
@@ -290,13 +303,76 @@ async def call_image_generation(
         raise
 
 
+# Conservative fallback token rates (USD per 1M input / output tokens) used ONLY
+# when LiteLLM's bundled pricing table does not recognize a newer model ID and
+# returns 0.0. Anchored on standard post-promo (Jan 2027) list rates so cost
+# circuit breakers and spend dashboards never go blind on newly released models.
+_FALLBACK_MODEL_RATES_USD_PER_1M: tuple[tuple[str, tuple[float, float]], ...] = (
+    ("gemini-3.8-flash", (1.50, 7.50)),
+    ("gemini-3.6-flash", (1.50, 7.50)),
+    ("gemini-3.5-flash-lite", (0.30, 2.50)),
+    ("gemini-3.5-flash", (1.50, 9.00)),
+    ("gemini-3.1-flash-lite", (0.30, 2.50)),
+    ("gemini-3-flash", (0.75, 3.75)),
+    ("gemini-3-pro", (2.50, 15.00)),
+    ("gemini-2.5-flash-lite", (0.15, 0.60)),
+    ("gemini-2.5-flash", (0.30, 2.50)),
+    ("gpt-5.6", (4.00, 20.00)),
+    ("gpt-5.4-nano", (0.20, 1.25)),
+    ("gpt-5.4-mini", (0.75, 4.50)),
+    ("gpt-5.4", (2.50, 15.00)),
+    ("gpt-5-nano", (0.15, 0.60)),
+    ("gpt-5-mini", (0.50, 2.00)),
+    ("o4-mini", (1.10, 4.40)),
+    ("gpt-4o-mini", (0.15, 0.60)),
+    ("gpt-4o", (2.50, 10.00)),
+    ("qwen3-vl", (0.40, 1.20)),
+    ("qwen2.5-vl", (0.30, 0.90)),
+)
+_DEFAULT_UNKNOWN_RATES_USD_PER_1M = (1.50, 7.50)
+
+_VALID_VIDEO_DETAILS = {"low", "medium", "high", "ultra_high"}
+_GEMINI_THINKING_MIN_JSON_MAX_TOKENS = 4096
+
+
+def estimate_model_cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Estimate USD cost from conservative standard token rates.
+
+    Used as a safety net when LiteLLM lacks a pricing entry for a newer model
+    so per-attempt and daily AI cost circuit breakers remain active.
+    """
+    if input_tokens <= 0 and output_tokens <= 0:
+        return 0.0
+    low = (model or "").lower()
+    in_rate, out_rate = _DEFAULT_UNKNOWN_RATES_USD_PER_1M
+    for needle, rates in _FALLBACK_MODEL_RATES_USD_PER_1M:
+        if needle in low:
+            in_rate, out_rate = rates
+            break
+    return round(
+        (max(0, input_tokens) * in_rate + max(0, output_tokens) * out_rate)
+        / 1_000_000.0,
+        8,
+    )
+
+
+def _is_gemini_3_or_newer(model: str) -> bool:
+    return "gemini-3" in (model or "").lower()
+
+
+def _is_gemini_thinking_model(model: str) -> bool:
+    low = (model or "").lower()
+    return "gemini-3" in low or "gemini-2.5" in low
+
+
 def _provider_from_model(model: str) -> str:
     """Best-effort provider label from a LiteLLM model string."""
-    if "gpt" in model or "o1" in model or "o3" in model or "dall-e" in model:
+    low = (model or "").lower()
+    if any(tok in low for tok in ("gpt", "o1", "o3", "o4", "dall-e")):
         return "openai"
-    if "claude" in model:
+    if "claude" in low:
         return "anthropic"
-    if "gemini" in model:
+    if "gemini" in low:
         return "google"
     if "/" in model:
         return model.split("/", 1)[0]
@@ -333,6 +409,9 @@ async def call_vlm(
     trace_name: Optional[str] = None,
     video: Optional[bytes] = None,
     video_mime: str = "video/mp4",
+    video_fps: Optional[float] = None,
+    video_detail: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> AIProviderResponse:
     """Vision (multimodal) sibling of :func:`call_llm`.
 
@@ -342,7 +421,8 @@ async def call_vlm(
     open-weights endpoint (``ollama/...``, ``openrouter/...``). The engine stays
     provider-agnostic: only the model string changes when we move from a hosted
     Tier-A model to an open-source Tier-B/C one. ``cost_usd`` is populated from
-    LiteLLM's own pricing tables so callers get a real per-call cost.
+    LiteLLM's pricing tables with a conservative fallback rate table for newer
+    models so cost circuit breakers never go blind.
     """
     import base64
 
@@ -374,15 +454,28 @@ async def call_vlm(
             }
         )
     # Video input (Gemini): a base64 data-URI "file" block. LiteLLM maps file_data
-    # to Gemini's inline_data (mime + bytes). Inline only — the caller size-guards;
-    # larger clips fall back to stills (a Gemini File-API upload is the follow-up).
+    # to Gemini's inline_data (mime + bytes), and on Gemini 3+ forwards
+    # video_metadata.fps + per-part media_resolution (detail) so short stroke
+    # chunks are sampled densely instead of defaulting to 1 FPS.
     if video is not None:
         vb64 = base64.b64encode(video).decode("ascii")
-        content.append(
-            {
-                "type": "file",
-                "file": {"file_data": f"data:{video_mime};base64,{vb64}"},
-            }
+        file_payload: dict = {
+            "file_data": f"data:{video_mime};base64,{vb64}",
+            "format": video_mime,
+        }
+        if _is_gemini_3_or_newer(model):
+            if video_fps is not None and video_fps > 0:
+                file_payload["video_metadata"] = {"fps": float(video_fps)}
+            if video_detail and video_detail in _VALID_VIDEO_DETAILS:
+                file_payload["detail"] = video_detail
+        content.append({"type": "file", "file": file_payload})
+
+    effective_max_tokens = max_tokens
+    # Gemini 2.5 / 3.x thinking tokens count against maxOutputTokens; ensure
+    # structured JSON calls always have enough headroom to avoid truncated JSON.
+    if response_format and _is_gemini_thinking_model(model):
+        effective_max_tokens = max(
+            effective_max_tokens, _GEMINI_THINKING_MIN_JSON_MAX_TOKENS
         )
 
     messages = [
@@ -393,11 +486,13 @@ async def call_vlm(
         "model": model,
         "messages": messages,
         "temperature": temperature,
-        "max_tokens": max_tokens,
+        "max_tokens": effective_max_tokens,
         # LiteLLM retries RateLimitError/timeout with exponential backoff and
         # honours Retry-After — essential on low TPM caps (OpenAI gpt-4o = 30k).
         "num_retries": num_retries,
     }
+    if reasoning_effort and _is_gemini_thinking_model(model):
+        kwargs["reasoning_effort"] = reasoning_effort
     # Pass the provider key explicitly (overrides env) so a swap is just config —
     # no need to also juggle which *_API_KEY env var LiteLLM picks up.
     _key = {"google": settings.GEMINI_API_KEY, "openai": settings.OPENAI_API_KEY}.get(
@@ -500,13 +595,17 @@ async def call_vlm(
     elapsed_ms = int((time.monotonic() - start) * 1000)
     text = response.choices[0].message.content or ""
     usage = response.usage
+    input_tokens = usage.prompt_tokens if usage else 0
+    output_tokens = usage.completion_tokens if usage else 0
     try:
         cost = float(litellm.completion_cost(completion_response=response) or 0.0)
     except Exception:
         cost = 0.0
+    cost_estimated = False
+    if cost <= 0.0 and (input_tokens > 0 or output_tokens > 0):
+        cost = estimate_model_cost_usd(model, input_tokens, output_tokens)
+        cost_estimated = cost > 0.0
 
-    input_tokens = usage.prompt_tokens if usage else 0
-    output_tokens = usage.completion_tokens if usage else 0
     _record_vlm_event(
         {
             "kind": "success",
@@ -517,6 +616,7 @@ async def call_vlm(
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
             "cost_usd": cost,
+            "cost_estimated": cost_estimated,
             "latency_ms": elapsed_ms,
         }
     )

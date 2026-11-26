@@ -11,6 +11,10 @@ from services.store_service.models.catalog import (
     ProductVariant,
     ProductVideo,
 )
+from services.store_service.models.cases import (
+    StoreOrderCase,
+    StoreOrderCaseItem,
+)
 from services.store_service.models.commerce import (
     Cart,
     CartItem,
@@ -26,10 +30,16 @@ from services.store_service.models.enums import (
     CartStatus,
     FulfillmentType,
     InventoryMovementType,
+    OrderCaseResolution,
+    OrderCaseStatus,
+    OrderCaseType,
+    OrderFulfillmentStatus,
+    OrderPaymentStatus,
     OrderStatus,
     PayoutStatus,
     ProductStatus,
     ProductType,
+    ReturnInspectionCondition,
     SourcingType,
     StoreCreditSourceType,
     SupplierStatus,
@@ -52,7 +62,12 @@ __all__ = [
     "InventoryMovementType",
     "MemberRef",
     "Order",
+    "OrderCaseResolution",
+    "OrderCaseStatus",
+    "OrderCaseType",
+    "OrderFulfillmentStatus",
     "OrderItem",
+    "OrderPaymentStatus",
     "OrderStatus",
     "PayoutStatus",
     "PickupLocation",
@@ -62,11 +77,14 @@ __all__ = [
     "ProductType",
     "ProductVariant",
     "ProductVideo",
+    "ReturnInspectionCondition",
     "SourcingType",
     "StoreAuditLog",
     "StoreCredit",
     "StoreCreditSourceType",
     "StoreCreditTransaction",
+    "StoreOrderCase",
+    "StoreOrderCaseItem",
     "Supplier",
     "SupplierPayout",
     "SupplierStatus",
@@ -79,7 +97,9 @@ __all__ = [
     "StorePurchaseOrder",
     "StorePurchaseOrderLine",
     "StoreSupplierInvoice",
+    "StoreSupplierInvoiceSettlement",
     "StoreTradeReceivable",
+    "StoreTradeReceivablePayment",
 ]
 
 from services.store_service.models.procurement import (
@@ -92,5 +112,7 @@ from services.store_service.models.procurement import (
     StorePurchaseOrder,
     StorePurchaseOrderLine,
     StoreSupplierInvoice,
+    StoreSupplierInvoiceSettlement,
     StoreTradeReceivable,
+    StoreTradeReceivablePayment,
 )

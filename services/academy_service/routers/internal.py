@@ -979,3 +979,166 @@ async def member_academy_financial_obligations(
         }
         for enrollment in enrollments
     ]
+
+
+@router.get("/competencies/members/{member_auth_id}/club-readiness-advisory")
+async def internal_member_club_readiness_advisory(
+    member_auth_id: str,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Service-role read-only Club-readiness advisory from V2 competency passport.
+
+    Strictly advisory evidence (ADR-005 / ADR-010); never auto-approves Club admission.
+    """
+    from services.academy_service.services.parity import (
+        compute_club_readiness_advisory,
+    )
+
+    return await compute_club_readiness_advisory(db, member_auth_id)
+
+
+class InternalStrokeLabDrillPrescription(_BaseModel):
+    member_auth_id: str = _Field(min_length=1, max_length=160)
+    member_id: uuid.UUID | None = None
+    academy_ref: str = _Field(min_length=5, max_length=120)
+    strokelab_job_id: str | None = _Field(default=None, max_length=120)
+    focal_cue_note: str | None = _Field(default=None, max_length=1000)
+    sets: int = _Field(default=3, ge=1, le=20)
+
+
+@router.post(
+    "/competencies/drills/prescribe-from-strokelab",
+    status_code=201,
+)
+async def internal_prescribe_strokelab_drill(
+    payload: InternalStrokeLabDrillPrescription,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Service-role advisory hook linking a Stroke Lab TI drill to Academy V2 drills.
+
+    Deterministic curated mapping only; never issues practical competency credentials
+    (ADR-010 / ADR-013).
+    """
+    from services.academy_service.routers.drill_assignments import (
+        prescribe_strokelab_drill_for_member,
+    )
+
+    return await prescribe_strokelab_drill_for_member(
+        db,
+        member_auth_id=payload.member_auth_id,
+        member_id=payload.member_id,
+        academy_ref=payload.academy_ref,
+        strokelab_job_id=payload.strokelab_job_id,
+        focal_cue_note=payload.focal_cue_note,
+        sets=payload.sets,
+    )
+
+
+@router.get("/finance-summary", dependencies=[Depends(require_service_role)])
+async def academy_finance_summary(db: AsyncSession = Depends(get_async_db)):
+    """Service-owned Academy operational finance summary for gateway aggregation.
+
+    Fixes two reporting defects from the superseded raw-SQL projection:
+      1. ``pending_or_missed_installments_minor`` joins ``enrollments`` and
+         restricts to active/recoverable statuses (``enrolled``,
+         ``dropout_pending``) so dropped learners never inflate receivables.
+      2. ``dropout_pending_enrollments`` is surfaced explicitly alongside
+         ``active_enrollments`` (per ADR-007).
+    """
+    from services.academy_service.models.class_entitlement import (
+        AcademyClassAllocation,
+        AcademyClassPlan,
+    )
+    from services.academy_service.models.enrollment import EnrollmentInstallment
+
+    active = int(
+        await db.scalar(
+            select(func.count(Enrollment.id)).where(
+                Enrollment.status == EnrollmentStatus.ENROLLED
+            )
+        )
+        or 0
+    )
+    dropout_pending = int(
+        await db.scalar(
+            select(func.count(Enrollment.id)).where(
+                Enrollment.status == EnrollmentStatus.DROPOUT_PENDING
+            )
+        )
+        or 0
+    )
+
+    prepaid_usage = (
+        select(
+            AcademyClassAllocation.enrollment_id.label("enrollment_id"),
+            func.count(AcademyClassAllocation.id).label("used"),
+        )
+        .where(
+            AcademyClassAllocation.status == "applied",
+            AcademyClassAllocation.kind == "prepaid",
+        )
+        .group_by(AcademyClassAllocation.enrollment_id)
+        .cte("prepaid_usage")
+    )
+    plan_count, remaining = (
+        await db.execute(
+            select(
+                func.count(AcademyClassPlan.id),
+                func.coalesce(
+                    func.sum(
+                        func.greatest(
+                            0,
+                            AcademyClassPlan.purchased_classes
+                            - AcademyClassPlan.opening_consumed
+                            - func.coalesce(prepaid_usage.c.used, 0),
+                        )
+                    ),
+                    0,
+                ),
+            )
+            .select_from(AcademyClassPlan)
+            .join(Enrollment, Enrollment.id == AcademyClassPlan.enrollment_id)
+            .outerjoin(
+                prepaid_usage,
+                prepaid_usage.c.enrollment_id == AcademyClassPlan.enrollment_id,
+            )
+            .where(
+                Enrollment.status.in_(
+                    [EnrollmentStatus.ENROLLED, EnrollmentStatus.DROPOUT_PENDING]
+                )
+            )
+        )
+    ).one()
+
+    installments_due_minor = int(
+        await db.scalar(
+            select(func.coalesce(func.sum(EnrollmentInstallment.amount), 0))
+            .select_from(EnrollmentInstallment)
+            .join(Enrollment, Enrollment.id == EnrollmentInstallment.enrollment_id)
+            .where(
+                Enrollment.status.in_(
+                    [EnrollmentStatus.ENROLLED, EnrollmentStatus.DROPOUT_PENDING]
+                ),
+                EnrollmentInstallment.status.in_(
+                    [InstallmentStatus.PENDING, InstallmentStatus.MISSED]
+                ),
+            )
+        )
+        or 0
+    )
+
+    active_total = active + dropout_pending
+    return {
+        "active_enrollments": active,
+        "dropout_pending_enrollments": dropout_pending,
+        "reviewed_class_plans": int(plan_count or 0),
+        "enrollments_without_class_plan": max(active_total - int(plan_count or 0), 0),
+        "remaining_prepaid_classes_with_reviewed_plans": int(remaining or 0),
+        "pending_or_missed_installments_minor": installments_due_minor,
+        "warning": (
+            "Remaining classes are obligations to deliver, not money owed. "
+            "Installments exclude dropped enrollments and include active + dropout-pending recoverable plans."
+        ),
+    }

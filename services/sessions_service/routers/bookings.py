@@ -103,7 +103,9 @@ async def _resolve_member_for_user(
     than just the Supabase auth_id. We look it up via the cross-service
     client so the booking row carries the right FK targets.
     """
-    member = await get_member_by_auth_id(user.user_id, calling_service="sessions")
+    member = await get_member_by_auth_id(
+        user.user_id, calling_service="sessions", include_photo=False
+    )
     if not member:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -807,6 +809,7 @@ async def confirm_booking(
     response_model=List[UnpaidBookingResponse],
 )
 async def list_my_unpaid_bookings(
+    session_id: Optional[uuid.UUID] = None,
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -823,6 +826,8 @@ async def list_my_unpaid_bookings(
     UI surfaces this list so the member can pay the pool fee after-the-fact
     via a generated Paystack link (POST /api/v1/payments/intents with
     purpose=session_booking, payment_metadata.booking_id=<this id>).
+    Pass ``?session_id=<uuid>`` to check a single session without scanning
+    every unpaid booking.
     """
     member_id, _ = await _resolve_member_for_user(current_user)
     query = (
@@ -845,8 +850,10 @@ async def list_my_unpaid_bookings(
             SessionBooking.payment_intent_id.is_(None),
             SessionBooking.wallet_transaction_id.is_(None),
         )
-        .order_by(SessionBooking.booked_at.desc())
     )
+    if session_id is not None:
+        query = query.where(SessionBooking.session_id == session_id)
+    query = query.order_by(SessionBooking.booked_at.desc())
     rows = (await db.execute(query)).mappings().all()
     # Mappings → UnpaidBookingResponse via Pydantic (from_attributes works on
     # dict-like rows too).
@@ -1736,6 +1743,7 @@ async def set_running_late(
 )
 async def list_my_bookings(
     status_filter: Optional[SessionBookingStatus] = None,
+    session_id: Optional[uuid.UUID] = None,
     current_user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
 ):
@@ -1747,7 +1755,7 @@ async def list_my_bookings(
     intent-only, so a confirmed booking never produces an AttendanceRecord
     until day-of sign-in — the Booked tab must read bookings directly,
     not attendance. Pass ``?status_filter=cancelled`` (etc.) to narrow to
-    a single state.
+    a single state, or ``?session_id=<uuid>`` for a single-session lookup.
 
     Registered before the admin ``/sessions/{session_id}/bookings`` route
     so the literal ``bookings/me`` path is matched first.
@@ -1755,6 +1763,8 @@ async def list_my_bookings(
     member_id, _auth_id = await _resolve_member_for_user(current_user)
 
     query = select(SessionBooking).where(SessionBooking.member_id == member_id)
+    if session_id is not None:
+        query = query.where(SessionBooking.session_id == session_id)
     if status_filter is not None:
         query = query.where(SessionBooking.status == status_filter)
     else:

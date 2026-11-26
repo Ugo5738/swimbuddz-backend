@@ -21,9 +21,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 _TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "coa_templates"
 
 
+_EXTRA_METADATA_KEYS = (
+    "maps_to",
+    "is_bank_account",
+    "cash_kind",
+    "system_managed",
+    "recognition_target_ref",
+    "default_recognition_days",
+)
+
+
+def list_coa_templates() -> list[str]:
+    """Return all available vertical CoA template names."""
+    return sorted(p.stem for p in _TEMPLATE_DIR.glob("*.yaml"))
+
+
 def load_coa_template(vertical: str = "sports_club") -> list[dict]:
     """Load the account list from coa_templates/<vertical>.yaml."""
+    if not vertical or "/" in vertical or "\\" in vertical or ".." in vertical:
+        raise ValueError(f"Invalid CoA template name: {vertical!r}")
     path = _TEMPLATE_DIR / f"{vertical}.yaml"
+    if not path.is_file():
+        raise ValueError(
+            f"Unknown CoA template {vertical!r}; available: {list_coa_templates()}"
+        )
     with path.open() as fh:
         data = yaml.safe_load(fh)
     accounts = data.get("accounts")
@@ -57,6 +78,9 @@ async def seed_chart_of_accounts(
     for acct in template:
         if acct["code"] in existing_codes:
             continue
+        meta = {
+            key: acct[key] for key in _EXTRA_METADATA_KEYS if acct.get(key) is not None
+        }
         session.add(
             ChartOfAccounts(
                 org_id=org_id,
@@ -66,9 +90,7 @@ async def seed_chart_of_accounts(
                 normal_balance=NormalBalance(acct["normal_balance"]),
                 is_active=acct.get("is_active", True),
                 is_system=acct.get("is_system", True),
-                account_metadata=(
-                    {"maps_to": acct["maps_to"]} if acct.get("maps_to") else None
-                ),
+                account_metadata=meta or None,
             )
         )
         created += 1

@@ -32,10 +32,14 @@ from services.store_service.models import (
     ProductVariant,
 )
 from services.store_service.models.procurement import (
-    StoreInventoryValuation,
     StoreCostEvent,
+    StoreInventoryValuation,
+    StoreTradeReceivable,
 )
 from services.store_service.services.inventory_costing import consumption_cost_minor
+from services.store_service.services.ledger_sync import post_order_cogs_journal
+from services.store_service.services.order_lifecycle import restore_order_store_credits
+from services.store_service.services.order_policy import sync_order_status_dimensions
 from services.store_service.routers._helpers import log_audit
 
 logger = get_logger(__name__)
@@ -101,11 +105,13 @@ async def _consume_fulfilled_order_stock(
     db: AsyncSession,
     order: Order,
     performed_by: str,
-) -> None:
+) -> int:
     """Decrement reserved/on-hand stock ONCE when a verified order is fulfilled.
 
-    An unvalued legacy SKU may still be fulfilled to preserve operations; its
-    missing COGS is flagged in Finance rather than guessed from retail price.
+    Valued SKUs consume moving weighted-average cost and return the total COGS
+    (in kobo) to post to Ledger. Unvalued legacy SKUs remain fulfillable
+    operationally per ADR-023 and record explicit ``sale_unvalued`` cost events
+    so Finance sees missing COGS rather than fabricating ₦0 cost.
     """
     lines = (
         await db.scalars(
@@ -114,6 +120,7 @@ async def _consume_fulfilled_order_stock(
             )
         )
     ).all()
+    total_cogs_minor = 0
     for line in lines:
         inventory = await db.scalar(
             select(InventoryItem)
@@ -155,6 +162,7 @@ async def _consume_fulfilled_order_stock(
             )
             value.quantity -= line.quantity
             value.total_cost_minor -= consumed_cost
+            total_cogs_minor += consumed_cost
             db.add(
                 StoreCostEvent(
                     variant_id=line.variant_id,
@@ -162,6 +170,18 @@ async def _consume_fulfilled_order_stock(
                     quantity_delta=-line.quantity,
                     cost_delta_minor=-consumed_cost,
                     reference=f"sale:{line.id}",
+                    evidence=f"fulfilled-order:{order.id}",
+                    actor_auth_id=performed_by,
+                )
+            )
+        else:
+            db.add(
+                StoreCostEvent(
+                    variant_id=line.variant_id,
+                    event_kind="sale_unvalued",
+                    quantity_delta=-line.quantity,
+                    cost_delta_minor=0,
+                    reference=f"sale-unvalued:{line.id}",
                     evidence=f"fulfilled-order:{order.id}",
                     actor_auth_id=performed_by,
                 )
@@ -175,10 +195,11 @@ async def _consume_fulfilled_order_stock(
                 quantity=-line.quantity,
                 reference_type="order",
                 reference_id=order.id,
-                notes="Fulfilled paid order",
+                notes="Fulfilled order",
                 performed_by=performed_by,
             )
         )
+    return total_cogs_minor
 
 
 async def _apply_order_status_change(
@@ -190,8 +211,8 @@ async def _apply_order_status_change(
 ) -> None:
     """Apply a status change to an already-loaded order, including all side effects."""
     old_status = order.status
-    # Financial settlement is owned by payments_service; the admin's
-    # operational status dropdown must not become an unaudited payment proof.
+    # Financial settlement is owned by payments_service (or verified credit settlement);
+    # the admin's operational status dropdown must never become an unaudited payment proof.
     if new_status == OrderStatus.PAID and old_status != OrderStatus.PAID:
         raise HTTPException(
             status_code=409,
@@ -206,31 +227,75 @@ async def _apply_order_status_change(
         OrderStatus.DELIVERED,
     }
     if old_status in unpaid_statuses and new_status in fulfillment_statuses:
+        approved_credit = None
+        if hasattr(db, "scalar") and getattr(order, "id", None) is not None:
+            approved_credit = await db.scalar(
+                select(StoreTradeReceivable.id).where(
+                    StoreTradeReceivable.order_id == order.id,
+                    StoreTradeReceivable.status.in_(("approved", "settled")),
+                )
+            )
+        if approved_credit is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Order must have a verified payment or independently approved credit before fulfillment",
+            )
+    # Paid orders must NOT be silently cancelled through the raw status dropdown
+    # without creating a refund obligation (ADR-024).
+    paid_statuses = {
+        OrderStatus.PAID,
+        OrderStatus.PROCESSING,
+        OrderStatus.READY_FOR_PICKUP,
+        OrderStatus.PICKED_UP,
+        OrderStatus.SHIPPED,
+        OrderStatus.DELIVERED,
+    }
+    if old_status in paid_statuses and new_status == OrderStatus.CANCELLED:
         raise HTTPException(
             status_code=409,
-            detail="Order must have a verified payment before fulfillment",
+            detail=(
+                "Paid orders cannot be cancelled through the raw status selector. "
+                "Use 'Cancel & Issue Refund' or approve a cancellation case so funds and tenders are refunded."
+            ),
         )
     # Physical departure is separate from payment verification. Consume once,
     # not on PAID or READY status. The order row is locked by the caller.
+    fulfilled_cogs_minor = 0
     if new_status in {
         OrderStatus.PICKED_UP,
         OrderStatus.DELIVERED,
     } and old_status not in {OrderStatus.PICKED_UP, OrderStatus.DELIVERED}:
-        await _consume_fulfilled_order_stock(db, order, current_user.user_id)
-    order.status = new_status
+        fulfilled_cogs_minor = await _consume_fulfilled_order_stock(
+            db, order, current_user.user_id
+        )
+    sync_order_status_dimensions(order, legacy_status=new_status)
 
     if admin_notes:
         order.admin_notes = admin_notes
 
     # Set timestamps based on status
+    now = datetime.utcnow()
+    if new_status == OrderStatus.SHIPPED and not getattr(order, "shipped_at", None):
+        order.shipped_at = now
+    if new_status == OrderStatus.DELIVERED and not getattr(order, "delivered_at", None):
+        order.delivered_at = now
     if new_status in [OrderStatus.PICKED_UP, OrderStatus.DELIVERED]:
-        order.fulfilled_at = datetime.utcnow()
+        order.fulfilled_at = now
     elif new_status in (OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED):
         if new_status == OrderStatus.CANCELLED:
-            order.cancelled_at = datetime.utcnow()
+            order.cancelled_at = now
 
         # Release inventory reservations for each order item
         await _release_order_inventory(db, order, current_user.user_id)
+
+        # Restore any applied Store Credit idempotently (fixes legacy silent credit loss)
+        if getattr(order, "store_credit_applied_ngn", 0):
+            await restore_order_store_credits(
+                db,
+                order,
+                current_user.user_id,
+                reason=f"Restored for {new_status.value} order {order.order_number}",
+            )
 
         # A pending hold is released. Only captured Bubbles are refunded.
         if order.wallet_hold_id and not order.wallet_transaction_id:
@@ -274,6 +339,14 @@ async def _apply_order_status_change(
 
     await db.commit()
     await db.refresh(order)
+
+    if fulfilled_cogs_minor > 0:
+        await post_order_cogs_journal(
+            order_id=order.id,
+            order_number=order.order_number,
+            entry_date=(order.fulfilled_at or datetime.utcnow()).date(),
+            total_cogs_minor=fulfilled_cogs_minor,
+        )
 
     # Send notification to customer for ready/shipped status changes via centralized email
     if new_status in [OrderStatus.READY_FOR_PICKUP, OrderStatus.SHIPPED]:

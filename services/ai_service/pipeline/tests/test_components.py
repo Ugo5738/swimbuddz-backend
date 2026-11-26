@@ -183,7 +183,7 @@ def test_chunk_coach_uses_larger_token_budget_and_emits_diagnostics():
 
     res = asyncio.run(ChunkCoachComponent(coach_fn=fake_coach).run(ctx))
 
-    assert seen["max_tokens"] == 1600
+    assert seen["max_tokens"] == 4096
     assert len(res.findings) == 2
     assert {f.area for f in res.findings} == {"recovery_elbow", "entry_reach"}
     assert any(
@@ -331,7 +331,7 @@ def test_aggregator_uses_larger_token_budget_and_emits_diagnostics(monkeypatch):
 
     res = asyncio.run(AggregatorComponent().run(ctx))
 
-    assert seen["max_tokens"] == 1600
+    assert seen["max_tokens"] == 4096
     assert res.error is None
     assert res.cost_usd == 0.02
     assert len(res.findings) == 1

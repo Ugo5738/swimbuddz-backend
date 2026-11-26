@@ -22,8 +22,11 @@ from services.payments_service.models.enums import (
     MakeupReason,
     MakeupStatus,
     RecurringPayoutStatus,
+    RefundMethod,
+    RefundStatus,
 )
 from services.payments_service.models.ledger_failure import LedgerPostFailure
+from services.payments_service.models.refund import Refund
 from services.payments_service.models.settlement import PaystackSettlement
 
 __all__ = [
@@ -46,4 +49,7 @@ __all__ = [
     "PayoutStatus",
     "RecurringPayoutConfig",
     "RecurringPayoutStatus",
+    "Refund",
+    "RefundMethod",
+    "RefundStatus",
 ]

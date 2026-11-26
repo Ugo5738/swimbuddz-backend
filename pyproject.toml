@@ -71,6 +71,14 @@ strokelab = [
     "opencv-python-headless>=4.10,<5.0",
     "ffmpeg-python>=0.2,<0.3",
 ]
+# Permissively licensed (Apache-2.0) Stroke Lab pose alternative: replaces AGPL
+# ultralytics + PyTorch with lightweight ONNX Runtime + RTMPose (rtmlib).
+strokelab-apache = [
+    "rtmlib>=0.0.13,<1.0",
+    "onnxruntime>=1.19,<2.0",
+    "opencv-python-headless>=4.10,<5.0",
+    "ffmpeg-python>=0.2,<0.3",
+]
 
 [tool.setuptools.packages.find]
 include = ["libs*", "services*", "mcp*", "alembic*"]
