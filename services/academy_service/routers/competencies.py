@@ -52,6 +52,7 @@ from services.academy_service.services.parity import (
     STATUS_PRIORITY,
     compute_club_readiness_advisory,
     compute_cohort_graduation_parity,
+    get_graduation_mode_summary,
     latest_decisions_batch as _latest_decisions_batch,
     project_verifications as _project_verifications,
     view_verification as _view_verification,
@@ -1149,6 +1150,14 @@ async def my_competency_passport(
     if current_user.role == "service_role":
         raise HTTPException(status_code=403, detail="Member identity required")
     return await _passport(db, str(current_user.user_id))
+
+
+@router.get("/admin/graduation-mode")
+async def get_admin_graduation_mode(
+    current_user: AuthUser = Depends(require_admin),
+):
+    """Read-only Phase 5B status showing the active ACADEMY_V2_GRADUATION_MODE flag."""
+    return get_graduation_mode_summary()
 
 
 @router.get("/admin/cohorts/{cohort_id}/graduation-parity")

@@ -196,7 +196,7 @@
 ---
 
 ## ADR-010: Modular Academy Curriculum, Versioned Catalog & Evidence-Backed Competency Passport (V2)
-- **Status:** Settled & Enforced — V2 Implementation Contract Accepted (Nov 2026; PRs `#424`, `#442`, `#445`, `#446`, `#461`, `#463`, `#217`, `#220`, `#222`, `#234`, `#236`, plus Phase 5A Dual-Read Graduation Parity & Club-Readiness Advisory Bridge). Supersedes the V1 schema/auto-backfill clauses of `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` while preserving its pedagogical pathway taxonomy and TI coaching goals.
+- **Status:** Settled & Enforced — V2 Implementation Contract Accepted (Nov 2026; PRs `#424`, `#442`, `#445`, `#446`, `#461`, `#463`, `#467`, `#217`, `#220`, `#222`, `#234`, `#236`, `#240`, plus Phase 5B Default-OFF Feature-Flagged Graduation Consumer & Stroke Lab TI Drill Bridge). Supersedes the V1 schema/auto-backfill clauses of `ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` while preserving its pedagogical pathway taxonomy and TI coaching goals.
 - **Context & Why:**
   - Selling only a monolithic 12-week Beginner-to-50m course forced swimmers with partial skills to repeat basics and limited entry points to three intakes a year. Conversely, an unguided à-la-carte lesson menu causes choice overload and lets learners skip water safety.
   - The earlier V1 draft (`ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md`) proposed mutating legacy `milestones.program_id` to nullable, attaching mutable milestone rows via `program_milestones`/`cohort_milestones`, and auto-backfilling a mutable `learner_milestone_credits` table from historical `student_progress` rows. Review showed two fatal risks in V1: (1) editing a rubric later would silently alter historical cohort/graduate standards, and (2) auto-backfilling legacy `student_progress` rows of uneven rigor or missing video evidence would inflate trust in portable safety credentials.
@@ -229,10 +229,18 @@
   - **Phase 5A — Controlled Dual-Read Graduation Parity & Club-Readiness Advisory Bridge (Read-Only, Zero Side Effects):**
     - **Graduation Dual-Read Parity (`GET /academy/competencies/admin/cohorts/{cohort_id}/graduation-parity`):** Computes a batched, zero-N+1 shadow comparison for every enrolled/graduated learner in a cohort comparing legacy eligibility (all program `Milestone` rows achieved in `StudentProgress`, matching `tasks/reporting.py`) against fail-closed V2 eligibility (every required milestone and `safety_gate` in the cohort's SHA-256-verified frozen `AcademyCohortRequirementsSnapshot` satisfied by a live, non-expired, non-revoked verification in `academy_competency_verifications`, recognizing prior/diagnostic credit without altering class balances). Classifies each learner as `aligned_eligible`, `aligned_ineligible`, `legacy_only_eligible`, `v2_only_eligible`, `no_frozen_snapshot`, or `snapshot_integrity_error`. Purely read-only: **never mutates `Enrollment.status`, `certificate_issued_at`, `certificate_code`, or legacy graduation/reward jobs.**
     - **Club-Readiness Competency Advisory (`GET /academy/competencies/admin/members/{member_auth_id}/club-readiness-advisory` & internal `GET /internal/academy/competencies/members/{member_auth_id}/club-readiness-advisory`):** Surfaces a swimmer's live, non-expired, non-revoked V2 safety-gate credentials and core Club readiness checklist (`MS-S1-FREE-25M`, `MS-A1-TREAD-60S`, `MS-F3-BACK-FLOAT-30S`, `MS-F1-SAFE-ENTRY`) plus any expired/revoked/recheck safety alerts directly in `/admin/club-applications` alongside uploaded videos. Strictly **advisory evidence (`advisory_only: true`, `human_approval_required: true`)**: per `ADR-005`, Club checkout remains locked until a human reviewer explicitly approves the `ClubApplication` (`club_ready` / `club_ready_modified`), and first-session live verification rules remain intact.
-    - **Controlled Switchover Gate:** Legacy graduation, certificates, Club readiness (`ADR-005`), attendance (`ADR-004`), and commercial terms remain untouched until dual-read parity holds on production cohorts and an explicit owner decision authorizes switching consumers in Phase 5B.
+  - **Phase 5B — Feature-Flagged V2 Graduation Consumer & Stroke Lab TI Drill Bridge (Default-OFF Cutover Switch):**
+    - **Explicit Operator-Gated Switch (`ACADEMY_V2_GRADUATION_MODE`, default `"legacy"`):** Supports three modes exposed read-only via `GET /academy/competencies/admin/graduation-mode`:
+      - `"legacy"` *(default)*: Legacy milestone completion continues to govern certificate issuance (`tasks/reporting.py`) and PDF downloads (`routers/reports.py`) with zero behavior change.
+      - `"shadow_log"`: Legacy continues to govern certificates while the daily certificate job also evaluates `compute_cohort_graduation_parity` in best-effort shadow mode to emit non-PII discrepancy telemetry.
+      - `"v2_enforced"` *(explicit post-parity operator activation only)*: Both certificate issuance (`tasks/reporting.py`) and certificate PDF downloads (`routers/reports.py`) share a single authoritative evaluator (`evaluate_enrollment_certificate_eligibility`). For cohorts with a frozen `AcademyCohortRequirementsSnapshot`, eligibility fails closed on SHA-256 integrity error, requires live verified credentials for every required milestone and `safety_gate` (recognizing prior/diagnostic credit and revoking/suspending eligibility immediately on expiry or revocation), and requires passing all required cohort knowledge quizzes (`AcademyQuizAssignment.required = true`). Cohorts without a frozen snapshot safely preserve legacy milestone eligibility so historical cohorts never break.
+    - **Stroke Lab AI → Academy V2 TI Drill Prescription Bridge (`POST /academy/competencies/me/drills/from-strokelab` & internal `POST /internal/academy/competencies/drills/prescribe-from-strokelab`):** Deterministically maps the six vetted Stroke Lab `academy_ref` TI drill identifiers (`academy:ti:superman-glide`, `academy:ti:one-goggle-breathing`, `academy:ti:zen-skate`, `academy:ti:shark-fin-recovery`, `academy:ti:patient-lead-hand`, `academy:ti:mail-slot-entry`) to canonical published `AcademyDrillVersion` records (`DRL-F4-SUPERMAN-GLIDE`, `DRL-S1-ONE-GOGGLE-BREATH`, `DRL-S1-TI-SKATE`, `DRL-S1-SHARK-FIN-RECOVERY`, `DRL-S1-6-KICK-SWITCH`, `DRL-S1-MAIL-SLOT-ENTRY`) seeded in `scripts/seed/academy_curriculum_v2.py`. Creates idempotent `AcademyStudentDrillAssignment` rows with `assigned_by_role = "strokelab_ai"` linked to the member's active enrollment (when present) so both swimmer (`/account/academy/passport`) and assigned coach (`/coach/students/[enrollmentId]`) see the single TI focal cue—**never** accepting arbitrary free-text drills and **never** creating `academy_competency_verifications` rows (`ADR-013`).
+    - **Rollout Runbook:** Production rollout follows `docs/operations/ACADEMY_V2_ROLLOUT_AND_CUTOVER_RUNBOOK.md` (1. idempotent baseline seed → 2. freeze active cohort snapshots → 3. `shadow_log` until zero `legacy_only_eligible` regressions → 4. explicit owner sign-off to set `ACADEMY_V2_GRADUATION_MODE=v2_enforced`, with instant zero-migration rollback to `legacy`).
 - **Canonical Docs & Code:**
   - `docs/design/ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`
+  - `docs/operations/ACADEMY_V2_ROLLOUT_AND_CUTOVER_RUNBOOK.md`
   - `swimbuddz-backend/docs/design/ACADEMY_COMPETENCY_ARCHITECTURE_V2.md`
+  - `swimbuddz-backend/docs/operations/ACADEMY_V2_ROLLOUT_AND_CUTOVER_RUNBOOK.md`
   - `docs/design/ACADEMY_INDEPENDENT_CURRICULUM_AND_DRILLS_DESIGN.md` *(Superseded V1 reference — pedagogical taxonomy & seed catalogue)*
   - `docs/academy/MODULAR_CURRICULUM_PATHWAY.md`
   - `swimbuddz-backend/services/academy_service/models/curriculum_library.py`
@@ -242,12 +250,16 @@
   - `swimbuddz-backend/services/academy_service/routers/requirements.py`
   - `swimbuddz-backend/services/academy_service/routers/competencies.py`
   - `swimbuddz-backend/services/academy_service/routers/drill_assignments.py`
+  - `swimbuddz-backend/services/academy_service/routers/reports.py`
+  - `swimbuddz-backend/services/academy_service/tasks/reporting.py`
   - `swimbuddz-backend/services/academy_service/services/requirements_resolver.py`
   - `swimbuddz-backend/services/academy_service/services/parity.py`
+  - `swimbuddz-backend/scripts/seed/academy_curriculum_v2.py`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/curriculum-library/page.tsx`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/requirements/page.tsx`
   - `swimbuddz-frontend/src/app/(admin)/admin/academy/competencies/page.tsx`
   - `swimbuddz-frontend/src/app/(admin)/admin/club-applications/page.tsx`
+  - `swimbuddz-frontend/src/app/(member)/account/strokelab/[jobId]/_components/StrokeLabResultSections.tsx`
   - `swimbuddz-frontend/src/app/coach/students/[enrollmentId]/page.tsx`
   - `swimbuddz-frontend/src/app/(member)/account/academy/enrollments/[id]/page.tsx`
   - `swimbuddz-frontend/src/app/(member)/account/academy/passport/page.tsx`

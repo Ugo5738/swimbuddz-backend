@@ -22233,6 +22233,31 @@
         ]
       }
     },
+    "/api/v1/academy/competencies/admin/graduation-mode": {
+      "get": {
+        "tags": [
+          "academy-competency-passport"
+        ],
+        "summary": "Get Admin Graduation Mode",
+        "description": "Read-only Phase 5B status showing the active ACADEMY_V2_GRADUATION_MODE flag.",
+        "operationId": "get_admin_graduation_mode_academy_competencies_admin_graduation_mode_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/academy/competencies/admin/cohorts/{cohort_id}/graduation-parity": {
       "get": {
         "tags": [
@@ -22379,6 +22404,51 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/academy/competencies/me/drills/from-strokelab": {
+      "post": {
+        "tags": [
+          "academy-drill-prescriptions"
+        ],
+        "summary": "Save Strokelab Drill To My Plan",
+        "description": "Member saves a vetted Stroke Lab TI drill recommendation into their Academy drill list.",
+        "operationId": "save_strokelab_drill_to_my_plan_academy_competencies_me_drills_from_strokelab_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StrokeLabDrillInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/academy/competencies/drills/published": {
@@ -24917,6 +24987,51 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/internal/academy/competencies/drills/prescribe-from-strokelab": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Internal Prescribe Strokelab Drill",
+        "description": "Service-role advisory hook linking a Stroke Lab TI drill to Academy V2 drills.\n\nDeterministic curated mapping only; never issues practical competency credentials\n(ADR-010 / ADR-013).",
+        "operationId": "internal_prescribe_strokelab_drill_internal_academy_competencies_drills_prescribe_from_strokelab_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalStrokeLabDrillPrescription"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/internal/academy/finance-summary": {
@@ -101551,6 +101666,71 @@
         ],
         "title": "InstallmentStatus"
       },
+      "InternalStrokeLabDrillPrescription": {
+        "properties": {
+          "member_auth_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Member Auth Id"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "academy_ref": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 5,
+            "title": "Academy Ref"
+          },
+          "strokelab_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strokelab Job Id"
+          },
+          "focal_cue_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Cue Note"
+          },
+          "sets": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Sets",
+            "default": 3
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_auth_id",
+          "academy_ref"
+        ],
+        "title": "InternalStrokeLabDrillPrescription"
+      },
       "LearnerQuizResponse": {
         "properties": {
           "id": {
@@ -104297,6 +104477,70 @@
         "type": "object",
         "title": "SkillUpdate",
         "description": "Update an existing skill."
+      },
+      "StrokeLabDrillInput": {
+        "properties": {
+          "academy_ref": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 5,
+            "title": "Academy Ref"
+          },
+          "strokelab_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strokelab Job Id"
+          },
+          "focal_cue_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Cue Note"
+          },
+          "sets": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Sets",
+            "default": 3
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M",
+            "default": "25"
+          }
+        },
+        "type": "object",
+        "required": [
+          "academy_ref"
+        ],
+        "title": "StrokeLabDrillInput"
       },
       "StudentProgressResponse": {
         "properties": {

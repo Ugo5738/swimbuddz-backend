@@ -274,6 +274,16 @@ class Settings(BaseSettings):
 
     # Admin configuration
     ADMIN_EMAILS: list[str] = ["admin@admin.com", "contactugodaniels@gmail.com"]
+
+    # Academy V2 Competency Passport Graduation Switch (ADR-010 Phase 5B).
+    # Strictly default-OFF ("legacy") until production dual-read parity holds and
+    # the owner authorizes cutover:
+    #   - "legacy":      Legacy milestone completion governs certificates & PDFs.
+    #   - "shadow_log":  Legacy governs certificates; daily job also logs non-PII V2 parity.
+    #   - "v2_enforced": Cohorts with a frozen V2 snapshot require live V2 verified
+    #                    credentials for all required milestones/safety gates + required
+    #                    cohort quizzes; unfrozen historical cohorts retain legacy rules.
+    ACADEMY_V2_GRADUATION_MODE: str = "legacy"
     EMAIL_FROM_SUPPORT: str = ""
     EMAIL_FROM_BILLING: str = ""
     EMAIL_FROM_WELCOME: str = ""
