@@ -58,6 +58,7 @@ from services.members_service.routers.pods import (
     member_router as pods_member_router,
 )
 from services.members_service.routers.registration import router as registration_router
+from services.members_service.routers.scorecard import router as scorecard_router
 
 __all__ = [
     "registration_router",
@@ -86,4 +87,5 @@ __all__ = [
     "pods_admin_router",
     "pods_member_router",
     "internal_pods_router",
+    "scorecard_router",
 ]

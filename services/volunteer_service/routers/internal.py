@@ -760,3 +760,52 @@ async def materialise_from_session_template(
         template_uuid,
     )
     return MaterialiseFromSessionTemplateResp(success=True, created_count=created)
+
+
+@router.get("/members/{member_id}/scorecard-summary")
+async def get_member_volunteer_scorecard_summary(
+    member_id: uuid.UUID,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Positive volunteer summary for the Member Swim Scorecard (ADR-026).
+
+    Deliberately excludes internal `reliability_score` so raw ops metrics are
+    never exposed on member/peer/public scorecards.
+    """
+    from services.volunteer_service.models.core import VolunteerHoursLog
+
+    profile = (
+        await db.execute(
+            select(VolunteerProfile).where(VolunteerProfile.member_id == member_id)
+        )
+    ).scalar_one_or_none()
+
+    total_hours = (
+        await db.execute(
+            select(func.coalesce(func.sum(VolunteerHoursLog.hours), 0.0)).where(
+                VolunteerHoursLog.member_id == member_id
+            )
+        )
+    ).scalar() or 0.0
+
+    if profile is None:
+        return {
+            "tier": None,
+            "recognition_tier": None,
+            "total_hours": round(float(total_hours), 1),
+        }
+
+    tier_val = (
+        profile.tier.value if hasattr(profile.tier, "value") else str(profile.tier)
+    )
+    rec_val = (
+        profile.recognition_tier.value
+        if hasattr(profile.recognition_tier, "value")
+        else (str(profile.recognition_tier) if profile.recognition_tier else None)
+    )
+    return {
+        "tier": tier_val,
+        "recognition_tier": rec_val,
+        "total_hours": round(float(total_hours), 1),
+    }

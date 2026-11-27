@@ -41,6 +41,7 @@ from services.members_service.routers import (
     pods_admin_router,
     pods_member_router,
     registration_router,
+    scorecard_router,
     volunteer_router,
 )
 
@@ -93,6 +94,9 @@ def create_app() -> FastAPI:
     # Club pods — admin management + member self-selection
     app.include_router(pods_admin_router)
     app.include_router(pods_member_router)
+
+    # Member Swim Scorecard (ADR-026)
+    app.include_router(scorecard_router)
 
     # Internal service-to-service endpoints (not exposed via gateway).
     # internal_pods_router MUST register BEFORE internal_router — otherwise

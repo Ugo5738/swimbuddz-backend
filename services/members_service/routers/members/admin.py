@@ -33,6 +33,9 @@ from services.members_service.models import (
     MemberMembership,
     MemberPreferences,
     MemberProfile,
+    MemberScorecardSettings,
+    MemberSkillProgress,
+    MemberSwimBenchmark,
     Pod,
     PodAssignment,
 )
@@ -464,6 +467,29 @@ async def delete_member(
     await db.execute(delete(CoachProfile).where(CoachProfile.member_id == member.id))
     await db.execute(
         delete(MemberNameChange).where(MemberNameChange.member_id == member.id)
+    )
+    # Member Swim Scorecard cleanup (ADR-015 + ADR-026): nullify verifier refs
+    # on other swimmers' records first, then remove this member's scorecard data.
+    await db.execute(
+        update(MemberSkillProgress)
+        .where(MemberSkillProgress.verified_by_member_id == member.id)
+        .values(verified_by_member_id=None)
+    )
+    await db.execute(
+        update(MemberSwimBenchmark)
+        .where(MemberSwimBenchmark.verified_by_member_id == member.id)
+        .values(verified_by_member_id=None)
+    )
+    await db.execute(
+        delete(MemberSkillProgress).where(MemberSkillProgress.member_id == member.id)
+    )
+    await db.execute(
+        delete(MemberSwimBenchmark).where(MemberSwimBenchmark.member_id == member.id)
+    )
+    await db.execute(
+        delete(MemberScorecardSettings).where(
+            MemberScorecardSettings.member_id == member.id
+        )
     )
 
     order_ids = (

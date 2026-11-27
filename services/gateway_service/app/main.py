@@ -103,6 +103,19 @@ def create_app() -> FastAPI:
             clients.members_client, f"/admin/members/{path}", request
         )
 
+    # ==================================================================
+    # MEMBER SWIM SCORECARDS PROXY (routed to members service, ADR-026)
+    # ==================================================================
+    @app.api_route(
+        "/api/v1/scorecards/{path:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    )
+    async def proxy_scorecards(path: str, request: Request):
+        """Proxy all /api/v1/scorecards/* requests to members service."""
+        return await proxy_request(
+            clients.members_client, f"/scorecards/{path}", request
+        )
+
     @app.api_route(
         "/api/v1/pending-registrations",
         methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
