@@ -34,6 +34,8 @@ class CartItemResponse(BaseModel):
     image_url: Optional[str] = None
     requires_size_chart_ack: bool = False
     size_chart_url: Optional[str] = None
+    is_preorder: bool = False
+    preorder_lead_days: Optional[int] = None
 
 
 class ApplyDiscountRequest(BaseModel):
