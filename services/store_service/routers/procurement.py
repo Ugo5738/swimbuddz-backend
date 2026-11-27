@@ -46,6 +46,9 @@ from services.store_service.services.ledger_sync import (
     post_opening_inventory_journal,
     post_return_cogs_reversal_journal,
 )
+from services.store_service.services.preorder_allocation import (
+    allocate_stock_to_paid_preorders,
+)
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -513,6 +516,12 @@ async def receive_goods(
                 notes=payload.evidence_reference,
                 performed_by=actor.user_id,
             )
+        )
+        await allocate_stock_to_paid_preorders(
+            db,
+            inventory,
+            actor.user_id,
+            reason=f"goods receipt {payload.evidence_reference}",
         )
     item.status = (
         "received"
@@ -1449,6 +1458,13 @@ async def record_fulfilled_order_return(
                     notes=f"{clean_ref}: {payload.reason}",
                     performed_by=owner.auth_id or str(owner.id),
                 )
+            )
+            await allocate_stock_to_paid_preorders(
+                db,
+                inventory,
+                owner.auth_id or str(owner.id),
+                reason=f"restockable return {clean_ref}",
+                exclude_order_id=order.id,
             )
             db.add(
                 StoreCostEvent(

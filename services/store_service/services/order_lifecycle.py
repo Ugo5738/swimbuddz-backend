@@ -59,6 +59,12 @@ from services.store_service.services.order_policy import (
     compute_order_refund_tenders,
     sync_order_status_dimensions,
 )
+from services.store_service.services.preorder_allocation import (
+    allocate_stock_to_paid_preorders,
+    explicit_order_reserved_qty,
+    is_dropship_line,
+    is_preorder_line,
+)
 
 logger = get_logger(__name__)
 
@@ -72,7 +78,7 @@ def _to_kobo(amount: Decimal | float | int | None) -> int:
 async def release_order_inventory_reservations(
     db: AsyncSession, order: Order, performed_by: str
 ) -> None:
-    """Release reserved stock for each stocked item in a cancelled/failed order."""
+    """Release reserved stock for stocked or allocated preorder items, then reallocate FIFO."""
     items = (
         (
             await db.execute(
@@ -80,8 +86,11 @@ async def release_order_inventory_reservations(
                 .where(OrderItem.order_id == order.id)
                 .options(
                     selectinload(OrderItem.variant).selectinload(
+                        ProductVariant.product
+                    ),
+                    selectinload(OrderItem.variant).selectinload(
                         ProductVariant.inventory_item
-                    )
+                    ),
                 )
             )
         )
@@ -90,10 +99,7 @@ async def release_order_inventory_reservations(
     )
 
     for item in items:
-        if item.is_preorder or item.sourcing_type in (
-            SourcingType.PREORDER.value,
-            SourcingType.DROPSHIP.value,
-        ):
+        if is_dropship_line(item):
             continue
         inv = (
             await db.execute(
@@ -104,7 +110,11 @@ async def release_order_inventory_reservations(
         ).scalar_one_or_none()
         if not inv:
             continue
-        release_qty = min(item.quantity, inv.quantity_reserved)
+        if is_preorder_line(item):
+            explicit_reserved = await explicit_order_reserved_qty(db, inv.id, order.id)
+            release_qty = min(item.quantity, explicit_reserved, inv.quantity_reserved)
+        else:
+            release_qty = min(item.quantity, inv.quantity_reserved)
         if release_qty <= 0:
             continue
         inv.quantity_reserved -= release_qty
@@ -118,6 +128,13 @@ async def release_order_inventory_reservations(
                 notes=f"Released for cancelled order {order.order_number}",
                 performed_by=performed_by,
             )
+        )
+        await allocate_stock_to_paid_preorders(
+            db,
+            inv,
+            performed_by,
+            reason=f"reallocated after cancelled order #{order.order_number}",
+            exclude_order_id=order.id,
         )
 
 
@@ -488,6 +505,13 @@ async def restock_returned_case_items(
                 notes=f"Restocked from return case {case.case_number} (order {order.order_number})",
                 performed_by=performed_by,
             )
+        )
+        await allocate_stock_to_paid_preorders(
+            db,
+            inv,
+            performed_by,
+            reason=f"restocked return case {case.case_number}",
+            exclude_order_id=order.id,
         )
 
         # Reverse proportional weighted-average cost if a sale cost event exists.

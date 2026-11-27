@@ -403,3 +403,306 @@ class TestLifecycleGuardsAndAtomics:
         assert "/admin/store/cases/{case_id}/receive-return" in paths
         assert "/admin/store/orders/{order_id}/cancel-and-refund" in paths
         assert "/internal/store/orders/refund-status-callback" in paths
+
+
+class TestFulfillmentStockConsumption:
+    @pytest.mark.asyncio
+    async def test_stocked_order_consumes_reserved_and_on_hand(self):
+        from services.store_service.models.enums import SourcingType
+
+        order = _make_order()
+        line = SimpleNamespace(
+            id=uuid.uuid4(),
+            variant_id=uuid.uuid4(),
+            product_name="Goggles",
+            variant_name="Black",
+            quantity=1,
+            is_preorder=False,
+            sourcing_type="stocked",
+            variant=SimpleNamespace(
+                product=SimpleNamespace(sourcing_type=SourcingType.STOCKED)
+            ),
+        )
+        inv = SimpleNamespace(id=uuid.uuid4(), quantity_on_hand=5, quantity_reserved=1)
+        added = []
+        db = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [line])),
+            scalar=AsyncMock(side_effect=[inv, None]),
+            add=added.append,
+        )
+
+        cogs = await _helpers._consume_fulfilled_order_stock(db, order, "admin-1")
+        assert cogs == 0
+        assert inv.quantity_on_hand == 4
+        assert inv.quantity_reserved == 0
+        assert any(
+            getattr(obj, "movement_type", None) is not None and obj.quantity == -1
+            for obj in added
+        )
+
+    @pytest.mark.asyncio
+    async def test_preorder_era_line_on_now_stocked_product_consumes_unreserved_only(
+        self,
+    ):
+        from services.store_service.models.enums import SourcingType
+
+        # Mimics Feji (#SB-20261123-C47IO): ordered while preorder (is_preorder=True,
+        # never incremented quantity_reserved), product later switched to stocked with
+        # 5 on hand — and another stocked customer currently holds 1 reservation.
+        order = _make_order()
+        line = SimpleNamespace(
+            id=uuid.uuid4(),
+            variant_id=uuid.uuid4(),
+            product_name="Electroplated Goggles",
+            variant_name="Black",
+            quantity=1,
+            is_preorder=True,
+            sourcing_type="preorder",
+            variant=SimpleNamespace(
+                product=SimpleNamespace(sourcing_type=SourcingType.STOCKED)
+            ),
+        )
+        inv = SimpleNamespace(id=uuid.uuid4(), quantity_on_hand=5, quantity_reserved=1)
+        added = []
+        db = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [line])),
+            # scalar calls: 1) inventory lock, 2) explicit order reservation sum (0), 3) valuation (None)
+            scalar=AsyncMock(side_effect=[inv, 0, None]),
+            add=added.append,
+        )
+
+        await _helpers._consume_fulfilled_order_stock(db, order, "admin-1")
+        assert inv.quantity_on_hand == 4
+        # Other customer's reservation MUST stay intact!
+        assert inv.quantity_reserved == 1
+
+    @pytest.mark.asyncio
+    async def test_preorder_era_line_with_explicit_order_reservation_consumes_both(
+        self,
+    ):
+        from services.store_service.models.enums import SourcingType
+
+        # Mimics Fatima reconciliation: is_preorder=True + explicit order RESERVATION (+1).
+        order = _make_order()
+        line = SimpleNamespace(
+            id=uuid.uuid4(),
+            variant_id=uuid.uuid4(),
+            product_name="Kickboard",
+            variant_name="Orange",
+            quantity=1,
+            is_preorder=True,
+            sourcing_type="preorder",
+            variant=SimpleNamespace(
+                product=SimpleNamespace(sourcing_type=SourcingType.STOCKED)
+            ),
+        )
+        inv = SimpleNamespace(id=uuid.uuid4(), quantity_on_hand=6, quantity_reserved=1)
+        db = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [line])),
+            scalar=AsyncMock(side_effect=[inv, 1, None]),
+            add=lambda _obj: None,
+        )
+
+        await _helpers._consume_fulfilled_order_stock(db, order, "admin-1")
+        assert inv.quantity_on_hand == 5
+        assert inv.quantity_reserved == 0
+
+    @pytest.mark.asyncio
+    async def test_preorder_product_with_zero_stock_is_blocked_strictly_option_a(self):
+        from services.store_service.models.enums import SourcingType
+
+        # Industry standard Option A: a preorder batch must be received into
+        # Procurement / Inventory before handover so stock & COGS are tracked.
+        order = _make_order()
+        line = SimpleNamespace(
+            id=uuid.uuid4(),
+            variant_id=uuid.uuid4(),
+            product_name="Training Snorkel",
+            variant_name="Blue",
+            quantity=1,
+            is_preorder=True,
+            sourcing_type="preorder",
+            variant=SimpleNamespace(
+                product=SimpleNamespace(sourcing_type=SourcingType.PREORDER)
+            ),
+        )
+        inv = SimpleNamespace(id=uuid.uuid4(), quantity_on_hand=0, quantity_reserved=0)
+        db = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [line])),
+            scalar=AsyncMock(side_effect=[inv, 0]),
+            add=lambda _obj: None,
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await _helpers._consume_fulfilled_order_stock(db, order, "admin-1")
+        assert exc.value.status_code == 409
+        assert "Training Snorkel (Blue)" in exc.value.detail
+        assert "Goods Receipt or Inventory Restock" in exc.value.detail
+
+    @pytest.mark.asyncio
+    async def test_dropship_line_skips_warehouse_stock_and_emits_sale_unvalued_cost_event(
+        self,
+    ):
+        from services.store_service.models.enums import SourcingType
+
+        order = _make_order()
+        line = SimpleNamespace(
+            id=uuid.uuid4(),
+            variant_id=uuid.uuid4(),
+            product_name="Dropship Fins",
+            variant_name="L",
+            quantity=2,
+            is_preorder=False,
+            sourcing_type="dropship",
+            variant=SimpleNamespace(
+                product=SimpleNamespace(sourcing_type=SourcingType.DROPSHIP)
+            ),
+        )
+        added = []
+        db = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [line])),
+            scalar=AsyncMock(),
+            add=added.append,
+        )
+
+        cogs = await _helpers._consume_fulfilled_order_stock(db, order, "admin-1")
+        assert cogs == 0
+        db.scalar.assert_not_awaited()
+        assert len(added) == 1
+        assert added[0].event_kind == "sale_unvalued"
+        assert added[0].quantity_delta == -2
+        assert f"dropship-fulfilled-order:{order.id}" == added[0].evidence
+
+    @pytest.mark.asyncio
+    async def test_partial_fifo_preorder_consumes_its_reserved_plus_unreserved_without_stealing_others(
+        self,
+    ):
+        from services.store_service.models.enums import SourcingType
+
+        # Line needs 2 units; 1 was FIFO-reserved for this order, 1 is reserved for
+        # ANOTHER customer, and 1 unit is unreserved on hand (total on_hand=3, reserved=2).
+        order = _make_order()
+        line = SimpleNamespace(
+            id=uuid.uuid4(),
+            variant_id=uuid.uuid4(),
+            product_name="Training Snorkel",
+            variant_name="Blue",
+            quantity=2,
+            is_preorder=True,
+            sourcing_type="preorder",
+            variant=SimpleNamespace(
+                product=SimpleNamespace(sourcing_type=SourcingType.PREORDER)
+            ),
+        )
+        inv = SimpleNamespace(id=uuid.uuid4(), quantity_on_hand=3, quantity_reserved=2)
+        db = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [line])),
+            scalar=AsyncMock(side_effect=[inv, 1, None]),
+            add=lambda _obj: None,
+        )
+
+        await _helpers._consume_fulfilled_order_stock(db, order, "admin-1")
+        assert inv.quantity_on_hand == 1
+        assert inv.quantity_reserved == 1  # Other customer's 1 reservation preserved!
+
+    @pytest.mark.asyncio
+    async def test_preorder_era_line_on_stocked_product_with_zero_available_raises_409(
+        self,
+    ):
+        from services.store_service.models.enums import SourcingType
+
+        order = _make_order()
+        line = SimpleNamespace(
+            id=uuid.uuid4(),
+            variant_id=uuid.uuid4(),
+            product_name="Training Snorkel",
+            variant_name="Blue",
+            quantity=1,
+            is_preorder=True,
+            sourcing_type="preorder",
+            variant=SimpleNamespace(
+                product=SimpleNamespace(sourcing_type=SourcingType.STOCKED)
+            ),
+        )
+        inv = SimpleNamespace(id=uuid.uuid4(), quantity_on_hand=1, quantity_reserved=1)
+        db = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [line])),
+            scalar=AsyncMock(side_effect=[inv, 0]),
+            add=lambda _obj: None,
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await _helpers._consume_fulfilled_order_stock(db, order, "admin-1")
+        assert exc.value.status_code == 409
+        assert "Training Snorkel (Blue)" in exc.value.detail
+        assert "0 unreserved" in exc.value.detail
+
+
+class TestFifoPreorderAllocation:
+    @pytest.mark.asyncio
+    async def test_arriving_stock_allocates_fifo_across_paid_preorders_including_partial_batch(
+        self,
+    ):
+        from services.store_service.services.preorder_allocation import (
+            allocate_stock_to_paid_preorders,
+        )
+
+        inv = SimpleNamespace(
+            id=uuid.uuid4(),
+            variant_id=uuid.uuid4(),
+            quantity_on_hand=3,
+            quantity_reserved=0,
+        )
+        order_1_id = uuid.uuid4()
+        order_2_id = uuid.uuid4()
+        fifo_rows = [
+            (
+                order_1_id,
+                "SB-PRE-001",
+                2,
+                datetime(2026, 11, 20),
+                datetime(2026, 11, 20),
+            ),
+            (
+                order_2_id,
+                "SB-PRE-002",
+                2,
+                datetime(2026, 11, 22),
+                datetime(2026, 11, 22),
+            ),
+        ]
+        added = []
+        db = SimpleNamespace(
+            execute=AsyncMock(return_value=SimpleNamespace(all=lambda: fifo_rows)),
+            # Batch 1: neither order has prior reservation (0, 0)
+            scalar=AsyncMock(side_effect=[0, 0]),
+            add=added.append,
+        )
+
+        allocated_batch_1 = await allocate_stock_to_paid_preorders(
+            db, inv, "admin-1", reason="PO-101"
+        )
+        assert allocated_batch_1 == 3
+        assert inv.quantity_reserved == 3  # 0 available to new buyers!
+        assert [(m.reference_id, m.quantity) for m in added] == [
+            (order_1_id, 2),
+            (order_2_id, 1),
+        ]
+
+        # Batch 2 arrives: +4 units (on_hand: 3 -> 7, available = 4)
+        inv.quantity_on_hand = 7
+        added_batch_2 = []
+        db2 = SimpleNamespace(
+            execute=AsyncMock(return_value=SimpleNamespace(all=lambda: fifo_rows)),
+            # Order 1 already has 2/2 reserved; Order 2 has 1/2 reserved
+            scalar=AsyncMock(side_effect=[2, 1]),
+            add=added_batch_2.append,
+        )
+        allocated_batch_2 = await allocate_stock_to_paid_preorders(
+            db2, inv, "admin-1", reason="PO-102"
+        )
+        assert allocated_batch_2 == 1
+        assert inv.quantity_reserved == 4  # 3 leftover units go on sale!
+        assert [(m.reference_id, m.quantity) for m in added_batch_2] == [
+            (order_2_id, 1)
+        ]
