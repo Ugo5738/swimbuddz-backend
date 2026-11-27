@@ -48,6 +48,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(quarterly_metrics_router)
+    from services.ai_service.routers.scorecard_internal import (
+        router as scorecard_internal_router,
+    )
+
+    app.include_router(scorecard_internal_router)
     app.include_router(founding_internal_router)
 
     return app

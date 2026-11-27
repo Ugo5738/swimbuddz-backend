@@ -2257,3 +2257,32 @@ See [ADR-024](./DECISIONS.md) and [STORE_OPERATIONS.md](../../docs/store/STORE_O
 - `GET /api/v1/payments/me/refunds` (Member): Member's own refunds across SwimBuddz services.
 - `POST /internal/payments/refunds`, `GET /internal/payments/refunds/by-source/{source_service}/{source_entity_id}`, `GET /internal/payments/by-reference/{reference}/status`, `POST /internal/payments/by-reference/{reference}/close-unpaid` (Service Role): Cross-service refund creation/lookup and live unpaid payment-lock verification/closure.
 - `POST /api/v1/payments/webhook/paystack`: Now handles `refund.pending`, `refund.processing`, `refund.processed`, and `refund.failed` events.
+
+---
+
+### Member Swim Scorecard (ADR-026, 27 November 2026)
+
+Owned by `members_service` and proxied via `gateway_service` at `/api/v1/scorecards/*`:
+
+- `GET /scorecards/catalog`: canonical 6-domain skill catalog (34 skills across Foundations, Freestyle, Backstroke, Breaststroke, Butterfly, Turns/Starts/Open Water), proficiency levels, strokes, and benchmark specifications.
+- `GET /scorecards/me` (member): authenticated member's complete living Swim Scorecard across all 4 layers (Foundations & Skills, Performance Benchmarks + Trends + Stroke Lab AI, Academy Milestones, Consistency & Community) with explicit `source_availability` flags and `has_full_performance_access`.
+- `PUT /scorecards/me/skills/{skill_code}` (member): self-update skill proficiency + private reflection notes + optional `request_verification`. Preserves any existing `coach_verified` baseline (`verified_proficiency`) losslessly and never clears safety gates.
+- `POST /scorecards/me/benchmarks` (member): log a personal benchmark (`max_distance` available to all active members; `time_trial`, `spl`, `stroke_rate`, `swolf`, `open_water` require active Club access via `has_current_club_access`, or Coach/Admin role). Requires `pool_length_m` for `spl` and `swolf`; server-computes `pace_per_100m_seconds` and single-length `swolf_score`.
+- `DELETE /scorecards/me/benchmarks/{benchmark_id}` (member): delete own unverified self-logged benchmark (403 on `coach_verified` records).
+- `PATCH /scorecards/me/settings` (member): update audience-scoped privacy toggles (`pod_visibility_enabled`, `show_benchmarks_to_pod`, `directory_highlights_enabled`, `public_share_card_enabled`), `preferred_pool_length_m`, or rotate `share_token`.
+- `GET /scorecards/public/{share_token}` (public, no auth): strictly opt-in positive milestone card returning only verified strokes, headline verified distance/efficiency, and lifetime pool hours; returns 404 when disabled or invalid.
+- `GET /scorecards/members/{member_id}` (authenticated): audience-scoped read — full scorecard for self, Coach, Admin, or active Pod Lead of a Pod containing the member; sanitized `PeerScorecardHighlightResponse` for active Pod-mates honoring `pod_visibility_enabled` / `show_benchmarks_to_pod`; 403 otherwise.
+- `GET /scorecards/pod/{pod_id}` (authenticated): Pod roster highlights for Pod members, Pod Leads, Coaches, and Admins.
+- `GET /scorecards/review-queue` (Coach / Admin / active Pod Lead): pending skill claims and benchmark verification requests (automatically scoped to active members of led Pods for Pod Leads).
+- `GET /scorecards/roster` (Coach / Admin / active Pod Lead): searchable swimmer scorecard roster scoped by caller role.
+- `POST /scorecards/members/{member_id}/skills/{skill_code}/verify` (Coach / Admin / scoped Pod Lead): verify (`coach_verified`) or reject (with mandatory `verifier_notes`) a swimmer's skill.
+- `POST /scorecards/members/{member_id}/benchmarks` (Coach / Admin / scoped Pod Lead): directly record a `coach_verified` benchmark for a swimmer.
+- `POST /scorecards/benchmarks/{benchmark_id}/review` (Coach / Admin / scoped Pod Lead): approve (`coach_verified`) or reject (with mandatory `verifier_notes`) a pending self-logged benchmark.
+- `POST /scorecards/benchmark-day/batch` (Coach / Admin / scoped Pod Lead): batch-record verified benchmarks for multiple swimmers during a Club Benchmark Day session with shared pool & `pool_length_m`.
+
+Internal service-to-service read summaries (`require_service_role`):
+
+- `GET /internal/academy/members/{member_auth_id}/scorecard-summary` (`academy_service`)
+- `GET /internal/ai/members/{member_auth_id}/strokelab-summary` (`ai_service`)
+- `GET /internal/reporting/members/{member_auth_id}/scorecard-summary` (`reporting_service`)
+- `GET /internal/volunteer/members/{member_id}/scorecard-summary` (`volunteer_service`)
