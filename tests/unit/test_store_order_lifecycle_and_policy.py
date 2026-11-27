@@ -706,3 +706,76 @@ class TestFifoPreorderAllocation:
         assert [(m.reference_id, m.quantity) for m in added_batch_2] == [
             (order_2_id, 1)
         ]
+
+
+class TestVariantBackorderCheckoutPlanning:
+    def test_stocked_variant_in_stock_reserves_full_quantity(self):
+        from services.store_service.models.enums import SourcingType
+        from services.store_service.routers.orders import _plan_checkout_line_stock
+
+        product = SimpleNamespace(sourcing_type=SourcingType.STOCKED)
+        variant = SimpleNamespace(sku="CAP-BLU", allow_backorder=False)
+        inv = SimpleNamespace(quantity_available=5)
+
+        is_pre, sourcing, reserve_now, use_order_ref = _plan_checkout_line_stock(
+            variant, product, inv, 2
+        )
+        assert (is_pre, sourcing, reserve_now, use_order_ref) == (
+            False,
+            "stocked",
+            2,
+            False,
+        )
+
+    def test_stocked_variant_out_of_stock_without_backorder_raises_400(self):
+        from services.store_service.models.enums import SourcingType
+        from services.store_service.routers.orders import _plan_checkout_line_stock
+
+        product = SimpleNamespace(sourcing_type=SourcingType.STOCKED)
+        variant = SimpleNamespace(sku="CAP-BLK", allow_backorder=False)
+        inv = SimpleNamespace(quantity_available=0)
+
+        with pytest.raises(HTTPException) as exc:
+            _plan_checkout_line_stock(variant, product, inv, 1)
+        assert exc.value.status_code == 400
+        assert "Only 0 available" in exc.value.detail
+
+    def test_stocked_variant_zero_stock_with_allow_backorder_becomes_preorder(self):
+        from services.store_service.models.enums import SourcingType
+        from services.store_service.routers.orders import _plan_checkout_line_stock
+
+        product = SimpleNamespace(sourcing_type=SourcingType.STOCKED)
+        variant = SimpleNamespace(sku="CAP-BLK", allow_backorder=True)
+        inv = SimpleNamespace(quantity_available=0)
+
+        is_pre, sourcing, reserve_now, use_order_ref = _plan_checkout_line_stock(
+            variant, product, inv, 2
+        )
+        assert (is_pre, sourcing, reserve_now, use_order_ref) == (
+            True,
+            "preorder",
+            0,
+            True,
+        )
+
+    def test_stocked_variant_partial_stock_with_allow_backorder_reserves_available_order_scoped(
+        self,
+    ):
+        from services.store_service.models.enums import SourcingType
+        from services.store_service.routers.orders import _plan_checkout_line_stock
+
+        # 1 unit available on hand, customer buys 3 with allow_backorder=True:
+        # reserve the 1 unit against order_id now; remaining 2 wait in FIFO queue.
+        product = SimpleNamespace(sourcing_type=SourcingType.STOCKED)
+        variant = SimpleNamespace(sku="CAP-BLU", allow_backorder=True)
+        inv = SimpleNamespace(quantity_available=1)
+
+        is_pre, sourcing, reserve_now, use_order_ref = _plan_checkout_line_stock(
+            variant, product, inv, 3
+        )
+        assert (is_pre, sourcing, reserve_now, use_order_ref) == (
+            True,
+            "preorder",
+            1,
+            True,
+        )

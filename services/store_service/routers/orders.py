@@ -73,6 +73,48 @@ DELIVERY_FEE_NGN = Decimal("2000")  # Flat delivery fee for now
 # ============================================================================
 
 
+def _plan_checkout_line_stock(
+    variant: ProductVariant,
+    product: Product,
+    inv,
+    requested_qty: int,
+) -> tuple[bool, str, int, bool]:
+    """Determine preorder flag, sourcing snapshot, immediate reservation, and movement scope.
+
+    Returns ``(is_preorder, sourcing_val, reserve_now, use_order_ref)``.
+    Raises HTTP 400 when a non-backorder stocked variant lacks sufficient stock.
+    """
+    product_sourcing = (
+        product.sourcing_type.value
+        if hasattr(product.sourcing_type, "value")
+        else str(product.sourcing_type or "stocked")
+    )
+    if product_sourcing == SourcingType.DROPSHIP.value:
+        return (False, SourcingType.DROPSHIP.value, 0, False)
+    if product_sourcing == SourcingType.PREORDER.value:
+        return (True, SourcingType.PREORDER.value, 0, False)
+
+    available = inv.quantity_available if inv is not None else 0
+    if inv is not None and available >= requested_qty:
+        return (False, product_sourcing, requested_qty, False)
+
+    if getattr(variant, "allow_backorder", False):
+        # Continue selling when out of stock: lock any partial on-hand units against
+        # the order ID and queue the remaining units in the FIFO preorder backlog.
+        reserve_now = min(requested_qty, max(0, available)) if inv is not None else 0
+        return (True, SourcingType.PREORDER.value, reserve_now, True)
+
+    if inv is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Inventory not available for {variant.sku}",
+        )
+    raise HTTPException(
+        status_code=400,
+        detail=f"Only {available} available for {variant.sku}",
+    )
+
+
 def _build_quick_buy_cart(
     member_auth_id: str,
     variant: ProductVariant,
@@ -195,37 +237,35 @@ async def start_checkout(
             detail="Size chart acknowledgment required for swimwear products",
         )
 
-    # Validate inventory and reserve (skip stock checks for pre-order/dropship)
+    # Validate inventory and reserve stocked / partial-backorder units
+    line_stock_plans: dict[uuid.UUID, tuple[bool, str, int, bool]] = {}
+    pending_order_scoped_reservations: list[tuple[uuid.UUID, int]] = []
     for item in cart.items:
         inv = item.variant.inventory_item
         product = item.variant.product
-        is_preorder = product and product.sourcing_type in (
-            SourcingType.PREORDER,
-            SourcingType.DROPSHIP,
+        line_is_preorder, line_sourcing, reserve_now, use_order_ref = (
+            _plan_checkout_line_stock(item.variant, product, inv, item.quantity)
         )
-
-        if not inv and not is_preorder:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Inventory not available for {item.variant.sku}",
-            )
-        if inv and not is_preorder and inv.quantity_available < item.quantity:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Only {inv.quantity_available} available for {item.variant.sku}",
-            )
-        # Reserve inventory (only for stocked items, not pre-order/dropship)
-        if inv and not is_preorder:
-            inv.quantity_reserved += item.quantity
-            # Log movement
-            movement = InventoryMovement(
-                inventory_item_id=inv.id,
-                movement_type=InventoryMovementType.RESERVATION,
-                quantity=item.quantity,
-                reference_type="cart",
-                reference_id=cart.id,
-            )
-            db.add(movement)
+        line_stock_plans[item.variant_id] = (
+            line_is_preorder,
+            line_sourcing,
+            reserve_now,
+            use_order_ref,
+        )
+        if inv and reserve_now > 0:
+            inv.quantity_reserved += reserve_now
+            if use_order_ref:
+                pending_order_scoped_reservations.append((inv.id, reserve_now))
+            else:
+                db.add(
+                    InventoryMovement(
+                        inventory_item_id=inv.id,
+                        movement_type=InventoryMovementType.RESERVATION,
+                        quantity=reserve_now,
+                        reference_type="cart",
+                        reference_id=cart.id,
+                    )
+                )
 
     # Get member info for order via members service HTTP API
     member = member or await get_member_by_auth_id(
@@ -340,6 +380,21 @@ async def start_checkout(
     db.add(order)
     await db.flush()  # Get order ID
 
+    # Log order-scoped partial reservations for backordered lines so FIFO allocation
+    # and handover know the exact portion already reserved for this order.
+    for inv_id, reserve_qty in pending_order_scoped_reservations:
+        db.add(
+            InventoryMovement(
+                inventory_item_id=inv_id,
+                movement_type=InventoryMovementType.RESERVATION,
+                quantity=reserve_qty,
+                reference_type="order",
+                reference_id=order.id,
+                notes=f"Partial stock reservation for backorder #{order.order_number}",
+                performed_by=current_user.user_id,
+            )
+        )
+
     # Record auditable StoreCreditTransaction rows so cancellations can restore credit
     for credit, apply_amount in credit_debits:
         db.add(
@@ -390,10 +445,14 @@ async def start_checkout(
     for item, net_line_total in zip(cart_items_list, net_line_totals):
         variant = item.variant
         product = variant.product
-        sourcing_val = (
+        default_sourcing = (
             product.sourcing_type.value
             if hasattr(product.sourcing_type, "value")
             else str(product.sourcing_type or "stocked")
+        )
+        line_is_preorder, sourcing_val, _, _ = line_stock_plans.get(
+            variant.id,
+            (default_sourcing == "preorder", default_sourcing, 0, False),
         )
         order_item = OrderItem(
             order_id=order.id,
@@ -405,12 +464,12 @@ async def start_checkout(
             unit_price_ngn=item.unit_price_ngn,
             line_total_ngn=item.unit_price_ngn * item.quantity,
             net_line_total_ngn=net_line_total,
-            is_preorder=sourcing_val == "preorder",
+            is_preorder=line_is_preorder,
             sourcing_type=sourcing_val,
             requires_size_chart_ack=bool(product.requires_size_chart_ack),
             estimated_ship_date=(
-                datetime.utcnow() + timedelta(days=product.preorder_lead_days or 0)
-                if sourcing_val == "preorder"
+                datetime.utcnow() + timedelta(days=product.preorder_lead_days or 14)
+                if line_is_preorder
                 else None
             ),
             # Supplier snapshot (captured at order time)

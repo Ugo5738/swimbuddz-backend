@@ -139259,6 +139259,11 @@
             "title": "Is Active",
             "default": true
           },
+          "allow_backorder": {
+            "type": "boolean",
+            "title": "Allow Backorder",
+            "default": false
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -139462,6 +139467,22 @@
               }
             ],
             "title": "Size Chart Url"
+          },
+          "is_preorder": {
+            "type": "boolean",
+            "title": "Is Preorder",
+            "default": false
+          },
+          "preorder_lead_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preorder Lead Days"
           }
         },
         "type": "object",
@@ -144033,6 +144054,11 @@
             "type": "boolean",
             "title": "Is Active",
             "default": true
+          },
+          "allow_backorder": {
+            "type": "boolean",
+            "title": "Allow Backorder",
+            "default": false
           }
         },
         "type": "object",
@@ -144131,6 +144157,17 @@
               }
             ],
             "title": "Is Active"
+          },
+          "allow_backorder": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allow Backorder"
           }
         },
         "type": "object",
@@ -144188,6 +144225,11 @@
             "type": "boolean",
             "title": "Is Active",
             "default": true
+          },
+          "allow_backorder": {
+            "type": "boolean",
+            "title": "Allow Backorder",
+            "default": false
           },
           "id": {
             "type": "string",
@@ -144674,6 +144716,11 @@
             "type": "boolean",
             "title": "Is Active",
             "default": true
+          },
+          "allow_backorder": {
+            "type": "boolean",
+            "title": "Allow Backorder",
+            "default": false
           },
           "id": {
             "type": "string",
