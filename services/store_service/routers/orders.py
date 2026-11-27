@@ -45,6 +45,10 @@ from services.store_service.services.order_policy import (
     allocate_line_net_totals,
     sync_order_status_dimensions,
 )
+from services.store_service.services.preorder_allocation import (
+    allocate_stock_to_paid_preorders,
+    is_preorder_line,
+)
 from services.store_service.routers.cart import (
     TIER_DISCOUNT_MAP,
     _resolve_coupon_discount,
@@ -382,6 +386,7 @@ async def start_checkout(
         [item.unit_price_ngn * item.quantity for item in cart_items_list],
         discount_amount,
     )
+    created_order_items: list[OrderItem] = []
     for item, net_line_total in zip(cart_items_list, net_line_totals):
         variant = item.variant
         product = variant.product
@@ -413,10 +418,32 @@ async def start_checkout(
             supplier_name=(product.supplier.name if product.supplier else None),
         )
         db.add(order_item)
+        created_order_items.append(order_item)
 
     # Convert only the selected checkout cart. An unrelated active cart stays active.
     cart.status = CartStatus.CONVERTED
+    preorder_variant_ids = sorted(
+        {oi.variant_id for oi in created_order_items if is_preorder_line(oi)},
+        key=str,
+    )
     try:
+        if order.status == OrderStatus.PAID and preorder_variant_ids:
+            await db.flush()
+            from services.store_service.models import InventoryItem
+
+            for vid in preorder_variant_ids:
+                inv = await db.scalar(
+                    select(InventoryItem)
+                    .where(InventoryItem.variant_id == vid)
+                    .with_for_update()
+                )
+                if inv is not None:
+                    await allocate_stock_to_paid_preorders(
+                        db,
+                        inv,
+                        current_user.user_id,
+                        reason=f"instant paid preorder #{order.order_number}",
+                    )
         await db.commit()
     except Exception:
         await db.rollback()
@@ -443,6 +470,23 @@ async def start_checkout(
         order.wallet_transaction_id = captured.get("wallet_transaction_id")
         sync_order_status_dimensions(order, legacy_status=OrderStatus.PAID)
         order.paid_at = datetime.utcnow()
+        if preorder_variant_ids:
+            await db.flush()
+            from services.store_service.models import InventoryItem
+
+            for vid in preorder_variant_ids:
+                inv = await db.scalar(
+                    select(InventoryItem)
+                    .where(InventoryItem.variant_id == vid)
+                    .with_for_update()
+                )
+                if inv is not None:
+                    await allocate_stock_to_paid_preorders(
+                        db,
+                        inv,
+                        current_user.user_id,
+                        reason=f"wallet paid preorder #{order.order_number}",
+                    )
         await db.commit()
 
     # Best-effort: check if this is the member's first store purchase

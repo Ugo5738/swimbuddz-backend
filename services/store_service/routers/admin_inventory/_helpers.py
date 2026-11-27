@@ -16,7 +16,7 @@ from libs.common.service_client import (
     get_member_by_auth_id,
     release_wallet_hold,
 )
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -30,7 +30,6 @@ from services.store_service.models import (
     OrderStatus,
     Product,
     ProductVariant,
-    SourcingType,
 )
 from services.store_service.models.procurement import (
     StoreCostEvent,
@@ -41,6 +40,12 @@ from services.store_service.services.inventory_costing import consumption_cost_m
 from services.store_service.services.ledger_sync import post_order_cogs_journal
 from services.store_service.services.order_lifecycle import restore_order_store_credits
 from services.store_service.services.order_policy import sync_order_status_dimensions
+from services.store_service.services.preorder_allocation import (
+    allocate_stock_to_paid_preorders,
+    explicit_order_reserved_qty,
+    is_dropship_line,
+    is_preorder_line,
+)
 from services.store_service.routers._helpers import log_audit
 
 logger = get_logger(__name__)
@@ -57,52 +62,33 @@ def _order_eager_load_options():
     )
 
 
-async def _explicit_order_reserved_qty(
-    db: AsyncSession,
-    inventory_item_id: uuid.UUID,
-    order_id: uuid.UUID,
-) -> int:
-    """Return net explicit order-scoped reservation quantity for a variant."""
-    qty = await db.scalar(
-        select(func.coalesce(func.sum(InventoryMovement.quantity), 0)).where(
-            InventoryMovement.inventory_item_id == inventory_item_id,
-            InventoryMovement.reference_type == "order",
-            InventoryMovement.reference_id == order_id,
-            InventoryMovement.movement_type.in_(
-                [InventoryMovementType.RESERVATION, InventoryMovementType.RELEASE]
-            ),
-        )
-    )
-    return max(0, int(qty or 0))
-
-
 async def _release_order_inventory(
     db: AsyncSession, order: Order, performed_by: str
 ) -> None:
-    """Release reserved inventory for each item in a cancelled/failed order."""
-    # Eager-load items with their variant's inventory
+    """Release reserved inventory for a cancelled/failed order and reallocate FIFO."""
     items_query = (
         select(OrderItem)
         .where(OrderItem.order_id == order.id)
         .options(
-            selectinload(OrderItem.variant).selectinload(ProductVariant.inventory_item)
+            selectinload(OrderItem.variant).selectinload(ProductVariant.product),
+            selectinload(OrderItem.variant).selectinload(ProductVariant.inventory_item),
         )
     )
     items_result = await db.execute(items_query)
     order_items = items_result.scalars().all()
 
     for item in order_items:
-        variant = item.variant
-        if not variant or not variant.inventory_item:
+        if is_dropship_line(item):
             continue
-        inv = variant.inventory_item
-        was_unreserved_at_checkout = bool(
-            item.is_preorder
-            or getattr(item, "sourcing_type", None)
-            in (SourcingType.PREORDER.value, SourcingType.DROPSHIP.value)
+        inv = await db.scalar(
+            select(InventoryItem)
+            .where(InventoryItem.variant_id == item.variant_id)
+            .with_for_update()
         )
-        if was_unreserved_at_checkout:
-            explicit_reserved = await _explicit_order_reserved_qty(db, inv.id, order.id)
+        if not inv:
+            continue
+        if is_preorder_line(item):
+            explicit_reserved = await explicit_order_reserved_qty(db, inv.id, order.id)
             release_qty = min(item.quantity, explicit_reserved, inv.quantity_reserved)
         else:
             release_qty = min(item.quantity, inv.quantity_reserved)
@@ -111,7 +97,6 @@ async def _release_order_inventory(
 
         inv.quantity_reserved -= release_qty
 
-        # Log inventory release movement
         movement = InventoryMovement(
             inventory_item_id=inv.id,
             movement_type=InventoryMovementType.RELEASE,
@@ -122,6 +107,14 @@ async def _release_order_inventory(
             performed_by=performed_by,
         )
         db.add(movement)
+
+        await allocate_stock_to_paid_preorders(
+            db,
+            inv,
+            performed_by,
+            reason=f"reallocated after #{order.order_number} {order.status.value}",
+            exclude_order_id=order.id,
+        )
 
     logger.info(
         "Released inventory for order %s (%d items)",
@@ -137,15 +130,15 @@ async def _consume_fulfilled_order_stock(
 ) -> int:
     """Decrement physical stock ONCE when a verified order is handed over.
 
-    - Stocked lines (reserved at checkout) and explicitly order-reserved lines
-      decrement both ``quantity_on_hand`` and ``quantity_reserved``.
-    - Preorder/dropship-era lines (which did not reserve stock at checkout)
-      decrement unreserved physical stock (``quantity_on_hand`` only, leaving
-      other stocked orders' ``quantity_reserved`` intact) whenever sufficient
-      unreserved units are on hand. If the product is still ``preorder`` or
-      ``dropship`` with zero warehouse stock, fulfillment succeeds without
-      touching warehouse counts; if the product is now ``stocked`` without
-      enough available stock, fulfillment raises a clear 409 conflict.
+    Industry-standard sourcing rules (ADR-024, Option A strict):
+    - ``dropship``: supplier ships directly; skips warehouse inventory and always
+      emits an explicit ``sale_unvalued`` cost event so Finance reconciles supplier cost.
+    - ``stocked``: requires full checkout reservation (``quantity_reserved >= qty``
+      and ``quantity_on_hand >= qty``) and deducts both.
+    - ``preorder``: consumes its explicit/FIFO order reservation plus any needed
+      unreserved ``quantity_on_hand`` (never touching another order's reservation).
+      Strictly rejects handover with ``409`` when insufficient stock has been
+      received into Inventory/Procurement so stock & COGS are never untracked.
     - Valued SKUs consume moving weighted-average cost and return total COGS
       (in kobo) to post to Ledger. Unvalued SKUs record explicit
       ``sale_unvalued`` cost events per ADR-023 rather than fabricating ₦0 COGS.
@@ -161,6 +154,20 @@ async def _consume_fulfilled_order_stock(
     ).all()
     total_cogs_minor = 0
     for line in lines:
+        if is_dropship_line(line):
+            db.add(
+                StoreCostEvent(
+                    variant_id=line.variant_id,
+                    event_kind="sale_unvalued",
+                    quantity_delta=-line.quantity,
+                    cost_delta_minor=0,
+                    reference=f"sale-unvalued:{line.id}",
+                    evidence=f"dropship-fulfilled-order:{order.id}",
+                    actor_auth_id=performed_by,
+                )
+            )
+            continue
+
         inventory = await db.scalar(
             select(InventoryItem)
             .where(
@@ -168,26 +175,10 @@ async def _consume_fulfilled_order_stock(
             )
             .with_for_update()
         )
-        was_unreserved_at_checkout = bool(
-            line.is_preorder
-            or getattr(line, "sourcing_type", None)
-            in (SourcingType.PREORDER.value, SourcingType.DROPSHIP.value)
-        )
-        current_product = (
-            getattr(line.variant, "product", None)
-            if getattr(line, "variant", None)
-            else None
-        )
-        is_currently_non_stocked = bool(
-            current_product is not None
-            and current_product.sourcing_type
-            in (SourcingType.PREORDER, SourcingType.DROPSHIP)
-        )
-
-        consume_from_reserved = True
+        reserved_to_consume = line.quantity
         movement_note = "Fulfilled order"
 
-        if not was_unreserved_at_checkout:
+        if not is_preorder_line(line):
             if inventory is None:
                 raise HTTPException(
                     409, "Fulfillment inventory is missing; reconcile stock first"
@@ -202,39 +193,26 @@ async def _consume_fulfilled_order_stock(
                 )
         else:
             explicit_reserved = (
-                await _explicit_order_reserved_qty(db, inventory.id, order.id)
+                await explicit_order_reserved_qty(db, inventory.id, order.id)
+                if inventory is not None
+                else 0
+            )
+            reserved_portion = (
+                min(explicit_reserved, inventory.quantity_reserved, line.quantity)
+                if inventory is not None
+                else 0
+            )
+            unreserved_needed = line.quantity - reserved_portion
+            available = (
+                max(0, inventory.quantity_on_hand - inventory.quantity_reserved)
                 if inventory is not None
                 else 0
             )
             if (
-                inventory is not None
-                and explicit_reserved >= line.quantity
-                and inventory.quantity_reserved >= line.quantity
-                and inventory.quantity_on_hand >= line.quantity
+                inventory is None
+                or inventory.quantity_on_hand < line.quantity
+                or available < unreserved_needed
             ):
-                # Reconciled preorder-era order with an explicit order-level reservation
-                # (e.g., Nov 24 stock prep): consume both reserved and on-hand.
-                consume_from_reserved = True
-            elif (
-                inventory is not None
-                and (inventory.quantity_on_hand - inventory.quantity_reserved)
-                >= line.quantity
-            ):
-                # Preorder-era line fulfilled from unreserved warehouse stock:
-                # deduct on-hand directly without stealing another order's reservation.
-                consume_from_reserved = False
-                movement_note = (
-                    "Fulfilled preorder-era order from unreserved on-hand stock"
-                )
-            elif is_currently_non_stocked or (inventory is None and line.is_preorder):
-                # Still preorder/dropship with no warehouse stock to deduct.
-                continue
-            else:
-                available = (
-                    max(0, inventory.quantity_on_hand - inventory.quantity_reserved)
-                    if inventory is not None
-                    else 0
-                )
                 label = (
                     f"{line.product_name} ({line.variant_name})"
                     if getattr(line, "variant_name", None)
@@ -242,8 +220,15 @@ async def _consume_fulfilled_order_stock(
                 )
                 raise HTTPException(
                     409,
-                    f"Insufficient available stock for {label}: need {line.quantity}, "
-                    f"have {available} unreserved on hand. Update stock in Admin → Store → Inventory first.",
+                    f"Cannot fulfill preorder item {label}: insufficient stock received on hand "
+                    f"(need {line.quantity}, have {reserved_portion} reserved for this order and "
+                    f"{available} unreserved). Record a Purchase Order Goods Receipt or Inventory "
+                    "Restock first so stock and COGS are tracked.",
+                )
+            reserved_to_consume = reserved_portion
+            if reserved_portion < line.quantity:
+                movement_note = (
+                    "Fulfilled preorder order (consumed unreserved on-hand stock)"
                 )
 
         value = await db.scalar(
@@ -290,8 +275,8 @@ async def _consume_fulfilled_order_stock(
                 )
             )
         inventory.quantity_on_hand -= line.quantity
-        if consume_from_reserved:
-            inventory.quantity_reserved -= line.quantity
+        if reserved_to_consume > 0:
+            inventory.quantity_reserved -= reserved_to_consume
         db.add(
             InventoryMovement(
                 inventory_item_id=inventory.id,
