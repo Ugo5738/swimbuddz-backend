@@ -8900,6 +8900,773 @@
         ]
       }
     },
+    "/api/v1/scorecards/catalog": {
+      "get": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Get Scorecard Catalog",
+        "description": "Return canonical SwimBuddz skill domains, skills, strokes & benchmark specs.",
+        "operationId": "get_scorecard_catalog_scorecards_catalog_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scorecards/public/{share_token}": {
+      "get": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Get Public Shared Scorecard",
+        "description": "Strictly opt-in public positive milestone card (no authentication required).",
+        "operationId": "get_public_shared_scorecard_scorecards_public__share_token__get",
+        "parameters": [
+          {
+            "name": "share_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Share Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicShareScorecardResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scorecards/me": {
+      "get": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Get My Scorecard",
+        "description": "Return the authenticated member's complete live Swim Scorecard.",
+        "operationId": "get_my_scorecard_scorecards_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberScorecardResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scorecards/me/skills/{skill_code}": {
+      "put": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Update My Skill",
+        "description": "Self-update proficiency on a canonical swim skill and optionally request review.",
+        "operationId": "update_my_skill_scorecards_me_skills__skill_code__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skill_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Skill Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelfUpdateSkillRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardSkillItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scorecards/me/benchmarks": {
+      "post": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Create My Benchmark",
+        "description": "Log a personal swim benchmark (progressive Club gating on advanced metrics).",
+        "operationId": "create_my_benchmark_scorecards_me_benchmarks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBenchmarkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scorecards/me/benchmarks/{benchmark_id}": {
+      "delete": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Delete My Benchmark",
+        "description": "Delete an unverified self-logged benchmark owned by the current member.",
+        "operationId": "delete_my_benchmark_scorecards_me_benchmarks__benchmark_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "benchmark_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Benchmark Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scorecards/me/settings": {
+      "patch": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Update My Scorecard Settings",
+        "description": "Update audience visibility toggles, preferred pool length, or share token.",
+        "operationId": "update_my_scorecard_settings_scorecards_me_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScorecardSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardSettingsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scorecards/review-queue": {
+      "get": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "List Scorecard Review Queue",
+        "description": "Pending skill claims and benchmark verifications scoped by caller role.",
+        "operationId": "list_scorecard_review_queue_scorecards_review_queue_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pod Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardReviewQueueResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scorecards/roster": {
+      "get": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "List Scorecard Roster",
+        "description": "Searchable swimmer roster for Coaches, Admins, and active Pod Leads.",
+        "operationId": "list_scorecard_roster_scorecards_roster_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScorecardRosterMemberSummary"
+                  },
+                  "title": "Response List Scorecard Roster Scorecards Roster Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scorecards/benchmark-day/batch": {
+      "post": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Record Benchmark Day Batch",
+        "description": "Batch-record Coach/Pod-Lead verified benchmarks during a Club Benchmark Day.",
+        "operationId": "record_benchmark_day_batch_scorecards_benchmark_day_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchBenchmarkDayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchBenchmarkDayResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scorecards/benchmarks/{benchmark_id}/review": {
+      "post": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Review Member Benchmark",
+        "description": "Approve (`coach_verified`) or reject a member's self-logged benchmark.",
+        "operationId": "review_member_benchmark_scorecards_benchmarks__benchmark_id__review_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "benchmark_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Benchmark Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewBenchmarkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scorecards/pod/{pod_id}": {
+      "get": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Get Pod Scorecard Overview",
+        "description": "Pod roster highlights honoring each swimmer's `pod_visibility_enabled` setting.",
+        "operationId": "get_pod_scorecard_overview_scorecards_pod__pod_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pod Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodScorecardOverviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scorecards/members/{member_id}": {
+      "get": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Get Member Scorecard By Id",
+        "description": "Audience-scoped scorecard read (full for self/coach/admin/pod_lead; peer highlight for pod_mate).",
+        "operationId": "get_member_scorecard_by_id_scorecards_members__member_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MemberScorecardResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PeerScorecardHighlightResponse"
+                    }
+                  ],
+                  "title": "Response Get Member Scorecard By Id Scorecards Members  Member Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scorecards/members/{member_id}/skills/{skill_code}/verify": {
+      "post": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Verify Swimmer Skill",
+        "description": "Coach, Admin, or scoped Pod Lead verifies or rejects a swimmer's skill.",
+        "operationId": "verify_swimmer_skill_scorecards_members__member_id__skills__skill_code__verify_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "skill_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Skill Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifySkillRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardSkillItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scorecards/members/{member_id}/benchmarks": {
+      "post": {
+        "tags": [
+          "scorecards"
+        ],
+        "summary": "Record Verified Benchmark For Swimmer",
+        "description": "Coach, Admin, or scoped Pod Lead directly records a verified benchmark.",
+        "operationId": "record_verified_benchmark_for_swimmer_scorecards_members__member_id__benchmarks_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoachCreateBenchmarkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/members/pods/rosters/batch": {
       "post": {
         "tags": [
@@ -25184,6 +25951,52 @@
         ]
       }
     },
+    "/api/v1/internal/academy/members/{member_auth_id}/scorecard-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Member Academy Scorecard Summary",
+        "description": "Lifetime Academy progression summary for the Member Swim Scorecard (ADR-026).",
+        "operationId": "get_member_academy_scorecard_summary_internal_academy_members__member_auth_id__scorecard_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/academy/extension-requests/cohorts/{cohort_id}": {
       "post": {
         "tags": [
@@ -38599,6 +39412,52 @@
         }
       }
     },
+    "/api/v1/internal/reporting/members/{member_auth_id}/scorecard-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Member Reporting Scorecard Summary",
+        "description": "Aggregate lifetime consistency & community stats from quarterly snapshots (ADR-026).",
+        "operationId": "get_member_reporting_scorecard_summary_internal_reporting_members__member_auth_id__scorecard_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/wallet/me": {
       "get": {
         "tags": [
@@ -45695,6 +46554,64 @@
         }
       }
     },
+    "/api/v1/internal/ai/members/{member_auth_id}/strokelab-summary": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Get Member Strokelab Summary",
+        "description": "Return completed Stroke Lab metric snapshots for one member.",
+        "operationId": "get_member_strokelab_summary_internal_ai_members__member_auth_id__strokelab_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_auth_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Auth Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/ai/founding-members/confirm": {
       "post": {
         "tags": [
@@ -48724,6 +49641,53 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/internal/volunteer/members/{member_id}/scorecard-summary": {
+      "get": {
+        "tags": [
+          "internal-volunteer"
+        ],
+        "summary": "Get Member Volunteer Scorecard Summary",
+        "description": "Positive volunteer summary for the Member Swim Scorecard (ADR-026).\n\nDeliberately excludes internal `reliability_score` so raw ops metrics are\nnever exposed on member/peer/public scorecards.",
+        "operationId": "get_member_volunteer_scorecard_summary_internal_volunteer_members__member_id__scorecard_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/pools/submissions": {
@@ -73728,6 +74692,96 @@
   },
   "components": {
     "schemas": {
+      "AcademyMilestoneSummaryItem": {
+        "properties": {
+          "milestone_name": {
+            "type": "string",
+            "title": "Milestone Name"
+          },
+          "achieved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Achieved At"
+          },
+          "program_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program Name"
+          },
+          "cohort_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "milestone_name"
+        ],
+        "title": "AcademyMilestoneSummaryItem"
+      },
+      "AcademyProgressSection": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": false
+          },
+          "milestones_achieved": {
+            "type": "integer",
+            "title": "Milestones Achieved",
+            "default": 0
+          },
+          "milestones_in_progress": {
+            "type": "integer",
+            "title": "Milestones In Progress",
+            "default": 0
+          },
+          "certificates_earned": {
+            "type": "integer",
+            "title": "Certificates Earned",
+            "default": 0
+          },
+          "cohorts_completed": {
+            "type": "integer",
+            "title": "Cohorts Completed",
+            "default": 0
+          },
+          "active_enrollments": {
+            "type": "integer",
+            "title": "Active Enrollments",
+            "default": 0
+          },
+          "recent_milestones": {
+            "items": {
+              "$ref": "#/components/schemas/AcademyMilestoneSummaryItem"
+            },
+            "type": "array",
+            "title": "Recent Milestones"
+          }
+        },
+        "type": "object",
+        "title": "AcademyProgressSection"
+      },
       "ActivateAcademyRequest": {
         "properties": {
           "cohort_end_date": {
@@ -75055,6 +76109,643 @@
         ],
         "title": "BankAccountCreate",
         "description": "Schema for creating/updating coach bank account."
+      },
+      "BatchBenchmarkDayRequest": {
+        "properties": {
+          "benchmark_day_label": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Benchmark Day Label"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "pool_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Name"
+          },
+          "pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Length M"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/BatchBenchmarkEntry"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "benchmark_day_label",
+          "entries"
+        ],
+        "title": "BatchBenchmarkDayRequest"
+      },
+      "BatchBenchmarkDayResponse": {
+        "properties": {
+          "benchmark_day_label": {
+            "type": "string",
+            "title": "Benchmark Day Label"
+          },
+          "recorded_count": {
+            "type": "integer",
+            "title": "Recorded Count"
+          },
+          "benchmarks": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkItemResponse"
+            },
+            "type": "array",
+            "title": "Benchmarks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "benchmark_day_label",
+          "recorded_count",
+          "benchmarks"
+        ],
+        "title": "BatchBenchmarkDayResponse"
+      },
+      "BatchBenchmarkEntry": {
+        "properties": {
+          "stroke": {
+            "type": "string",
+            "enum": [
+              "freestyle",
+              "backstroke",
+              "breaststroke",
+              "butterfly",
+              "medley",
+              "open_water",
+              "any"
+            ],
+            "title": "Stroke"
+          },
+          "benchmark_type": {
+            "type": "string",
+            "enum": [
+              "max_distance",
+              "time_trial",
+              "spl",
+              "stroke_rate",
+              "swolf",
+              "open_water"
+            ],
+            "title": "Benchmark Type"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 50000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 86400.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "stroke_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Count"
+          },
+          "stroke_rate_spm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 180.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Rate Spm"
+          },
+          "swolf_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swolf Score"
+          },
+          "pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Length M"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "pool_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Name"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "benchmark_day_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Day Label"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "request_verification": {
+            "type": "boolean",
+            "title": "Request Verification",
+            "default": false
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "verifier_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verifier Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stroke",
+          "benchmark_type",
+          "member_id"
+        ],
+        "title": "BatchBenchmarkEntry"
+      },
+      "BenchmarkItemResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "stroke": {
+            "type": "string",
+            "enum": [
+              "freestyle",
+              "backstroke",
+              "breaststroke",
+              "butterfly",
+              "medley",
+              "open_water",
+              "any"
+            ],
+            "title": "Stroke"
+          },
+          "benchmark_type": {
+            "type": "string",
+            "enum": [
+              "max_distance",
+              "time_trial",
+              "spl",
+              "stroke_rate",
+              "swolf",
+              "open_water"
+            ],
+            "title": "Benchmark Type"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "pace_per_100m_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pace Per 100M Seconds"
+          },
+          "stroke_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Count"
+          },
+          "stroke_rate_spm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Rate Spm"
+          },
+          "swolf_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swolf Score"
+          },
+          "pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Length M"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "pool_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Name"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "benchmark_day_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Day Label"
+          },
+          "verification_source": {
+            "type": "string",
+            "enum": [
+              "self_logged",
+              "strokelab_ai",
+              "coach_verified"
+            ],
+            "title": "Verification Source"
+          },
+          "verification_status": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "pending_review",
+              "verified",
+              "rejected"
+            ],
+            "title": "Verification Status"
+          },
+          "verified_by_member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified By Member Id"
+          },
+          "verified_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified By Name"
+          },
+          "verified_by_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "coach",
+                  "pod_lead",
+                  "admin"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified By Role"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "verifier_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verifier Notes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "member_id",
+          "stroke",
+          "benchmark_type",
+          "recorded_at",
+          "verification_source",
+          "verification_status",
+          "created_at"
+        ],
+        "title": "BenchmarkItemResponse"
+      },
+      "BenchmarkTrendSeries": {
+        "properties": {
+          "metric_key": {
+            "type": "string",
+            "title": "Metric Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "higher_is_better": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Higher Is Better"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPoint"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "metric_key",
+          "title",
+          "unit"
+        ],
+        "title": "BenchmarkTrendSeries"
       },
       "BirthdayMember": {
         "properties": {
@@ -79082,6 +80773,84 @@
         "type": "object",
         "title": "ClubQuarterSummary"
       },
+      "ClubReadinessSnapshot": {
+        "properties": {
+          "is_club_ready": {
+            "type": "boolean",
+            "title": "Is Club Ready",
+            "default": false
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "nonstop_distance_m": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nonstop Distance M"
+          },
+          "deep_water_comfort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deep Water Comfort"
+          },
+          "primary_technique_focus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Technique Focus"
+          },
+          "first_club_milestone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Club Milestone"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "title": "ClubReadinessSnapshot"
+      },
       "ClubResponse": {
         "properties": {
           "name": {
@@ -80430,6 +82199,208 @@
           "is_verified"
         ],
         "title": "CoachBankAccountResponse"
+      },
+      "CoachCreateBenchmarkRequest": {
+        "properties": {
+          "stroke": {
+            "type": "string",
+            "enum": [
+              "freestyle",
+              "backstroke",
+              "breaststroke",
+              "butterfly",
+              "medley",
+              "open_water",
+              "any"
+            ],
+            "title": "Stroke"
+          },
+          "benchmark_type": {
+            "type": "string",
+            "enum": [
+              "max_distance",
+              "time_trial",
+              "spl",
+              "stroke_rate",
+              "swolf",
+              "open_water"
+            ],
+            "title": "Benchmark Type"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 50000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 86400.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "stroke_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Count"
+          },
+          "stroke_rate_spm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 180.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Rate Spm"
+          },
+          "swolf_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swolf Score"
+          },
+          "pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Length M"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "pool_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Name"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "benchmark_day_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Day Label"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "request_verification": {
+            "type": "boolean",
+            "title": "Request Verification",
+            "default": false
+          },
+          "verifier_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verifier Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stroke",
+          "benchmark_type"
+        ],
+        "title": "CoachCreateBenchmarkRequest"
       },
       "CoachGradeEnum": {
         "type": "string",
@@ -82151,6 +84122,101 @@
         ],
         "title": "CommunityExperienceQuote"
       },
+      "ConsistencyCommunitySection": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": false
+          },
+          "volunteer_available": {
+            "type": "boolean",
+            "title": "Volunteer Available",
+            "default": false
+          },
+          "total_sessions_attended": {
+            "type": "integer",
+            "title": "Total Sessions Attended",
+            "default": 0
+          },
+          "total_pool_hours": {
+            "type": "number",
+            "title": "Total Pool Hours",
+            "default": 0.0
+          },
+          "longest_streak_weeks": {
+            "type": "integer",
+            "title": "Longest Streak Weeks",
+            "default": 0
+          },
+          "current_streak_weeks": {
+            "type": "integer",
+            "title": "Current Streak Weeks",
+            "default": 0
+          },
+          "punctuality_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Punctuality Rate"
+          },
+          "volunteer_hours": {
+            "type": "number",
+            "title": "Volunteer Hours",
+            "default": 0.0
+          },
+          "volunteer_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volunteer Tier"
+          },
+          "volunteer_recognition_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volunteer Recognition Tier"
+          },
+          "rides_shared": {
+            "type": "integer",
+            "title": "Rides Shared",
+            "default": 0
+          },
+          "events_attended": {
+            "type": "integer",
+            "title": "Events Attended",
+            "default": 0
+          },
+          "latest_quarter_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Quarter Label"
+          }
+        },
+        "type": "object",
+        "title": "ConsistencyCommunitySection"
+      },
       "CreateAgreementVersionRequest": {
         "properties": {
           "version": {
@@ -82185,6 +84251,196 @@
         ],
         "title": "CreateAgreementVersionRequest",
         "description": "Admin request to create a new agreement version."
+      },
+      "CreateBenchmarkRequest": {
+        "properties": {
+          "stroke": {
+            "type": "string",
+            "enum": [
+              "freestyle",
+              "backstroke",
+              "breaststroke",
+              "butterfly",
+              "medley",
+              "open_water",
+              "any"
+            ],
+            "title": "Stroke"
+          },
+          "benchmark_type": {
+            "type": "string",
+            "enum": [
+              "max_distance",
+              "time_trial",
+              "spl",
+              "stroke_rate",
+              "swolf",
+              "open_water"
+            ],
+            "title": "Benchmark Type"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 50000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 86400.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "stroke_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Count"
+          },
+          "stroke_rate_spm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 180.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Rate Spm"
+          },
+          "swolf_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swolf Score"
+          },
+          "pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Length M"
+          },
+          "pool_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Id"
+          },
+          "pool_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Name"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "benchmark_day_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Day Label"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "request_verification": {
+            "type": "boolean",
+            "title": "Request Verification",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "stroke",
+          "benchmark_type"
+        ],
+        "title": "CreateBenchmarkRequest"
       },
       "CreateHandbookVersionRequest": {
         "properties": {
@@ -85721,6 +87977,174 @@
         "title": "MemberResponse",
         "description": "Full member response with nested sub-records."
       },
+      "MemberScorecardResponse": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_name": {
+            "type": "string",
+            "title": "Member Name"
+          },
+          "first_name": {
+            "type": "string",
+            "title": "First Name"
+          },
+          "profile_photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Photo Url"
+          },
+          "member_since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Member Since"
+          },
+          "active_programmes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Active Programmes"
+          },
+          "has_club_access": {
+            "type": "boolean",
+            "title": "Has Club Access",
+            "default": false
+          },
+          "has_full_performance_access": {
+            "type": "boolean",
+            "title": "Has Full Performance Access",
+            "default": false
+          },
+          "viewer_audience": {
+            "type": "string",
+            "enum": [
+              "self",
+              "coach_or_admin",
+              "pod_lead",
+              "pod_mate",
+              "public_share"
+            ],
+            "title": "Viewer Audience"
+          },
+          "can_edit_self": {
+            "type": "boolean",
+            "title": "Can Edit Self",
+            "default": false
+          },
+          "can_verify": {
+            "type": "boolean",
+            "title": "Can Verify",
+            "default": false
+          },
+          "pod_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Name"
+          },
+          "club_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Name"
+          },
+          "club_readiness": {
+            "$ref": "#/components/schemas/ClubReadinessSnapshot"
+          },
+          "headline": {
+            "$ref": "#/components/schemas/ScorecardHeadlineStats"
+          },
+          "domains": {
+            "items": {
+              "$ref": "#/components/schemas/ScorecardDomainSection"
+            },
+            "type": "array",
+            "title": "Domains"
+          },
+          "personal_bests": {
+            "items": {
+              "$ref": "#/components/schemas/PersonalBestRecord"
+            },
+            "type": "array",
+            "title": "Personal Bests"
+          },
+          "benchmarks": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkItemResponse"
+            },
+            "type": "array",
+            "title": "Benchmarks"
+          },
+          "trends": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkTrendSeries"
+            },
+            "type": "array",
+            "title": "Trends"
+          },
+          "strokelab": {
+            "$ref": "#/components/schemas/StrokeLabSection"
+          },
+          "academy": {
+            "$ref": "#/components/schemas/AcademyProgressSection"
+          },
+          "consistency": {
+            "$ref": "#/components/schemas/ConsistencyCommunitySection"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScorecardSettingsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_availability": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "Source Availability"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "member_name",
+          "first_name",
+          "member_since",
+          "viewer_audience",
+          "club_readiness",
+          "headline",
+          "domains",
+          "strokelab",
+          "academy",
+          "consistency"
+        ],
+        "title": "MemberScorecardResponse"
+      },
       "MemberSearchResult": {
         "properties": {
           "id": {
@@ -86191,6 +88615,261 @@
         "type": "object",
         "title": "NextQuarterRequest"
       },
+      "PeerScorecardHighlightResponse": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_name": {
+            "type": "string",
+            "title": "Member Name"
+          },
+          "first_name": {
+            "type": "string",
+            "title": "First Name"
+          },
+          "profile_photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Photo Url"
+          },
+          "pod_visibility_enabled": {
+            "type": "boolean",
+            "title": "Pod Visibility Enabled"
+          },
+          "is_club_ready": {
+            "type": "boolean",
+            "title": "Is Club Ready",
+            "default": false
+          },
+          "verified_strokes_unlocked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Verified Strokes Unlocked"
+          },
+          "verified_skills_count": {
+            "type": "integer",
+            "title": "Verified Skills Count",
+            "default": 0
+          },
+          "total_skills": {
+            "type": "integer",
+            "title": "Total Skills",
+            "default": 0
+          },
+          "volunteer_recognition_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volunteer Recognition Tier"
+          },
+          "verified_benchmarks": {
+            "items": {
+              "$ref": "#/components/schemas/PersonalBestRecord"
+            },
+            "type": "array",
+            "title": "Verified Benchmarks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "member_name",
+          "first_name",
+          "pod_visibility_enabled"
+        ],
+        "title": "PeerScorecardHighlightResponse",
+        "description": "Sanitized positive-only view shown to active Pod-mates (ADR-026)."
+      },
+      "PendingBenchmarkReviewItem": {
+        "properties": {
+          "benchmark_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Benchmark Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_name": {
+            "type": "string",
+            "title": "Member Name"
+          },
+          "pod_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Name"
+          },
+          "stroke": {
+            "type": "string",
+            "enum": [
+              "freestyle",
+              "backstroke",
+              "breaststroke",
+              "butterfly",
+              "medley",
+              "open_water",
+              "any"
+            ],
+            "title": "Stroke"
+          },
+          "benchmark_type": {
+            "type": "string",
+            "enum": [
+              "max_distance",
+              "time_trial",
+              "spl",
+              "stroke_rate",
+              "swolf",
+              "open_water"
+            ],
+            "title": "Benchmark Type"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "pace_per_100m_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pace Per 100M Seconds"
+          },
+          "stroke_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Count"
+          },
+          "stroke_rate_spm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Rate Spm"
+          },
+          "swolf_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swolf Score"
+          },
+          "pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Length M"
+          },
+          "pool_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "benchmark_id",
+          "member_id",
+          "member_name",
+          "stroke",
+          "benchmark_type",
+          "recorded_at",
+          "created_at"
+        ],
+        "title": "PendingBenchmarkReviewItem"
+      },
       "PendingMemberResponse": {
         "properties": {
           "id": {
@@ -86506,6 +89185,213 @@
         ],
         "title": "PendingRegistrationResponse",
         "description": "Response for pending registration."
+      },
+      "PendingSkillReviewItem": {
+        "properties": {
+          "progress_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Progress Id"
+          },
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_name": {
+            "type": "string",
+            "title": "Member Name"
+          },
+          "pod_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Name"
+          },
+          "skill_code": {
+            "type": "string",
+            "title": "Skill Code"
+          },
+          "skill_title": {
+            "type": "string",
+            "title": "Skill Title"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "foundations",
+              "freestyle",
+              "backstroke",
+              "breaststroke",
+              "butterfly",
+              "advanced_skills"
+            ],
+            "title": "Domain"
+          },
+          "is_safety_gate": {
+            "type": "boolean",
+            "title": "Is Safety Gate"
+          },
+          "claimed_proficiency": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "learning",
+              "confident",
+              "mastered"
+            ],
+            "title": "Claimed Proficiency"
+          },
+          "verified_proficiency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "not_started",
+                  "learning",
+                  "confident",
+                  "mastered"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified Proficiency"
+          },
+          "member_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Notes"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "progress_id",
+          "member_id",
+          "member_name",
+          "skill_code",
+          "skill_title",
+          "domain",
+          "is_safety_gate",
+          "claimed_proficiency",
+          "updated_at"
+        ],
+        "title": "PendingSkillReviewItem"
+      },
+      "PersonalBestRecord": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "stroke": {
+            "type": "string",
+            "title": "Stroke"
+          },
+          "benchmark_type": {
+            "type": "string",
+            "title": "Benchmark Type"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "display_value": {
+            "type": "string",
+            "title": "Display Value"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Length M"
+          },
+          "pool_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Name"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          },
+          "verification_source": {
+            "type": "string",
+            "enum": [
+              "self_logged",
+              "strokelab_ai",
+              "coach_verified"
+            ],
+            "title": "Verification Source"
+          },
+          "is_verified": {
+            "type": "boolean",
+            "title": "Is Verified"
+          },
+          "benchmark_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "stroke",
+          "benchmark_type",
+          "value",
+          "display_value",
+          "unit",
+          "recorded_at",
+          "verification_source",
+          "is_verified"
+        ],
+        "title": "PersonalBestRecord"
       },
       "PodAssignmentSource": {
         "type": "string",
@@ -87157,6 +90043,37 @@
         ],
         "title": "PodSchedulingAuthorization"
       },
+      "PodScorecardOverviewResponse": {
+        "properties": {
+          "pod_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pod Id"
+          },
+          "pod_name": {
+            "type": "string",
+            "title": "Pod Name"
+          },
+          "viewer_can_verify": {
+            "type": "boolean",
+            "title": "Viewer Can Verify",
+            "default": false
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/PeerScorecardHighlightResponse"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pod_id",
+          "pod_name"
+        ],
+        "title": "PodScorecardOverviewResponse"
+      },
       "PodStatus": {
         "type": "string",
         "enum": [
@@ -87615,6 +90532,188 @@
         ],
         "title": "PromiseCheck"
       },
+      "PublicShareScorecardResponse": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "first_name": {
+            "type": "string",
+            "title": "First Name"
+          },
+          "profile_photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Photo Url"
+          },
+          "member_since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Member Since"
+          },
+          "active_programmes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Active Programmes"
+          },
+          "is_club_ready": {
+            "type": "boolean",
+            "title": "Is Club Ready",
+            "default": false
+          },
+          "verified_strokes_unlocked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Verified Strokes Unlocked"
+          },
+          "verified_skills_count": {
+            "type": "integer",
+            "title": "Verified Skills Count",
+            "default": 0
+          },
+          "total_skills": {
+            "type": "integer",
+            "title": "Total Skills",
+            "default": 0
+          },
+          "safety_gates_cleared": {
+            "type": "integer",
+            "title": "Safety Gates Cleared",
+            "default": 0
+          },
+          "safety_gates_total": {
+            "type": "integer",
+            "title": "Safety Gates Total",
+            "default": 0
+          },
+          "top_verified_distance_m": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Verified Distance M"
+          },
+          "top_verified_distance_stroke": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Verified Distance Stroke"
+          },
+          "best_verified_spl": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Verified Spl"
+          },
+          "best_verified_spl_pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Verified Spl Pool Length M"
+          },
+          "best_verified_swolf": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Verified Swolf"
+          },
+          "best_verified_swolf_pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Verified Swolf Pool Length M"
+          },
+          "total_sessions_attended": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Sessions Attended"
+          },
+          "total_pool_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Pool Hours"
+          },
+          "volunteer_recognition_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volunteer Recognition Tier"
+          },
+          "domain_highlights": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Domain Highlights"
+          }
+        },
+        "type": "object",
+        "required": [
+          "display_name",
+          "first_name",
+          "member_since"
+        ],
+        "title": "PublicShareScorecardResponse",
+        "description": "Strictly opt-in public highlight card (zero private notes or raw weaknesses)."
+      },
       "QuarterRecommendationRequest": {
         "properties": {
           "template_id": {
@@ -87792,6 +90891,717 @@
         "title": "ResolveAccountRequest",
         "description": "Request to resolve/verify a bank account."
       },
+      "ReviewBenchmarkRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "verify",
+              "reject"
+            ],
+            "title": "Action"
+          },
+          "verifier_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verifier Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "ReviewBenchmarkRequest"
+      },
+      "ScorecardDomainSection": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "foundations",
+              "freestyle",
+              "backstroke",
+              "breaststroke",
+              "butterfly",
+              "advanced_skills"
+            ],
+            "title": "Code"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "short_title": {
+            "type": "string",
+            "title": "Short Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "order_index": {
+            "type": "integer",
+            "title": "Order Index"
+          },
+          "layer": {
+            "type": "string",
+            "title": "Layer"
+          },
+          "default_expanded_for_beginner": {
+            "type": "boolean",
+            "title": "Default Expanded For Beginner"
+          },
+          "total_skills": {
+            "type": "integer",
+            "title": "Total Skills"
+          },
+          "started_count": {
+            "type": "integer",
+            "title": "Started Count"
+          },
+          "confident_or_mastered_count": {
+            "type": "integer",
+            "title": "Confident Or Mastered Count"
+          },
+          "verified_count": {
+            "type": "integer",
+            "title": "Verified Count"
+          },
+          "pending_review_count": {
+            "type": "integer",
+            "title": "Pending Review Count"
+          },
+          "stroke_unlocked": {
+            "type": "boolean",
+            "title": "Stroke Unlocked"
+          },
+          "skills": {
+            "items": {
+              "$ref": "#/components/schemas/ScorecardSkillItem"
+            },
+            "type": "array",
+            "title": "Skills"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "title",
+          "short_title",
+          "description",
+          "order_index",
+          "layer",
+          "default_expanded_for_beginner",
+          "total_skills",
+          "started_count",
+          "confident_or_mastered_count",
+          "verified_count",
+          "pending_review_count",
+          "stroke_unlocked",
+          "skills"
+        ],
+        "title": "ScorecardDomainSection"
+      },
+      "ScorecardHeadlineStats": {
+        "properties": {
+          "total_skills": {
+            "type": "integer",
+            "title": "Total Skills"
+          },
+          "verified_skills_count": {
+            "type": "integer",
+            "title": "Verified Skills Count"
+          },
+          "confident_or_mastered_count": {
+            "type": "integer",
+            "title": "Confident Or Mastered Count"
+          },
+          "pending_review_count": {
+            "type": "integer",
+            "title": "Pending Review Count"
+          },
+          "safety_gates_cleared": {
+            "type": "integer",
+            "title": "Safety Gates Cleared"
+          },
+          "safety_gates_total": {
+            "type": "integer",
+            "title": "Safety Gates Total"
+          },
+          "verified_strokes_unlocked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Verified Strokes Unlocked"
+          },
+          "top_distance_m": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Distance M"
+          },
+          "top_distance_stroke": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Distance Stroke"
+          },
+          "top_distance_verified": {
+            "type": "boolean",
+            "title": "Top Distance Verified",
+            "default": false
+          },
+          "best_spl": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Spl"
+          },
+          "best_spl_pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Spl Pool Length M"
+          },
+          "best_swolf": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Swolf"
+          },
+          "best_swolf_pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Swolf Pool Length M"
+          },
+          "latest_stroke_rate_spm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Stroke Rate Spm"
+          },
+          "latest_stroke_rate_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "self_logged",
+                  "strokelab_ai",
+                  "coach_verified"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Stroke Rate Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_skills",
+          "verified_skills_count",
+          "confident_or_mastered_count",
+          "pending_review_count",
+          "safety_gates_cleared",
+          "safety_gates_total"
+        ],
+        "title": "ScorecardHeadlineStats"
+      },
+      "ScorecardReviewQueueResponse": {
+        "properties": {
+          "actor_role": {
+            "type": "string",
+            "enum": [
+              "coach",
+              "pod_lead",
+              "admin"
+            ],
+            "title": "Actor Role"
+          },
+          "scoped_pod_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Scoped Pod Ids"
+          },
+          "pending_skills": {
+            "items": {
+              "$ref": "#/components/schemas/PendingSkillReviewItem"
+            },
+            "type": "array",
+            "title": "Pending Skills"
+          },
+          "pending_benchmarks": {
+            "items": {
+              "$ref": "#/components/schemas/PendingBenchmarkReviewItem"
+            },
+            "type": "array",
+            "title": "Pending Benchmarks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "actor_role"
+        ],
+        "title": "ScorecardReviewQueueResponse"
+      },
+      "ScorecardRosterMemberSummary": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "member_name": {
+            "type": "string",
+            "title": "Member Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "profile_photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Photo Url"
+          },
+          "has_club_access": {
+            "type": "boolean",
+            "title": "Has Club Access",
+            "default": false
+          },
+          "is_club_ready": {
+            "type": "boolean",
+            "title": "Is Club Ready",
+            "default": false
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          },
+          "pod_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Name"
+          },
+          "verified_skills_count": {
+            "type": "integer",
+            "title": "Verified Skills Count",
+            "default": 0
+          },
+          "total_skills": {
+            "type": "integer",
+            "title": "Total Skills",
+            "default": 0
+          },
+          "pending_reviews_count": {
+            "type": "integer",
+            "title": "Pending Reviews Count",
+            "default": 0
+          },
+          "verified_strokes_unlocked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Verified Strokes Unlocked"
+          },
+          "top_distance_m": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Distance M"
+          },
+          "last_benchmark_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Benchmark At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "member_name"
+        ],
+        "title": "ScorecardRosterMemberSummary"
+      },
+      "ScorecardSettingsResponse": {
+        "properties": {
+          "pod_visibility_enabled": {
+            "type": "boolean",
+            "title": "Pod Visibility Enabled",
+            "default": true
+          },
+          "show_benchmarks_to_pod": {
+            "type": "boolean",
+            "title": "Show Benchmarks To Pod",
+            "default": false
+          },
+          "directory_highlights_enabled": {
+            "type": "boolean",
+            "title": "Directory Highlights Enabled",
+            "default": false
+          },
+          "public_share_card_enabled": {
+            "type": "boolean",
+            "title": "Public Share Card Enabled",
+            "default": false
+          },
+          "share_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Token"
+          },
+          "preferred_pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Pool Length M",
+            "default": 25.0
+          }
+        },
+        "type": "object",
+        "title": "ScorecardSettingsResponse"
+      },
+      "ScorecardSkillItem": {
+        "properties": {
+          "skill_code": {
+            "type": "string",
+            "title": "Skill Code"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "foundations",
+              "freestyle",
+              "backstroke",
+              "breaststroke",
+              "butterfly",
+              "advanced_skills"
+            ],
+            "title": "Domain"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "ti_focal_point": {
+            "type": "string",
+            "title": "Ti Focal Point"
+          },
+          "order_index": {
+            "type": "integer",
+            "title": "Order Index"
+          },
+          "is_safety_gate": {
+            "type": "boolean",
+            "title": "Is Safety Gate"
+          },
+          "proficiency": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "learning",
+              "confident",
+              "mastered"
+            ],
+            "title": "Proficiency",
+            "default": "not_started"
+          },
+          "verification_source": {
+            "type": "string",
+            "enum": [
+              "self_logged",
+              "strokelab_ai",
+              "coach_verified"
+            ],
+            "title": "Verification Source",
+            "default": "self_logged"
+          },
+          "verification_status": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "pending_review",
+              "verified",
+              "rejected"
+            ],
+            "title": "Verification Status",
+            "default": "unverified"
+          },
+          "verified_proficiency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "not_started",
+                  "learning",
+                  "confident",
+                  "mastered"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified Proficiency"
+          },
+          "is_verified": {
+            "type": "boolean",
+            "title": "Is Verified",
+            "default": false
+          },
+          "is_safety_gate_cleared": {
+            "type": "boolean",
+            "title": "Is Safety Gate Cleared",
+            "default": false
+          },
+          "auto_verified_via": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Verified Via"
+          },
+          "verified_by_member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified By Member Id"
+          },
+          "verified_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified By Name"
+          },
+          "verified_by_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "coach",
+                  "pod_lead",
+                  "admin"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified By Role"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "member_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Notes"
+          },
+          "verifier_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verifier Notes"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "skill_code",
+          "domain",
+          "title",
+          "description",
+          "ti_focal_point",
+          "order_index",
+          "is_safety_gate"
+        ],
+        "title": "ScorecardSkillItem"
+      },
+      "SelfUpdateSkillRequest": {
+        "properties": {
+          "proficiency": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "learning",
+              "confident",
+              "mastered"
+            ],
+            "title": "Proficiency"
+          },
+          "member_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Notes"
+          },
+          "request_verification": {
+            "type": "boolean",
+            "title": "Request Verification",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "proficiency"
+        ],
+        "title": "SelfUpdateSkillRequest"
+      },
       "SignAgreementRequest": {
         "properties": {
           "signature_type": {
@@ -87862,6 +91672,175 @@
         "title": "SignatureTypeEnum",
         "description": "Signature type for coach agreements."
       },
+      "StrokeLabRunSummary": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "stroke_type": {
+            "type": "string",
+            "title": "Stroke Type"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Completed At"
+          },
+          "stroke_rate_spm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stroke Rate Spm"
+          },
+          "body_roll_proxy_degrees": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Roll Proxy Degrees"
+          },
+          "breath_balance_left_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breath Balance Left Ratio"
+          },
+          "focus_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus Area"
+          },
+          "summary_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "stroke_type",
+          "completed_at"
+        ],
+        "title": "StrokeLabRunSummary"
+      },
+      "StrokeLabSection": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": false
+          },
+          "total_analyses": {
+            "type": "integer",
+            "title": "Total Analyses",
+            "default": 0
+          },
+          "latest_stroke_rate_spm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Stroke Rate Spm"
+          },
+          "latest_body_roll_degrees": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Body Roll Degrees"
+          },
+          "latest_breath_balance_left_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Breath Balance Left Ratio"
+          },
+          "latest_focus_area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Focus Area"
+          },
+          "latest_summary_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Summary Text"
+          },
+          "latest_completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Completed At"
+          },
+          "recent_runs": {
+            "items": {
+              "$ref": "#/components/schemas/StrokeLabRunSummary"
+            },
+            "type": "array",
+            "title": "Recent Runs"
+          }
+        },
+        "type": "object",
+        "title": "StrokeLabSection"
+      },
       "TierHistoryEntry": {
         "properties": {
           "tier": {
@@ -87907,6 +91886,146 @@
         ],
         "title": "TierHistoryResponse"
       },
+      "TrendPoint": {
+        "properties": {
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "display_value": {
+            "type": "string",
+            "title": "Display Value"
+          },
+          "stroke": {
+            "type": "string",
+            "title": "Stroke"
+          },
+          "pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Length M"
+          },
+          "pool_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pool Name"
+          },
+          "verification_source": {
+            "type": "string",
+            "enum": [
+              "self_logged",
+              "strokelab_ai",
+              "coach_verified"
+            ],
+            "title": "Verification Source"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recorded_at",
+          "value",
+          "display_value",
+          "stroke",
+          "verification_source"
+        ],
+        "title": "TrendPoint"
+      },
+      "UpdateScorecardSettingsRequest": {
+        "properties": {
+          "pod_visibility_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Visibility Enabled"
+          },
+          "show_benchmarks_to_pod": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Benchmarks To Pod"
+          },
+          "directory_highlights_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Highlights Enabled"
+          },
+          "public_share_card_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Share Card Enabled"
+          },
+          "preferred_pool_length_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Pool Length M"
+          },
+          "rotate_share_token": {
+            "type": "boolean",
+            "title": "Rotate Share Token",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "UpdateScorecardSettingsRequest"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -87939,6 +92058,50 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VerifySkillRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "verify",
+              "reject"
+            ],
+            "title": "Action",
+            "default": "verify"
+          },
+          "proficiency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "not_started",
+                  "learning",
+                  "confident",
+                  "mastered"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proficiency"
+          },
+          "verifier_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verifier Notes"
+          }
+        },
+        "type": "object",
+        "title": "VerifySkillRequest"
       },
       "VolunteerInterestCreate": {
         "properties": {

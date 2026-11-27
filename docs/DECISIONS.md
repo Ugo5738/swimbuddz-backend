@@ -654,6 +654,33 @@
 
 ---
 
+## ADR-026: Member Swim Scorecard — Progressive Multi-Stroke Progression, 3-Tier Trust Model & Audience-Scoped Visibility (27 November 2026)
+- **Status:** Settled & Enforced (Nov 2026)
+- **Context & Why:**
+  - Member swimming signals were scattered across Quarterly Reports (attendance/streaks), Academy milestones, Club Readiness assessments, Stroke Lab video analyses, and Volunteer tiers, with no unified way to track what strokes and sub-skills a swimmer can perform, how far they can swim continuously, or efficiency metrics like Strokes Per Length (SPL), Stroke Rate (SPM), SWOLF, and time/pace benchmarks.
+  - Limiting scorecards to Club members only would lose the before-and-after progression story from Community → Academy → Club (`ADR-001`, `ADR-010`), whereas collapsing beginners into a single 0–100 grade or showing intimidating empty metrics would violate adult-learning principles (`ADULT_LEARNING_PRINCIPLES.md`) and TI's *Efficiency over Speed* doctrine (`ADR-013`).
+- **Decision & Non-Negotiable Invariants:**
+  - **Universal Living Swim Scorecard with Progressive Depth:** Owned by `members_service` and keyed to `member_id`. Every active member gets Layer 1 (**Water Foundations & Safety**), Layer 2 (**6-Domain Multi-Stroke & Sub-Skills Matrix**: Foundations, Freestyle, Backstroke, Breaststroke, Butterfly, Turns/Starts/Open Water), headline `max_distance` logging, Stroke Lab AI summary, and Layer 4 (**Consistency & Community Strip**). Active **Club members** (verified via `has_current_club_access` per `ADR-001`, never raw `primary_tier`), **Coaches**, and **Admins** unlock full Layer 3 **Performance & Efficiency Benchmarks** (`time_trial`, `spl`, `stroke_rate`, `swolf`, `open_water`), longitudinal trend charts, and **Coach/Pod-Lead Verified Benchmark Days**.
+  - **No Single Punitive Grade:** Never collapse a swimmer into one composite score or letter grade. Skills use four encouraging stages (`not_started`, `learning`, `confident`, `mastered`).
+  - **Strict Boundary with Quarterly Reports:** Swim Scorecard (`/account/scorecard`) is the living all-time capability & progression identity; Quarterly Reports (`/account/reports`) remain time-boxed periodic activity recaps.
+  - **3-Tier Trust & Verification Model (`self_logged` | `strokelab_ai` | `coach_verified`):**
+    - `self_logged` updates never overwrite or downgrade a `coach_verified` baseline (`verified_proficiency` is preserved losslessly), and **never** unlock `is_safety_gate=true` competencies, Club Readiness (`ADR-005`), or Academy graduation (`ADR-010`). Members cannot delete `coach_verified` benchmarks.
+    - `strokelab_ai` metrics (`stroke_rate_spm`, `body_roll_proxy_degrees`, `breath_balance_left_ratio`, TI focus) are read live from `ai_service` over HTTP without exposing private video URLs to non-owners.
+    - `coach_verified` competencies are auto-projected from passed `ClubReadinessAssessment` rows and Academy milestone summaries, or explicitly verified/recorded (individually or in batch Benchmark Days) by **Admins**, **Coaches**, or **Pod Leads** (strictly scoped to active members of Pods the caller actively leads with active Club access).
+  - **Pool-Length Awareness & Server-Computed Efficiency:** Lap efficiency metrics (`spl`, `swolf`) strictly require `pool_length_m` (optionally linked to `pools_service.pools.id`) so different Lagos pool lengths (12.5m, 15m, 20m, 25m, 50m) are never conflated. `pace_per_100m_seconds` and single-length `swolf_score` are server-computed whenever inputs allow.
+  - **Audience-Scoped Visibility & Privacy Enforcement:** Enforced server-side via `project_scorecard_for_viewer`. Raw Stroke Lab findings, `verifier_notes`, `member_notes`, in-progress/unverified skills, and attendance/punctuality percentages are **always private** (self, coaches, admins; Pod Leads see operational skill/benchmark notes only for active members of Pods they lead). Pod-mates (`pod_visibility_enabled`, default `true`) see verified positive highlights only (verified strokes unlocked, Club Ready badge, positive recognition, plus verified distance/pace only if `show_benchmarks_to_pod=true`). Public shareable cards (`/scorecard/[token]`) are strictly opt-in (`public_share_card_enabled`, default `false`) via a revocable/rotatable `share_token` and display only safe positive verified milestones.
+  - **Cross-Service Isolation & Hard-Delete Compliance (`ADR-015`):** Cross-service reads from `academy_service`, `ai_service`, `reporting_service`, and `volunteer_service` go strictly over authenticated internal HTTP endpoints with graceful `source_availability` degradation (never fabricating zeros). Admin hard-delete (`delete_member`) cleans up all scorecard rows and nullifies `verified_by_member_id` references before deleting the member.
+- **Canonical Docs & Code:**
+  - `docs/design/MEMBER_SCORECARD_DESIGN.md`
+  - `swimbuddz-backend/services/members_service/models/scorecard.py`
+  - `swimbuddz-backend/services/members_service/services/scorecard_catalog.py`
+  - `swimbuddz-backend/services/members_service/services/scorecard_service.py`
+  - `swimbuddz-backend/services/members_service/routers/scorecard.py`
+  - `swimbuddz-frontend/src/app/(member)/account/scorecard/page.tsx`
+  - `swimbuddz-frontend/src/app/(public)/scorecard/[token]/page.tsx`
+
+---
+
 ## Template for Adding New Decisions
 
 Whenever a new product, pricing, accounting, curriculum, or architectural decision is made during a conversation, append a new `ADR-XXX` entry using this structure:

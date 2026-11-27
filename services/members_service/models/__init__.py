@@ -55,6 +55,18 @@ from services.members_service.models.enums import (  # noqa: F401
     PodVisibility,
 )
 from services.members_service.models.pod import Pod, PodAssignment  # noqa: F401
+from services.members_service.models.scorecard import (  # noqa: F401
+    BENCHMARK_STROKES,
+    BENCHMARK_TYPES,
+    SKILL_DOMAINS,
+    SKILL_PROFICIENCIES,
+    VERIFICATION_SOURCES,
+    VERIFICATION_STATUSES,
+    VERIFIER_ROLES,
+    MemberScorecardSettings,
+    MemberSkillProgress,
+    MemberSwimBenchmark,
+)
 from services.members_service.models.guardian import (  # noqa: F401
     GuardianLink,
     GuardianRelationship,
@@ -134,4 +146,14 @@ __all__ = [
     "PodAssignmentSource",
     "PodStatus",
     "PodVisibility",
+    "MemberSkillProgress",
+    "MemberSwimBenchmark",
+    "MemberScorecardSettings",
+    "SKILL_PROFICIENCIES",
+    "SKILL_DOMAINS",
+    "VERIFICATION_SOURCES",
+    "VERIFICATION_STATUSES",
+    "VERIFIER_ROLES",
+    "BENCHMARK_STROKES",
+    "BENCHMARK_TYPES",
 ]

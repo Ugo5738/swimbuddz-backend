@@ -1142,3 +1142,109 @@ async def academy_finance_summary(db: AsyncSession = Depends(get_async_db)):
             "Installments exclude dropped enrollments and include active + dropout-pending recoverable plans."
         ),
     }
+
+
+@router.get("/members/{member_auth_id}/scorecard-summary")
+async def get_member_academy_scorecard_summary(
+    member_auth_id: str,
+    _: AuthUser = Depends(require_service_role),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Lifetime Academy progression summary for the Member Swim Scorecard (ADR-026)."""
+    from services.academy_service.models import Milestone, ProgressStatus
+
+    enrollments = (
+        (
+            await db.execute(
+                select(Enrollment)
+                .where(Enrollment.member_auth_id == member_auth_id)
+                .options(
+                    selectinload(Enrollment.cohort).selectinload(Cohort.program),
+                    selectinload(Enrollment.program),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not enrollments:
+        return {
+            "milestones_achieved": 0,
+            "milestones_in_progress": 0,
+            "certificates_earned": 0,
+            "cohorts_completed": 0,
+            "active_enrollments": 0,
+            "recent_milestones": [],
+        }
+
+    enrollment_by_id = {e.id: e for e in enrollments}
+    enrollment_ids = list(enrollment_by_id.keys())
+
+    certificates_earned = sum(
+        1 for e in enrollments if e.certificate_issued_at is not None
+    )
+    cohorts_completed = sum(
+        1 for e in enrollments if e.status == EnrollmentStatus.GRADUATED
+    )
+    active_enrollments = sum(
+        1 for e in enrollments if e.status == EnrollmentStatus.ENROLLED
+    )
+
+    progress_rows = (
+        await db.execute(
+            select(StudentProgress, Milestone)
+            .join(Milestone, Milestone.id == StudentProgress.milestone_id)
+            .where(StudentProgress.enrollment_id.in_(enrollment_ids))
+            .order_by(
+                StudentProgress.achieved_at.desc().nullslast(),
+                StudentProgress.updated_at.desc(),
+            )
+        )
+    ).all()
+
+    milestones_achieved = 0
+    milestones_in_progress = 0
+    recent_milestones = []
+
+    for progress, milestone in progress_rows:
+        status_val = (
+            progress.status.value
+            if hasattr(progress.status, "value")
+            else str(progress.status)
+        )
+        if status_val == ProgressStatus.ACHIEVED.value:
+            milestones_achieved += 1
+            if len(recent_milestones) < 15:
+                enr = enrollment_by_id.get(progress.enrollment_id)
+                program_name = None
+                cohort_name = None
+                if enr is not None:
+                    if enr.cohort is not None:
+                        cohort_name = enr.cohort.name
+                        if enr.cohort.program is not None:
+                            program_name = enr.cohort.program.name
+                    if program_name is None and enr.program is not None:
+                        program_name = enr.program.name
+                recent_milestones.append(
+                    {
+                        "milestone_name": milestone.name,
+                        "achieved_at": (
+                            progress.achieved_at.isoformat()
+                            if progress.achieved_at
+                            else None
+                        ),
+                        "program_name": program_name,
+                        "cohort_name": cohort_name,
+                    }
+                )
+        elif status_val == ProgressStatus.PENDING.value:
+            milestones_in_progress += 1
+
+    return {
+        "milestones_achieved": milestones_achieved,
+        "milestones_in_progress": milestones_in_progress,
+        "certificates_earned": certificates_earned,
+        "cohorts_completed": cohorts_completed,
+        "active_enrollments": active_enrollments,
+        "recent_milestones": recent_milestones,
+    }
