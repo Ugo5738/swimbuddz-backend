@@ -68,6 +68,7 @@ class ProductVariantBase(BaseModel):
     price_override_ngn: Optional[Decimal] = Field(None, ge=0)
     weight_grams: Optional[int] = Field(None, ge=0)
     is_active: bool = True
+    allow_backorder: bool = False
 
 
 class ProductVariantCreate(BaseModel):
@@ -80,6 +81,7 @@ class ProductVariantCreate(BaseModel):
     cost_price_ngn: Optional[Decimal] = Field(None, ge=0)
     weight_grams: Optional[int] = Field(None, ge=0)
     is_active: bool = True
+    allow_backorder: bool = False
 
 
 class ProductVariantUpdate(BaseModel):
@@ -90,6 +92,7 @@ class ProductVariantUpdate(BaseModel):
     cost_price_ngn: Optional[Decimal] = Field(None, ge=0)
     weight_grams: Optional[int] = Field(None, ge=0)
     is_active: Optional[bool] = None
+    allow_backorder: Optional[bool] = None
 
 
 class ProductVariantResponse(ProductVariantBase):

@@ -255,6 +255,12 @@ class ProductVariant(Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )
+    # Shopify-style per-variant "Continue selling when out of stock" toggle.
+    # When True on a stocked product, zero-stock or short-stock orders are
+    # accepted as backorders/preorders and auto-allocated FIFO when stock arrives.
+    allow_backorder: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now

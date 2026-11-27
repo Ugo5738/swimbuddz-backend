@@ -270,7 +270,7 @@ async def enrich_cart_response(cart_or_id, db: AsyncSession) -> CartResponse:
     cart_id = cart_or_id if not isinstance(cart_or_id, Cart) else cart_or_id.id
     # Clear identity map to avoid stale lazy-load references after commit/delete
     db.expunge_all()
-    # Load items with variants, product, and images (variant + product level)
+    # Load items with variants, product, inventory, and images (variant + product level)
     query = (
         select(Cart)
         .where(Cart.id == cart_id)
@@ -282,6 +282,9 @@ async def enrich_cart_response(cart_or_id, db: AsyncSession) -> CartResponse:
             selectinload(Cart.items)
             .selectinload(CartItem.variant)
             .selectinload(ProductVariant.images),
+            selectinload(Cart.items)
+            .selectinload(CartItem.variant)
+            .selectinload(ProductVariant.inventory_item),
         )
     )
     result = await db.execute(query)
@@ -292,6 +295,17 @@ async def enrich_cart_response(cart_or_id, db: AsyncSession) -> CartResponse:
     for item in cart.items:
         variant = item.variant
         product = variant.product if variant else None
+        inv = variant.inventory_item if variant else None
+        qty_available = inv.quantity_available if inv else 0
+        item_is_preorder = bool(
+            (product and product.sourcing_type == SourcingType.PREORDER)
+            or (
+                variant
+                and variant.allow_backorder
+                and (not product or product.sourcing_type != SourcingType.DROPSHIP)
+                and qty_available < item.quantity
+            )
+        )
         # Try variant images first, fall back to product images
         variant_imgs = variant.images or [] if variant else []
         product_imgs = product.images or [] if product else []
@@ -320,6 +334,12 @@ async def enrich_cart_response(cart_or_id, db: AsyncSession) -> CartResponse:
                 ),
                 size_chart_url=(
                     getattr(product, "size_chart_url", None) if product else None
+                ),
+                is_preorder=item_is_preorder,
+                preorder_lead_days=(
+                    (product.preorder_lead_days or 14)
+                    if item_is_preorder and product
+                    else None
                 ),
             )
         )
@@ -395,14 +415,14 @@ async def add_to_cart(
     if variant.product.status != ProductStatus.ACTIVE:
         raise HTTPException(status_code=400, detail="Product is not available")
 
-    # Check inventory (skip for pre-order / dropship products)
+    # Check inventory (skip for pre-order / dropship products or variants with backorder enabled)
     inv = variant.inventory_item
-    if (
-        inv
-        and variant.product.sourcing_type
-        not in (SourcingType.PREORDER, SourcingType.DROPSHIP)
-        and inv.quantity_available < item_in.quantity
-    ):
+    allows_backorder = bool(
+        variant.allow_backorder
+        or variant.product.sourcing_type
+        in (SourcingType.PREORDER, SourcingType.DROPSHIP)
+    )
+    if inv and not allows_backorder and inv.quantity_available < item_in.quantity:
         raise HTTPException(
             status_code=400,
             detail=f"Only {inv.quantity_available} available",
@@ -421,12 +441,7 @@ async def add_to_cart(
 
     if existing_item:
         new_quantity = existing_item.quantity + item_in.quantity
-        if (
-            inv
-            and variant.product.sourcing_type
-            not in (SourcingType.PREORDER, SourcingType.DROPSHIP)
-            and inv.quantity_available < new_quantity
-        ):
+        if inv and not allows_backorder and inv.quantity_available < new_quantity:
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot add more. Only {inv.quantity_available} available.",
@@ -474,15 +489,17 @@ async def update_cart_item(
     if not cart_item:
         raise HTTPException(status_code=404, detail="Cart item not found")
 
-    # Check inventory (skip for pre-order / dropship products)
+    # Check inventory (skip for pre-order / dropship products or variants with backorder enabled)
     inv = cart_item.variant.inventory_item if cart_item.variant else None
     product = cart_item.variant.product if cart_item.variant else None
-    if (
-        inv
-        and product
-        and product.sourcing_type not in (SourcingType.PREORDER, SourcingType.DROPSHIP)
-        and inv.quantity_available < item_in.quantity
-    ):
+    allows_backorder = bool(
+        (cart_item.variant and cart_item.variant.allow_backorder)
+        or (
+            product
+            and product.sourcing_type in (SourcingType.PREORDER, SourcingType.DROPSHIP)
+        )
+    )
+    if inv and not allows_backorder and inv.quantity_available < item_in.quantity:
         raise HTTPException(
             status_code=400,
             detail=f"Only {inv.quantity_available} available",

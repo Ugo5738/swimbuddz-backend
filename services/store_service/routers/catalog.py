@@ -272,6 +272,7 @@ async def get_product(
                 price_override_ngn=v.price_override_ngn,
                 weight_grams=v.weight_grams,
                 is_active=v.is_active,
+                allow_backorder=bool(v.allow_backorder),
                 created_at=v.created_at,
                 updated_at=v.updated_at,
                 quantity_available=qty_available,
