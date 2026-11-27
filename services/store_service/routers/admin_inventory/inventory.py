@@ -30,6 +30,9 @@ from services.store_service.schemas import (
     InventoryItemResponse,
     LowStockItem,
 )
+from services.store_service.services.preorder_allocation import (
+    allocate_stock_to_paid_preorders,
+)
 
 logger = get_logger(__name__)
 
@@ -98,7 +101,9 @@ async def adjust_inventory(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Adjust inventory (restock or correction)."""
-    query = select(InventoryItem).where(InventoryItem.id == inventory_id)
+    query = (
+        select(InventoryItem).where(InventoryItem.id == inventory_id).with_for_update()
+    )
     result = await db.execute(query)
     item = result.scalar_one_or_none()
 
@@ -139,6 +144,14 @@ async def adjust_inventory(
         performed_by=current_user.user_id,
     )
     db.add(movement)
+
+    if adjustment.quantity > 0:
+        await allocate_stock_to_paid_preorders(
+            db,
+            item,
+            current_user.user_id,
+            reason=adjustment.notes or "admin inventory restock",
+        )
 
     await log_audit(
         db,

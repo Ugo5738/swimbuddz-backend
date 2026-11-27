@@ -32,6 +32,9 @@ from services.store_service.models import (
 )
 from services.store_service.routers._helpers import log_audit
 from services.store_service.services.order_policy import sync_order_status_dimensions
+from services.store_service.services.preorder_allocation import (
+    allocate_stock_for_newly_paid_preorder_order,
+)
 from services.store_service.schemas import (
     OrderListResponse,
     OrderResponse,
@@ -265,6 +268,8 @@ async def confirm_verified_order_payment(
         new_value={"status": OrderStatus.PAID.value},
         notes="Payment confirmed by payments_service",
     )
+
+    await allocate_stock_for_newly_paid_preorder_order(db, order, current_user.user_id)
 
     await db.commit()
     await db.refresh(order)
